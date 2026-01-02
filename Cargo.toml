@@ -23,7 +23,7 @@ ratatui = "0.27"
 crossterm = "0.27"
 anyhow = "1"
 
-aws-config = "1"
+aws-config = { version = "1.8.10", default-features = false, features = ["rustls"] }
 aws-sdk-ec2 = "1"
 aws-sdk-s3 = "1"
 aws-sdk-ecs = "1"
@@ -31,6 +31,7 @@ aws-sdk-costexplorer = "1"
 aws-sdk-budgets = "1"
 aws-sdk-sts = "1"
 aws-sdk-rds = "1"
+aws-smithy-observability = { version = "0.1", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
 chrono = "0.4"

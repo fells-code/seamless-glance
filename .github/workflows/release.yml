@@ -71,14 +71,22 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: cargo build --profile release-linux --target x86_64-unknown-linux-gnu
 
       - name: Rename binary
         run: |
           BIN=seamless-glance
           OUT=seamless-glance-${{ steps.version.outputs.version }}-x86_64-unknown-linux-gnu
-          mv target/x86_64-unknown-linux-gnu/release/$BIN $OUT
+          mv target/x86_64-unknown-linux-gnu/release-linux/$BIN $OUT
 
       - uses: actions/upload-artifact@v4
         with:
