@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build binaries
+  build-macos:
+    name: Build macOS binaries
     runs-on: macos-latest
 
     strategy:
@@ -19,57 +19,67 @@ jobs:
         target:
           - aarch64-apple-darwin
           - x86_64-apple-darwin
-          - x86_64-unknown-linux-gnu
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Set version
-        id: version
-        run: |
-          VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          if [[ "${GITHUB_REF##*/}" == "dev" ]]; then
-            VERSION="$VERSION-beta.${GITHUB_RUN_NUMBER}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Build
-        run: |
-          cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Rename binary
         run: |
           BIN=seamless-glance
-          OUT=seamless-glance-${{ steps.version.outputs.version }}-${{ matrix.target }}
+          OUT=seamless-glance-${{ matrix.target }}
           mv target/${{ matrix.target }}/release/$BIN $OUT
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: seamless-glance-*
 
 
-  release:
-    name: Publish GitHub Release
-    needs: build
+  build-linux:
+    name: Build Linux binary
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          tag_name: v${{ needs.build.outputs.version }}
-          name: Seamless Glance v${{ needs.build.outputs.version }}
-          prerelease: ${{ github.ref_name == 'dev' }}
-          files: |
-            **/seamless-glance-*
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Rename binary
+        run: |
+          BIN=seamless-glance
+          OUT=seamless-glance-x86_64-unknown-linux-gnu
+          mv target/x86_64-unknown-linux-gnu/release/$BIN $OUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: seamless-glance-*
+
+  release:
+      name: Publish GitHub Release
+      needs: [build-macos, build-linux]
+      runs-on: ubuntu-latest
+
+      steps:
+        - uses: actions/download-artifact@v4
+
+        - uses: softprops/action-gh-release@v2
+          with:
+            prerelease: ${{ github.ref_name == 'dev' }}
+            files: |
+              **/seamless-glance-*
