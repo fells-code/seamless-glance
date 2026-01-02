@@ -1,0 +1,28 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: rust-format
+        name: cargo fmt
+        entry: bash -c 'cargo fmt --all'
+        language: system
+        types: [rust]
+
+      - id: rust-lint
+        name: cargo clippy
+        entry: bash -c 'cargo clippy --all-targets -- -D warnings'
+        language: system
+        types: [rust]
+
+      - id: rust-test
+        name: cargo test
+        entry: bash -c 'cargo test --quiet'
+        language: system
+        types: [rust]
