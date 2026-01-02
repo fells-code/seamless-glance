@@ -10,6 +10,13 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+[profile.release.package."*"]
+
+[profile.release-linux]
+inherits = "release"
+lto = "thin"
+codegen-units = 2
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 ratatui = "0.27"
