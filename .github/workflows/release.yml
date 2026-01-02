@@ -98,16 +98,34 @@ jobs:
     needs: [build-macos, build-linux]
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Checkout distro repo
+        uses: actions/checkout@v4
+        with:
+          repository: fellscode/seamless-glance-distro
+          token: ${{ secrets.SEAMLESS_GLANCE_GH_TOKEN }}
+
+      - name: "Download build artifacts"
+        uses: actions/download-artifact@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          if [[ "${GITHUB_REF##*/}" == "dev" ]]; then
+            VERSION="$VERSION-beta.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
 
       - name: Publish release to distro repo
         uses: softprops/action-gh-release@v2
         with:
           repository: fellscode/seamless-glance-distro
-          tag_name: v${{ needs.build-macos.outputs.version }}
-          name: Seamless Glance v${{ needs.build-macos.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Seamless Glance v${{ steps.version.outputs.version }}
           prerelease: ${{ github.ref_name == 'dev' }}
           files: |
             **/seamless-glance-*
+          overwrite_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.SEAMLESS_GLANCE_GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DISTRO_REPO_TOKEN }}
