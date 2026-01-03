@@ -1,7 +1,7 @@
 use aws_sdk_apigateway::Client as RestClient;
 use aws_sdk_apigatewayv2::Client as V2Client;
 
-use crate::models::service_status::ServiceStatus;
+use crate::{app::App, models::service_status::ServiceStatus};
 
 #[derive(Debug, Clone)]
 pub struct ApiGatewaySummary {
@@ -18,8 +18,11 @@ pub struct ApiGatewayInfo {
     pub created_at: String,
 }
 
-pub async fn fetch_apigateway_summary() -> ApiGatewaySummary {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
 
     let rest = RestClient::new(&config);
     let v2 = V2Client::new(&config);
@@ -75,8 +78,11 @@ pub async fn fetch_apigateway_summary() -> ApiGatewaySummary {
     }
 }
 
-pub async fn fetch_apigateway_apis() -> Vec<ApiGatewayInfo> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_apigateway_apis(app: &App) -> Vec<ApiGatewayInfo> {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
 
     let rest = RestClient::new(&config);
     let v2 = V2Client::new(&config);

@@ -1,6 +1,9 @@
 use crate::app::ActiveView;
 use crate::ui::footer::draw_footer;
+use crate::ui::header::render_header;
 use crate::ui::views::apigateway::render_apigatway;
+use crate::ui::views::cloudwatch::render_cw;
+use crate::ui::views::ec2::render_ec2;
 use crate::ui::views::ecs::render_ecs_clusters;
 use crate::ui::views::lambda::render;
 use crate::ui::views::sqs::render_sqs;
@@ -127,13 +130,17 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(7), // header (NEW, taller)
             Constraint::Min(1),    // main content
-            Constraint::Length(3), // footer
+            Constraint::Length(4), // footer
         ])
         .split(frame.size());
 
-    let main_area = chunks[0];
-    let footer_area = chunks[1];
+    let header_area = chunks[0];
+    let main_area = chunks[1];
+    let footer_area = chunks[2];
+
+    render_header(frame, header_area, app);
 
     match app.active_view {
         ActiveView::AccountOverview => {
@@ -156,6 +163,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
         }
         ActiveView::Vpc => {
             render_vpc(frame, main_area, app);
+        }
+        ActiveView::Ec2 => {
+            render_ec2(frame, main_area, app);
+        }
+        ActiveView::CloudWatch => {
+            render_cw(frame, main_area, app);
         }
         _ => {
             // placeholders

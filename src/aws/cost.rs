@@ -1,11 +1,11 @@
 use aws_sdk_costexplorer::{
-    types::{DateInterval, GroupDefinition},
+    types::{DateInterval, Granularity, GroupDefinition},
     Client as CeClient,
 };
 
-use chrono::{Months, Utc};
+use chrono::{Datelike, Months, NaiveDate, Utc};
 
-use crate::models::BudgetInfo;
+use crate::{app::App, models::BudgetInfo};
 
 fn ce_date_range(days: i64) -> (String, String) {
     let end = Utc::now()
@@ -21,6 +21,32 @@ fn ce_date_range(days: i64) -> (String, String) {
     )
 }
 
+pub fn current_month_interval() -> (String, String) {
+    let now = Utc::now().date_naive();
+
+    // First day of the month
+    let first_day =
+        NaiveDate::from_ymd_opt(now.year(), now.month(), 1).expect("valid first day of month");
+
+    // First day of next month
+    let first_next_month = if now.month() == 12 {
+        NaiveDate::from_ymd_opt(now.year() + 1, 1, 1).expect("valid first day of next year")
+    } else {
+        NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
+            .expect("valid first day of next month")
+    };
+
+    // Last day of this month = day before next month
+    let last_day = first_next_month
+        .pred_opt()
+        .expect("valid last day of month");
+
+    (
+        first_day.format("%Y-%m-%d").to_string(),
+        last_day.format("%Y-%m-%d").to_string(),
+    )
+}
+
 pub fn last_6_month_labels() -> Vec<String> {
     let now = Utc::now();
 
@@ -33,12 +59,15 @@ pub fn last_6_month_labels() -> Vec<String> {
         .collect()
 }
 
-pub async fn fetch_service_cost_breakdown() -> Vec<(String, f64)> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_service_cost_breakdown(app: &App) -> Vec<(String, f64)> {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
 
     let ce = CeClient::new(&config);
 
-    let (start_str, end_str) = ce_date_range(30);
+    let (start_str, end_str) = current_month_interval();
 
     let interval = DateInterval::builder()
         .start(&start_str)
@@ -54,7 +83,7 @@ pub async fn fetch_service_cost_breakdown() -> Vec<(String, f64)> {
     let resp = ce
         .get_cost_and_usage()
         .time_period(interval)
-        .granularity("MONTHLY".into())
+        .granularity(Granularity::Monthly)
         .metrics("UnblendedCost")
         .group_by(group_def)
         .send()
@@ -86,8 +115,11 @@ pub async fn fetch_service_cost_breakdown() -> Vec<(String, f64)> {
     values
 }
 
-pub async fn fetch_last_6_month_costs() -> Vec<f64> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
 
     let ce = CeClient::new(&config);
 
@@ -120,8 +152,11 @@ pub async fn fetch_last_6_month_costs() -> Vec<f64> {
         .collect()
 }
 
-pub async fn fetch_budget() -> BudgetInfo {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_budget(app: &App) -> BudgetInfo {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
 
     let ce = CeClient::new(&config);
 
@@ -167,4 +202,38 @@ pub async fn fetch_budget() -> BudgetInfo {
         month_to_date_cost,
         forecast,
     }
+}
+
+pub async fn fetch_month_to_date_cost(app: &App) -> f64 {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
+    let ce = CeClient::new(&config);
+
+    let (start, end) = current_month_interval();
+
+    let interval = DateInterval::builder().start(start).end(end).build();
+
+    let resp = match ce
+        .get_cost_and_usage()
+        .time_period(interval.expect("REASON"))
+        .granularity(Granularity::Monthly)
+        .metrics("UnblendedCost")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return 0.0,
+    };
+
+    resp.results_by_time()
+        .iter()
+        .filter_map(|r| {
+            r.total()
+                .and_then(|t| t.get("UnblendedCost"))
+                .and_then(|m| m.amount())
+                .and_then(|a| a.parse::<f64>().ok())
+        })
+        .sum()
 }

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod apigateway;
+pub mod cloudwatch;
 pub mod cost;
 pub mod ec2;
 pub mod ecs;
@@ -7,6 +8,5 @@ pub mod elbv2;
 pub mod lambda;
 pub mod rds;
 pub mod regions;
-pub mod service;
 pub mod sqs;
 pub mod vpc;

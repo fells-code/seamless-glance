@@ -79,13 +79,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // fetch data from AWS
-    app.services = aws::service::fetch_services().await;
-    app.budget = aws::cost::fetch_budget().await;
-    app.monthly_costs = aws::cost::fetch_last_6_month_costs().await;
-    app.service_costs = aws::cost::fetch_service_cost_breakdown().await;
-    app.ecs_clusters = aws::ecs::fetch_ecs_clusters().await;
-
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
 
@@ -98,14 +91,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         if app.is_refreshing {
-            let region = app.current_region().clone();
-
-            app.is_refreshing = false;
-
-            let overview = aws::account::fetch_account_overview(&region).await;
-
-            app.account_overview = Some(overview);
-            app.last_refresh = Some(chrono::Utc::now());
+            app.refresh_active().await;
         }
 
         if !event::poll(std::time::Duration::from_millis(100))? {
@@ -173,23 +159,32 @@ async fn main() -> anyhow::Result<()> {
                 app.on_view_enter().await;
             }
             KeyCode::Char('3') => {
-                app.active_view = ActiveView::Ecs;
+                app.active_view = ActiveView::Vpc;
                 app.on_view_enter().await;
             }
             KeyCode::Char('4') => {
-                app.active_view = ActiveView::Lambda;
+                app.active_view = ActiveView::Ec2;
                 app.on_view_enter().await;
             }
             KeyCode::Char('5') => {
-                app.active_view = ActiveView::Apigateway;
+                app.active_view = ActiveView::CloudWatch;
                 app.on_view_enter().await;
             }
             KeyCode::Char('6') => {
-                app.active_view = ActiveView::Sqs;
+                app.active_view = ActiveView::Lambda;
                 app.on_view_enter().await;
             }
             KeyCode::Char('7') => {
-                app.active_view = ActiveView::Vpc;
+                app.active_view = ActiveView::Secrets;
+                app.on_view_enter().await;
+            }
+            KeyCode::Char('8') => {
+                app.active_view = ActiveView::Ecs;
+                app.on_view_enter().await;
+            }
+
+            KeyCode::Char('9') => {
+                app.active_view = ActiveView::Apigateway;
                 app.on_view_enter().await;
             }
             _ => {}

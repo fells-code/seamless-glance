@@ -1,4 +1,4 @@
-use crate::models::service_status::ServiceStatus;
+use crate::{app::App, models::service_status::ServiceStatus};
 use aws_sdk_lambda::Client;
 
 #[derive(Debug, Clone)]
@@ -16,8 +16,11 @@ pub struct LambdaFunctionInfo {
     pub last_modified: String,
 }
 
-pub async fn fetch_lambda_summary() -> LambdaSummary {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
     let client = Client::new(&config);
 
     match client.list_functions().send().await {
@@ -42,8 +45,11 @@ pub async fn fetch_lambda_summary() -> LambdaSummary {
     }
 }
 
-pub async fn fetch_lambda_functions() -> Vec<LambdaFunctionInfo> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
     let client = Client::new(&config);
 
     let resp = match client.list_functions().send().await {

@@ -1,4 +1,4 @@
-use crate::models::service_status::ServiceStatus;
+use crate::models::{cloudwatch::CloudWatchSummary, service_status::ServiceStatus};
 
 #[derive(Debug, Clone)]
 pub struct AccountOverview {
@@ -7,9 +7,6 @@ pub struct AccountOverview {
 
     pub role_name: Option<String>,
     pub region: String,
-
-    pub ec2_running: u32,
-    pub ec2_stopped: u32,
 
     pub ecs_clusters: u32,
     pub ecs_services: u32,
@@ -34,4 +31,6 @@ pub struct AccountOverview {
     pub vpc_count: u32,
     pub subnet_count: u32,
     pub vpc_status: ServiceStatus,
+
+    pub alarms: CloudWatchSummary,
 }

@@ -1,6 +1,6 @@
 use crate::{app::App, models::service_status::ServiceStatus};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::Style,
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -23,53 +23,14 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         return;
     };
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(10)])
-        .split(area);
-
-    // ---- HEADER ----
-    let role = overview.role_name.as_deref().unwrap_or("unknown-role");
-
-    let header_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(70), // left
-            Constraint::Percentage(30), // right
-        ])
-        .split(chunks[0]);
-
-    // LEFT: identity + context
-    let header_text = format!(
-        "Account {}\nRegion {}   Role {}",
-        overview.account_id, overview.region, role
-    );
-
-    let header_left = Paragraph::new(header_text)
-        .style(Style::default().fg(app.theme.text))
-        .block(
-            Block::default()
-                .title("Seamless Glance")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
-
-    frame.render_widget(header_left, header_chunks[0]);
-
-    // RIGHT: cost (right-aligned)
-    let cost_text = format!("${:.2}", overview.month_to_date_cost);
-
-    let header_right = Paragraph::new(cost_text)
-        .alignment(ratatui::layout::Alignment::Right)
-        .style(Style::default().fg(app.theme.accent))
-        .block(
-            Block::default()
-                .title("MTD Cost")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
-
-    frame.render_widget(header_right, header_chunks[1]);
+    let (running, stopped) =
+        app.ec2_instances
+            .iter()
+            .fold((0, 0), |acc, i| match i.state.as_str() {
+                "running" => (acc.0 + 1, acc.1),
+                "stopped" => (acc.0, acc.1 + 1),
+                _ => acc,
+            });
 
     let rds_line = match &overview.rds_status {
         ServiceStatus::Ok => format!("RDS: {} instances", overview.rds_instances),
@@ -116,9 +77,28 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ServiceStatus::Unavailable(_) => "VPC: ⚠️ Unavailable".into(),
     };
 
+    let cloudwatch_line = match &overview.alarms.status {
+        ServiceStatus::Ok => {
+            if overview.alarms.alarms_in_alarm > 0 {
+                format!(
+                    "CloudWatch: {} alarms ({} in ALARM)",
+                    overview.alarms.total_alarms, overview.alarms.alarms_in_alarm
+                )
+            } else {
+                format!(
+                    "CloudWatch: {} alarms (all OK)",
+                    overview.alarms.total_alarms
+                )
+            }
+        }
+        ServiceStatus::AccessDenied => "CloudWatch: ⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "CloudWatch: ⚠️ Unavailable".into(),
+    };
+
     // ---- STATS ----
     let stats = Paragraph::new(format!(
         "{}\n\
+         {}\n\
          EC2: {} running / {} stopped\n\
          ECS: {} clusters / {} services\n\
          {}\n\
@@ -127,8 +107,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
          {}\n\
          {}",
         vpc_line,
-        overview.ec2_running,
-        overview.ec2_stopped,
+        cloudwatch_line,
+        running,
+        stopped,
         overview.ecs_clusters,
         overview.ecs_services,
         lambda_line,
@@ -145,5 +126,5 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             .border_style(Style::default().fg(app.theme.accent)),
     );
 
-    frame.render_widget(stats, chunks[1]);
+    frame.render_widget(stats, area);
 }

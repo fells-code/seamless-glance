@@ -18,10 +18,13 @@ Seamless Glance — Help
 Navigation
   1            Account Overview
   2            Cost Overview
-  3            ECS
-  4            Lambda
-  5            ApiGateway
-  6            SQS
+  3            VPC
+  4            EC2
+  5            CloudWatch
+  6            Lambda
+  7            Secrets Manager
+  8            ECS
+  9            ApiGateway
 
 Regions
   ← / →        Switch region
@@ -35,6 +38,9 @@ Commands
   rds          Go to RDS
   sqs          Go to SQS
   cost         Go to Cost
+  sm           Go to Secrets Manager
+  vpc          Go to VPC
+  cw           Go to CloudWatch
 
 General
   q            Quit

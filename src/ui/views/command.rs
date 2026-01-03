@@ -54,6 +54,11 @@ pub const COMMANDS: &[Command] = &[
         description: "VPCs",
         view: ActiveView::Vpc,
     },
+    Command {
+        name: "cw",
+        description: "Cloudwatch",
+        view: ActiveView::CloudWatch,
+    },
 ];
 
 pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {

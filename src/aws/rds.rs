@@ -1,4 +1,4 @@
-use crate::models::service_status::ServiceStatus;
+use crate::{app::App, models::service_status::ServiceStatus};
 use aws_sdk_rds::Client;
 
 pub struct RdsResult {
@@ -6,8 +6,11 @@ pub struct RdsResult {
     pub status: ServiceStatus,
 }
 
-pub async fn fetch_rds_instance_count() -> RdsResult {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_rds_instance_count(app: &App) -> RdsResult {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
     let rds = Client::new(&config);
 
     match rds.describe_db_instances().send().await {

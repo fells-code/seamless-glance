@@ -1,6 +1,8 @@
 pub mod account_overview;
 pub mod apigateway;
+pub mod cloudwatch;
 pub mod command;
+pub mod ec2;
 pub mod ecs;
 pub mod help;
 pub mod lambda;

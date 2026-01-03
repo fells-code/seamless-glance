@@ -1,4 +1,4 @@
-use crate::models::service_status::ServiceStatus;
+use crate::{app::App, models::service_status::ServiceStatus};
 use aws_sdk_ec2::Client;
 
 #[derive(Debug, Clone)]
@@ -17,8 +17,11 @@ pub struct VpcInfo {
     pub subnet_count: u32,
 }
 
-pub async fn fetch_vpc_summary() -> VpcSummary {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
     let ec2 = Client::new(&config);
 
     // VPCs
@@ -67,8 +70,11 @@ pub async fn fetch_vpc_summary() -> VpcSummary {
     }
 }
 
-pub async fn fetch_vpcs() -> Vec<VpcInfo> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
+pub async fn fetch_vpcs(app: &App) -> Vec<VpcInfo> {
+    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(app.current_region().clone())
+        .load()
+        .await;
     let ec2 = Client::new(&config);
 
     let vpcs_resp = match ec2.describe_vpcs().send().await {

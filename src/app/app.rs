@@ -1,9 +1,10 @@
 use aws_config::Region;
 use chrono::{DateTime, Utc};
 
-use crate::models::{
-    AccountOverview, AwsServiceItem, BudgetInfo, EcsClusterInfo, EcsServiceInfo, EcsTaskInfo,
-};
+use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
+use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::service_status::ServiceStatus;
+use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo, EcsServiceInfo, EcsTaskInfo};
 use crate::ui::footer::FooterMode;
 use crate::ui::theme::Theme;
 use crate::{aws, config};
@@ -17,6 +18,13 @@ pub enum EcsViewMode {
     },
 }
 
+#[derive(Debug, Clone)]
+pub enum RefreshPhase {
+    Idle,
+    Overview,
+    Services(Vec<&'static str>),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActiveView {
     AccountOverview,
@@ -28,6 +36,8 @@ pub enum ActiveView {
     Apigateway,
     Sqs,
     Vpc,
+    Secrets,
+    CloudWatch,
 }
 pub struct App {
     // Global App properties
@@ -41,7 +51,7 @@ pub struct App {
 
     pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
     pub is_refreshing: bool,
-
+    pub refresh_phase: RefreshPhase,
     pub refresh_interval_secs: u64,
     pub last_refresh_attempt: Option<DateTime<Utc>>,
     pub footer_mode: FooterMode,
@@ -49,7 +59,6 @@ pub struct App {
     pub theme: Theme,
     // Account overview
     pub account_overview: Option<AccountOverview>,
-    pub services: Vec<AwsServiceItem>,
     pub budget: BudgetInfo,
     pub monthly_costs: Vec<f64>,
     pub service_costs: Vec<(String, f64)>,
@@ -71,7 +80,12 @@ pub struct App {
     pub sqs_queues_data: Vec<aws::sqs::SqsQueueInfo>,
 
     // VPC
-    pub vpcs: Vec<crate::aws::vpc::VpcInfo>,
+    pub vpcs: Vec<aws::vpc::VpcInfo>,
+
+    pub ec2_instances: Vec<Ec2InstanceInfo>,
+
+    pub cloudwatch_summary: CloudWatchSummary,
+    pub cloudwatch_alarms: Vec<CloudWatchAlarm>,
 }
 
 impl App {
@@ -84,7 +98,6 @@ impl App {
             command_mode: false,
             command_input: String::new(),
             active_view: ActiveView::AccountOverview,
-            services: vec![],
             budget: BudgetInfo {
                 monthly_budget: 0.0,
                 month_to_date_cost: 0.0,
@@ -98,6 +111,13 @@ impl App {
             apigateway_apis: vec![],
             sqs_queues_data: vec![],
             vpcs: vec![],
+            cloudwatch_summary: CloudWatchSummary {
+                status: ServiceStatus::Unavailable("Not loaded".into()),
+                total_alarms: 0,
+                alarms_in_alarm: 0,
+            },
+            cloudwatch_alarms: vec![],
+            ec2_instances: vec![],
             ecs_clusters: vec![],
             ecs_services: vec![],
             ecs_tasks: vec![],
@@ -105,7 +125,7 @@ impl App {
 
             last_refresh: None,
             is_refreshing: false,
-
+            refresh_phase: RefreshPhase::Idle,
             refresh_interval_secs: 30,
             last_refresh_attempt: None,
             footer_mode: FooterMode::Normal,
@@ -149,27 +169,40 @@ impl App {
 
     pub async fn on_view_enter(&mut self) {
         match self.active_view {
+            ActiveView::CostOverview => {
+                self.budget = aws::cost::fetch_budget(self).await;
+                self.monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
+                self.service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
+            }
             ActiveView::Lambda => {
-                self.lambda_functions = aws::lambda::fetch_lambda_functions().await;
+                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
             }
 
             ActiveView::Ecs => {
-                // optional: preload ECS clusters if empty
                 if self.ecs_clusters.is_empty() {
-                    self.ecs_clusters = aws::ecs::fetch_ecs_clusters().await;
+                    self.ecs_clusters = aws::ecs::fetch_ecs_clusters(self).await;
                 }
             }
 
             ActiveView::Apigateway => {
-                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis().await;
+                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
             }
 
             ActiveView::Sqs => {
-                self.sqs_queues_data = aws::sqs::fetch_sqs_queues().await;
+                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
             }
 
             ActiveView::Vpc => {
-                self.vpcs = aws::vpc::fetch_vpcs().await;
+                self.vpcs = aws::vpc::fetch_vpcs(self).await;
+            }
+
+            ActiveView::Ec2 => {
+                self.ec2_instances = aws::ec2::fetch_instances(self).await;
+            }
+            ActiveView::CloudWatch => {
+                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
+                self.cloudwatch_summary = summary;
+                self.cloudwatch_alarms = alarms;
             }
             _ => {}
         }
@@ -235,5 +268,67 @@ impl App {
         self.is_refreshing = true;
         self.last_refresh_attempt = Some(Utc::now());
         self.account_overview = None; // loading UX
+    }
+
+    pub async fn refresh_active(&mut self) {
+        self.refresh_phase = RefreshPhase::Overview;
+        self.account_overview = None;
+
+        // Always refresh overview (header correctness)
+        self.account_overview = Some(aws::account::fetch_account_overview(self).await);
+
+        // Now refresh ONLY the active view
+        match self.active_view {
+            ActiveView::CostOverview => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Cost"]);
+                self.budget = aws::cost::fetch_budget(self).await;
+                self.monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
+                self.service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
+            }
+
+            ActiveView::Ec2 => {
+                self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
+                self.ec2_instances = aws::ec2::fetch_instances(self).await;
+            }
+
+            ActiveView::Lambda => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Lambda"]);
+                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
+            }
+
+            ActiveView::CloudWatch => {
+                self.refresh_phase = RefreshPhase::Services(vec!["CloudWatch"]);
+                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
+                self.cloudwatch_summary = summary;
+                self.cloudwatch_alarms = alarms;
+            }
+
+            ActiveView::Vpc => {
+                self.refresh_phase = RefreshPhase::Services(vec!["VPC"]);
+                self.vpcs = aws::vpc::fetch_vpcs(self).await;
+            }
+
+            ActiveView::Sqs => {
+                self.refresh_phase = RefreshPhase::Services(vec!["SQS"]);
+                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
+            }
+
+            ActiveView::Apigateway => {
+                self.refresh_phase = RefreshPhase::Services(vec!["API Gateway"]);
+                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
+            }
+
+            ActiveView::Ecs => {
+                self.refresh_phase = RefreshPhase::Services(vec!["ECS"]);
+                self.ecs_clusters = aws::ecs::fetch_ecs_clusters(self).await;
+            }
+
+            // Views with no region-scoped data
+            ActiveView::AccountOverview | ActiveView::Secrets | ActiveView::Rds => {}
+        }
+
+        self.refresh_phase = RefreshPhase::Idle;
+        self.last_refresh = Some(Utc::now());
+        self.is_refreshing = false;
     }
 }
