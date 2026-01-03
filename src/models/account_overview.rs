@@ -8,6 +8,9 @@ pub struct AccountOverview {
     pub role_name: Option<String>,
     pub region: String,
 
+    pub ec2_running: u32,
+    pub ec2_stopped: u32,
+
     pub ecs_clusters: u32,
     pub ecs_services: u32,
 

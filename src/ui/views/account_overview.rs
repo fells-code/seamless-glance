@@ -23,14 +23,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         return;
     };
 
-    let (running, stopped) =
-        app.ec2_instances
-            .iter()
-            .fold((0, 0), |acc, i| match i.state.as_str() {
-                "running" => (acc.0 + 1, acc.1),
-                "stopped" => (acc.0, acc.1 + 1),
-                _ => acc,
-            });
+    let running = &overview.ec2_running;
+    let stopped = &overview.ec2_stopped;
 
     let rds_line = match &overview.rds_status {
         ServiceStatus::Ok => format!("RDS: {} instances", overview.rds_instances),
