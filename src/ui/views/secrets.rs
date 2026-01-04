@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_sm(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render_sm(frame: &mut Frame, area: Rect, app: &mut App) {
     if !matches!(
         app.secrets_summary.status,
         crate::models::service_status::ServiceStatus::Ok
@@ -20,21 +20,54 @@ pub fn render_sm(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
+    let total_rows = app.secrets.len();
+
+    if total_rows == 0 {
+        app.selected_row = 0;
+        app.scroll_offset = 0;
+    }
+
+    // Clamp selection
+    if total_rows > 0 {
+        app.selected_row = app.selected_row.min(total_rows.saturating_sub(1));
+    }
+
+    // Compute visible rows
+    let visible_height = area.height.saturating_sub(3) as usize; // header + borders
+
+    // Keep cursor visible
+    if app.selected_row < app.scroll_offset as usize {
+        app.scroll_offset = app.selected_row as u16;
+    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
+        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
+    }
+
     let rows: Vec<Row> = app
         .secrets
         .iter()
-        .map(|s| {
-            let style = if s.rotation_enabled {
-                Style::default().fg(app.theme.text)
-            } else {
+        .enumerate()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
+        .map(|(i, s)| {
+            let is_selected = i == app.selected_row;
+
+            let style = if is_selected {
+                Style::default()
+                    .fg(app.theme.background)
+                    .bg(app.theme.primary)
+            } else if !s.rotation_enabled {
+                // Subtle warning color for unrotated secrets
                 Style::default().fg(app.theme.primary)
+            } else {
+                Style::default().fg(app.theme.text)
             };
 
             Row::new(vec![
                 Cell::from(s.name.clone()),
-                Cell::from(if s.rotation_enabled { "Yes" } else { "No" }).style(style),
+                Cell::from(if s.rotation_enabled { "Yes" } else { "No" }),
                 Cell::from(s.last_rotated.clone().unwrap_or("—".into())),
             ])
+            .style(style)
         })
         .collect();
 

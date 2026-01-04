@@ -167,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
                 app.command_mode = false;
                 app.footer_mode = FooterMode::Normal;
                 app.command_input.clear();
+                app.scroll_offset = 0;
             }
             KeyCode::Esc if app.command_mode => {
                 app.command_mode = false;
@@ -191,12 +192,18 @@ async fn main() -> anyhow::Result<()> {
                 app.next_region().await;
             }
             KeyCode::Down => {
-                app.selected_row = app.selected_row.saturating_add(1);
-                app.scroll_offset = app.scroll_offset.saturating_add(1);
+                if app.show_help {
+                    app.scroll_offset = app.scroll_offset.saturating_add(1);
+                } else {
+                    app.selected_row = app.selected_row.saturating_add(1);
+                }
             }
             KeyCode::Up => {
-                app.scroll_offset = app.scroll_offset.saturating_sub(1);
-                app.selected_row = app.selected_row.saturating_sub(1);
+                if app.show_help {
+                    app.scroll_offset = app.scroll_offset.saturating_sub(1);
+                } else {
+                    app.selected_row = app.selected_row.saturating_sub(1);
+                }
             }
             KeyCode::Char('q') => {
                 config::save_config(&config::GlanceConfig {
