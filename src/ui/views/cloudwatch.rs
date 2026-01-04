@@ -42,7 +42,7 @@ pub fn render_cw(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let header = Row::new(vec!["Alarm", "State", "Namespace", "Metric"])
-        .style(Style::default().fg(app.theme.primary));
+        .style(Style::default().fg(app.theme.accent));
 
     let widths = [
         Constraint::Percentage(40),

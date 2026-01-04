@@ -3,11 +3,6 @@ DIST_DIR := dist
 
 # Extract version from Cargo.toml
 VERSION := $(shell grep '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
-
-ifeq ($(GIT_BRANCH),dev)
-	VERSION := $(VERSION)-beta.$(shell git rev-list --count HEAD)
-endif
 
 # Targets
 MAC_ARM := aarch64-apple-darwin

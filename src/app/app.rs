@@ -3,6 +3,8 @@ use chrono::{DateTime, Utc};
 
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::rds::{RdsInstanceInfo, RdsSummary};
+use crate::models::secrets::{SecretInfo, SecretsSummary};
 use crate::models::service_status::ServiceStatus;
 use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo, EcsServiceInfo, EcsTaskInfo};
 use crate::ui::footer::FooterMode;
@@ -41,6 +43,7 @@ pub enum ActiveView {
 }
 pub struct App {
     // Global App properties
+    pub cost_loaded: bool,
     pub regions: Vec<Region>,
     pub current_region_index: usize,
     pub active_view: ActiveView,
@@ -48,12 +51,15 @@ pub struct App {
     pub command_mode: bool,
     pub command_input: String,
     pub show_help: bool,
-
+    pub scroll_offset: u16,
+    pub selected_row: usize,
     pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
     pub is_refreshing: bool,
     pub refresh_phase: RefreshPhase,
+
     pub refresh_interval_secs: u64,
     pub last_refresh_attempt: Option<DateTime<Utc>>,
+
     pub footer_mode: FooterMode,
 
     pub theme: Theme,
@@ -82,15 +88,28 @@ pub struct App {
     // VPC
     pub vpcs: Vec<aws::vpc::VpcInfo>,
 
+    // EC2
     pub ec2_instances: Vec<Ec2InstanceInfo>,
 
+    // Cloudwatch
     pub cloudwatch_summary: CloudWatchSummary,
     pub cloudwatch_alarms: Vec<CloudWatchAlarm>,
+
+    // Secrets Manager
+    pub secrets_summary: SecretsSummary,
+    pub secrets: Vec<SecretInfo>,
+
+    // RDS
+    pub rds_summary: RdsSummary,
+    pub rds_instances: Vec<RdsInstanceInfo>,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
+            scroll_offset: 0,
+            selected_row: 0,
+            cost_loaded: false,
             account_overview: None,
             regions: vec![],
             current_region_index: 0,
@@ -122,6 +141,20 @@ impl App {
             ecs_services: vec![],
             ecs_tasks: vec![],
             ecs_selected_index: 0,
+
+            secrets_summary: SecretsSummary {
+                status: ServiceStatus::Unavailable("Not loaded".into()),
+                total: 0,
+                rotation_disabled: 0,
+            },
+            secrets: vec![],
+
+            rds_summary: RdsSummary {
+                status: ServiceStatus::Unavailable("Not loaded".into()),
+                total: 0,
+                available: 0,
+            },
+            rds_instances: vec![],
 
             last_refresh: None,
             is_refreshing: false,
@@ -169,11 +202,6 @@ impl App {
 
     pub async fn on_view_enter(&mut self) {
         match self.active_view {
-            ActiveView::CostOverview => {
-                self.budget = aws::cost::fetch_budget(self).await;
-                self.monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
-                self.service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
-            }
             ActiveView::Lambda => {
                 self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
             }
@@ -203,6 +231,18 @@ impl App {
                 let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
                 self.cloudwatch_summary = summary;
                 self.cloudwatch_alarms = alarms;
+            }
+            ActiveView::Secrets => {
+                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
+                self.secrets_summary = summary;
+                self.secrets = secrets;
+            }
+
+            ActiveView::Rds => {
+                self.refresh_phase = RefreshPhase::Services(vec!["RDS"]);
+                let (summary, instances) = aws::rds::fetch_rds(self).await;
+                self.rds_summary = summary;
+                self.rds_instances = instances;
             }
             _ => {}
         }
@@ -279,13 +319,6 @@ impl App {
 
         // Now refresh ONLY the active view
         match self.active_view {
-            ActiveView::CostOverview => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Cost"]);
-                self.budget = aws::cost::fetch_budget(self).await;
-                self.monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
-                self.service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
-            }
-
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
@@ -323,12 +356,40 @@ impl App {
                 self.ecs_clusters = aws::ecs::fetch_ecs_clusters(self).await;
             }
 
+            ActiveView::Secrets => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Secrets"]);
+                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
+                self.secrets_summary = summary;
+                self.secrets = secrets;
+            }
+
+            ActiveView::Rds => {
+                self.refresh_phase = RefreshPhase::Services(vec!["RDS"]);
+                let (summary, instances) = aws::rds::fetch_rds(self).await;
+                self.rds_summary = summary;
+                self.rds_instances = instances;
+            }
+
             // Views with no region-scoped data
-            ActiveView::AccountOverview | ActiveView::Secrets | ActiveView::Rds => {}
+            ActiveView::AccountOverview | ActiveView::CostOverview => {}
         }
 
         self.refresh_phase = RefreshPhase::Idle;
         self.last_refresh = Some(Utc::now());
         self.is_refreshing = false;
+        self.selected_row = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub async fn load_cost_data_once(&mut self) {
+        if self.cost_loaded {
+            return;
+        }
+
+        self.budget = aws::cost::fetch_budget(self).await;
+        self.monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
+        self.service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
+
+        self.cost_loaded = true;
     }
 }

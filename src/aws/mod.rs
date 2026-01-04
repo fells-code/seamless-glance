@@ -8,5 +8,6 @@ pub mod elbv2;
 pub mod lambda;
 pub mod rds;
 pub mod regions;
+pub mod secrets;
 pub mod sqs;
 pub mod vpc;

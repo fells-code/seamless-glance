@@ -6,23 +6,55 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_ec2(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
+    let total_rows = app.ec2_instances.len();
+    if total_rows == 0 {
+        app.selected_row = 0;
+        app.scroll_offset = 0;
+    }
+
+    // Clamp selection to bounds
+    if total_rows > 0 {
+        app.selected_row = app.selected_row.min(total_rows - 1);
+    }
+
+    // How many rows can we show?
+    let visible_height = area.height.saturating_sub(3) as usize; // header + borders
+
+    // Keep selected row in view
+    if app.selected_row < app.scroll_offset as usize {
+        app.scroll_offset = app.selected_row as u16;
+    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
+        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
+    }
+
     let rows: Vec<Row> = app
         .ec2_instances
         .iter()
-        .map(|i| {
+        .enumerate()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
+        .map(|(i, inst)| {
+            let style = if i == app.selected_row {
+                Style::default()
+                    .fg(app.theme.background)
+                    .bg(app.theme.primary)
+            } else {
+                Style::default().fg(app.theme.text)
+            };
+
             Row::new(vec![
-                Cell::from(i.id.clone()),
-                Cell::from(i.name.clone().unwrap_or_else(|| "-".into())),
-                Cell::from(i.state.clone()),
-                Cell::from(i.instance_type.clone()),
-                Cell::from(i.az.clone()),
+                Cell::from(inst.id.clone()),
+                Cell::from(inst.name.clone().unwrap_or("-".into())),
+                Cell::from(inst.state.clone()),
+                Cell::from(inst.instance_type.clone()),
+                Cell::from(inst.az.clone()),
             ])
+            .style(style)
         })
         .collect();
-
     let header = Row::new(vec!["Instance ID", "Name", "State", "Type", "AZ"])
-        .style(Style::default().fg(app.theme.primary));
+        .style(Style::default().fg(app.theme.accent));
 
     let widths = [
         ratatui::layout::Constraint::Percentage(30),

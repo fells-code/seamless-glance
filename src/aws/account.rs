@@ -1,6 +1,6 @@
 use crate::app::App;
 use crate::aws::apigateway;
-use crate::aws::{cloudwatch, cost, ec2, ecs, elbv2, lambda, rds, sqs, vpc};
+use crate::aws::{cloudwatch, cost, ec2, ecs, elbv2, lambda, rds, secrets, sqs, vpc};
 use crate::models::AccountOverview;
 use aws_config::BehaviorVersion;
 use aws_sdk_sts::Client as StsClient;
@@ -26,16 +26,18 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         sqs_result,
         vpc_result,
         alarms,
+        secrets,
     ) = join!(
         ecs::fetch_ecs_clusters(&app),
         ec2::fetch_ec2_counts(&app),
-        rds::fetch_rds_instance_count(&app),
+        rds::fetch_rds(&app),
         elbv2::fetch_load_balancer_count(&app),
         lambda::fetch_lambda_summary(&app),
         apigateway::fetch_apigateway_summary(&app),
         sqs::fetch_sqs_summary(&app),
         vpc::fetch_vpc_summary(&app),
-        cloudwatch::fetch_cloudwatch(&app)
+        cloudwatch::fetch_cloudwatch(&app),
+        secrets::fetch_secrets(&app)
     );
 
     let ecs_clusters_count = ecs_clusters.len() as u32;
@@ -58,8 +60,7 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         ecs_clusters: ecs_clusters_count,
         ecs_services: ecs_services_count,
 
-        rds_instances: rds_result.count,
-        rds_status: rds_result.status,
+        rds_status: rds_result.0,
 
         load_balancers: elb_result.count,
         elb_status: elb_result.status,
@@ -79,5 +80,6 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         subnet_count: vpc_result.subnet_count,
         vpc_status: vpc_result.status,
         alarms: alarms.0,
+        secrets: secrets.0,
     }
 }

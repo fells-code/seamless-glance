@@ -3,6 +3,7 @@ pub mod cloudwatch;
 pub mod cost;
 pub mod ec2;
 pub mod ecs;
+pub mod rds;
 pub mod secrets;
 pub mod service;
 pub mod service_status;

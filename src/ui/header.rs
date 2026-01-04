@@ -1,4 +1,7 @@
-use crate::app::{App, RefreshPhase};
+use crate::{
+    app::{App, RefreshPhase},
+    config::VERSION,
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::Style,
@@ -7,8 +10,13 @@ use ratatui::{
 };
 
 fn refresh_text(app: &App) -> String {
+    let refresh = app
+        .last_refresh
+        .map(|t| t.format("%H:%M:%S UTC").to_string())
+        .unwrap_or_else(|| "—".into());
+
     match &app.refresh_phase {
-        RefreshPhase::Idle => "Live".into(),
+        RefreshPhase::Idle => format!("Last updated {}", refresh),
         RefreshPhase::Overview => "Refreshing overview…".into(),
         RefreshPhase::Services(services) => {
             if services.is_empty() {
@@ -31,11 +39,6 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
     let status = refresh_text(app);
 
-    let refresh = app
-        .last_refresh
-        .map(|t| t.format("%H:%M:%S UTC").to_string())
-        .unwrap_or_else(|| "—".into());
-
     let (account, region, role) = if let Some(overview) = &app.account_overview {
         (
             overview.account_id.as_str(),
@@ -48,15 +51,15 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
     // LEFT: context
     let left_text = format!(
-        "Account {}\nRegion {}\nRole {}\n{} · Last updated {}",
-        account, region, role, status, refresh
+        "Account {}\nRegion {}\nRole {}\n{}",
+        account, region, role, status
     );
 
     let left = Paragraph::new(left_text)
         .style(Style::default().fg(app.theme.text))
         .block(
             Block::default()
-                .title("Seamless Glance")
+                .title(format!("Seamless Glance v{}", VERSION))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.primary)),
         );
@@ -75,7 +78,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .style(Style::default().fg(app.theme.accent))
         .block(
             Block::default()
-                .title("MTD Cost")
+                .title("MTD Cost (updated daily)")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.primary)),
         );

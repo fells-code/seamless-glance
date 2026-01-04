@@ -15,14 +15,38 @@ use crossterm::{
 };
 
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::io::stdout;
+use std::{env, io::stdout};
 
 use crate::{
     app::ActiveView,
+    config::VERSION,
     ui::{footer::FooterMode, views::command::COMMANDS},
 };
 
 use crate::license::{load::load_license, verify::verify_license};
+
+fn print_help() {
+    println!(
+        "\
+Seamless Glance — AWS visibility in your terminal
+
+USAGE:
+  seamless-glance [OPTIONS]
+
+OPTIONS:
+  --help       Show this help message
+  --version    Show version information
+
+INSTALL:
+  brew install fellscode/seamless/seamless-glance
+  curl -fsSL https://seamlessglance.com/install.sh | bash
+
+LICENSE:
+  Place your license at:
+    ~/.seamless-glance/license.json
+"
+    );
+}
 
 fn check_license_or_exit() {
     match load_license().and_then(|l| verify_license(&l)) {
@@ -50,6 +74,26 @@ async fn handle_command(app: &mut App) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--help" | "-h" => {
+                print_help();
+                return Ok(());
+            }
+            "--version" | "-v" => {
+                println!("Seamless Glance v{}", VERSION);
+                return Ok(());
+            }
+            _ => {
+                eprintln!("Unknown option: {}", args[1]);
+                eprintln!("Run `seamless-glance --help` for usage.");
+                std::process::exit(1);
+            }
+        }
+    }
+
     check_license_or_exit();
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -79,15 +123,14 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    app.load_cost_data_once().await;
+    app.trigger_refresh();
+
     loop {
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         if app.should_quit {
             break;
-        }
-
-        if app.should_auto_refresh() {
-            app.trigger_auto_refresh();
         }
 
         if app.is_refreshing {
@@ -114,6 +157,10 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Char('?') => {
                 app.show_help = true;
                 app.footer_mode = FooterMode::Help;
+                app.scroll_offset = 0;
+            }
+            KeyCode::Char('r') => {
+                app.trigger_refresh();
             }
             KeyCode::Esc if app.show_help => {
                 app.show_help = false;
@@ -142,6 +189,14 @@ async fn main() -> anyhow::Result<()> {
             }
             KeyCode::Right => {
                 app.next_region().await;
+            }
+            KeyCode::Down => {
+                app.selected_row = app.selected_row.saturating_add(1);
+                app.scroll_offset = app.scroll_offset.saturating_add(1);
+            }
+            KeyCode::Up => {
+                app.scroll_offset = app.scroll_offset.saturating_sub(1);
+                app.selected_row = app.selected_row.saturating_sub(1);
             }
             KeyCode::Char('q') => {
                 config::save_config(&config::GlanceConfig {

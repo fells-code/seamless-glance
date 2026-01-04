@@ -1,23 +1,72 @@
+use crate::models::secrets::{SecretInfo, SecretsSummary};
+use crate::models::service_status::ServiceStatus;
 use aws_sdk_secretsmanager::Client;
+use chrono::{DateTime, Utc};
+use std::time::{Duration, UNIX_EPOCH};
 
-pub async fn fetch_secrets() -> Vec<SecretInfo> {
+fn aws_datetime_to_utc(dt: &aws_sdk_secretsmanager::primitives::DateTime) -> DateTime<Utc> {
+    let system_time = UNIX_EPOCH
+        + Duration::from_secs(dt.secs() as u64)
+        + Duration::from_nanos(dt.subsec_nanos() as u64);
+
+    DateTime::<Utc>::from(system_time)
+}
+
+pub async fn fetch_secrets(app: &crate::app::App) -> (SecretsSummary, Vec<SecretInfo>) {
     let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
         .region(app.current_region().clone())
         .load()
         .await;
+
     let client = Client::new(&config);
 
     let resp = match client.list_secrets().send().await {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(err) => {
+            let msg = err.to_string();
+            let status = if msg.contains("AccessDenied") {
+                ServiceStatus::AccessDenied
+            } else {
+                ServiceStatus::Unavailable(msg)
+            };
+
+            return (
+                SecretsSummary {
+                    status,
+                    total: 0,
+                    rotation_disabled: 0,
+                },
+                vec![],
+            );
+        }
     };
 
-    resp.secret_list()
-        .iter()
-        .map(|s| SecretInfo {
-            name: s.name().unwrap_or("").into(),
-            last_rotated: s.last_rotated_date().map(|d| d.to_string()),
-            rotation_enabled: s.rotation_enabled().unwrap_or(false),
-        })
-        .collect()
+    let mut secrets = Vec::new();
+    let mut rotation_disabled = 0;
+
+    for s in resp.secret_list() {
+        let rotation_enabled = s.rotation_enabled().unwrap_or(false);
+        if !rotation_enabled {
+            rotation_disabled += 1;
+        }
+
+        let last_rotated = s
+            .last_rotated_date()
+            .map(|d| aws_datetime_to_utc(d).to_rfc3339());
+
+        secrets.push(SecretInfo {
+            name: s.name().unwrap_or("unknown").to_string(),
+            rotation_enabled,
+            last_rotated,
+        });
+    }
+
+    (
+        SecretsSummary {
+            status: ServiceStatus::Ok,
+            total: secrets.len(),
+            rotation_disabled,
+        },
+        secrets,
+    )
 }

@@ -8,6 +8,8 @@ pub struct GlanceConfig {
     pub profile: Option<String>,
 }
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 impl Default for GlanceConfig {
     fn default() -> Self {
         Self {

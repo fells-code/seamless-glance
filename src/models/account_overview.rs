@@ -1,4 +1,7 @@
-use crate::models::{cloudwatch::CloudWatchSummary, service_status::ServiceStatus};
+use crate::models::{
+    cloudwatch::CloudWatchSummary, rds::RdsSummary, secrets::SecretsSummary,
+    service_status::ServiceStatus,
+};
 
 #[derive(Debug, Clone)]
 pub struct AccountOverview {
@@ -14,10 +17,9 @@ pub struct AccountOverview {
     pub ecs_clusters: u32,
     pub ecs_services: u32,
 
-    pub rds_instances: u32,
     pub load_balancers: u32,
 
-    pub rds_status: ServiceStatus,
+    pub rds_status: RdsSummary,
     pub elb_status: ServiceStatus,
 
     pub lambda_functions: u32,
@@ -36,4 +38,5 @@ pub struct AccountOverview {
     pub vpc_status: ServiceStatus,
 
     pub alarms: CloudWatchSummary,
+    pub secrets: SecretsSummary,
 }

@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{app::App, ui::centered_rect};
 
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     let area = centered_rect(70, 70, frame.size());
 
     frame.render_widget(Clear, area); // clear beneath
@@ -28,6 +28,7 @@ Navigation
 
 Regions
   ← / →        Switch region
+  ↑ / ↓        Move up and down
 
 Commands
   /            Open command palette
@@ -41,13 +42,22 @@ Commands
   sm           Go to Secrets Manager
   vpc          Go to VPC
   cw           Go to CloudWatch
+  sm           Go to Secrets Manager
 
 General
   q            Quit
+  r            Refresh current view
   Esc          Close overlays
 "#;
 
+    let help_lines = text.lines().count();
+    let visible_height = area.height.saturating_sub(2) as usize; // borders
+
+    let max_scroll = help_lines.saturating_sub(visible_height);
+    app.scroll_offset = app.scroll_offset.min(max_scroll as u16);
+
     let block = Paragraph::new(text)
+        .scroll((app.scroll_offset, 0))
         .alignment(Alignment::Left)
         .style(Style::default().fg(app.theme.text))
         .block(

@@ -22,10 +22,10 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     let footer_text = match app.footer_mode {
         FooterMode::Normal => {
             "[q] Quit   [1] Overview   [2] Cost   [3] VPC   [4] EC2  [5] CloudWatch  [6] Lambda  [7] Secrets Manager    [8] ECS   [9] ApiGateway\n\
-            [← →] Region   [/] Command   [?] Help"
+            [r] Refresh     [← →] Region    ↑ / ↓ Move up and down   [/] Command   [?] Help"
         }
         FooterMode::Command => "Command mode — type and press Enter (Esc to cancel)",
-        FooterMode::Help => "Help — Esc to close",
+        FooterMode::Help => "Help — Esc to close    ↑ / ↓ Move up and down",
     };
 
     let footer = Paragraph::new(footer_text)

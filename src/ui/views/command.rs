@@ -59,6 +59,11 @@ pub const COMMANDS: &[Command] = &[
         description: "Cloudwatch",
         view: ActiveView::CloudWatch,
     },
+    Command {
+        name: "sm",
+        description: "Secrets Manager",
+        view: ActiveView::Secrets,
+    },
 ];
 
 pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {

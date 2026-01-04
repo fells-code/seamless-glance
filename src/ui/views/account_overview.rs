@@ -26,12 +26,6 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let running = &overview.ec2_running;
     let stopped = &overview.ec2_stopped;
 
-    let rds_line = match &overview.rds_status {
-        ServiceStatus::Ok => format!("RDS: {} instances", overview.rds_instances),
-        ServiceStatus::AccessDenied => "RDS: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "RDS: ⚠️ Unavailable".into(),
-    };
-
     let elb_line = match &overview.elb_status {
         ServiceStatus::Ok => format!("Load Balancers: {}", overview.load_balancers),
         ServiceStatus::AccessDenied => "Load Balancers: ⚠️ Access denied".into(),
@@ -89,12 +83,33 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ServiceStatus::Unavailable(_) => "CloudWatch: ⚠️ Unavailable".into(),
     };
 
+    let secrets_line = match &overview.secrets.status {
+        ServiceStatus::Ok => {
+            format!(
+                "Secrets: {} total ({} without rotation)",
+                overview.secrets.total, overview.secrets.rotation_disabled
+            )
+        }
+        ServiceStatus::AccessDenied => "Secrets: ⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "Secrets: ⚠️ Unavailable".into(),
+    };
+
+    let rds_line = match &overview.rds_status.status {
+        ServiceStatus::Ok => format!(
+            "RDS: {} instances ({} available)",
+            overview.rds_status.total, overview.rds_status.available
+        ),
+        ServiceStatus::AccessDenied => "RDS: ⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "RDS: ⚠️ Unavailable".into(),
+    };
+
     // ---- STATS ----
     let stats = Paragraph::new(format!(
         "{}\n\
          {}\n\
          EC2: {} running / {} stopped\n\
          ECS: {} clusters / {} services\n\
+         {}\n\
          {}\n\
          {}\n\
          {}\n\
@@ -106,6 +121,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         stopped,
         overview.ecs_clusters,
         overview.ecs_services,
+        secrets_line,
         lambda_line,
         apigw_line,
         sqs_line,
@@ -117,7 +133,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Block::default()
             .title("Key Stats")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.accent)),
+            .border_style(Style::default().fg(app.theme.primary)),
     );
 
     frame.render_widget(stats, area);
