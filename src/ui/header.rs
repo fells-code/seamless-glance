@@ -39,6 +39,20 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
     let status = refresh_text(app);
 
+    let account_label = match &app.license {
+        Some(license) if license.is_paid() => "Pro Account".to_string(),
+
+        Some(license) => {
+            if let Some(days) = license.trial_days_remaining() {
+                format!("Free Trial · {} days left", days)
+            } else {
+                "Free Trial".to_string()
+            }
+        }
+
+        None => "Free Trial".to_string(),
+    };
+
     let (account, region, role) = if let Some(overview) = &app.account_overview {
         (
             overview.account_id.as_str(),
@@ -59,7 +73,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .style(Style::default().fg(app.theme.text))
         .block(
             Block::default()
-                .title(format!("Seamless Glance v{}", VERSION))
+                .title(format!("Seamless Glance v{} · {}", VERSION, account_label))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.primary)),
         );

@@ -3,7 +3,7 @@ use chrono::NaiveDate;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
 use crate::license::public_key::PUBLIC_KEY_B64;
-use crate::license::License;
+use crate::license::{License, LicenseType};
 
 pub fn verify_license(license: &License) -> Result<(), String> {
     let expires = NaiveDate::parse_from_str(&license.expires_at, "%Y-%m-%d")
@@ -39,4 +39,33 @@ pub fn verify_license(license: &License) -> Result<(), String> {
         .map_err(|_| "License signature invalid")?;
 
     Ok(())
+}
+
+pub fn validate_license(license: &License) -> Result<(), String> {
+    let today = chrono::Utc::now().date_naive();
+
+    let issued = NaiveDate::parse_from_str(&license.issued_at, "%Y-%m-%d")
+        .map_err(|_| "Invalid issued_at date".to_string())?;
+    let expires = NaiveDate::parse_from_str(&license.expires_at, "%Y-%m-%d")
+        .map_err(|_| "Invalid expires_at date".to_string())?;
+
+    // Basic sanity checks
+    if expires < issued {
+        return Err("License expires_at is before issued_at".into());
+    }
+    if today > expires {
+        return Err("License expired".into());
+    }
+
+    match license.r#type {
+        LicenseType::Trial => {
+            // enforce fixed 30-day trial window (prevents simply editing expires_at)
+            let expected_expires = issued + chrono::Duration::days(30);
+            if expires != expected_expires {
+                return Err("Trial license period is invalid".into());
+            }
+            Ok(())
+        }
+        LicenseType::Paid => verify_license(license),
+    }
 }

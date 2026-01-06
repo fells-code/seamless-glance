@@ -6,6 +6,8 @@ use ratatui::{
     Frame,
 };
 
+const LABEL_WIDTH: usize = 14;
+
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let Some(overview) = &app.account_overview else {
         let loading_text = format!("Fetching AWS data for {}…", app.current_region().as_ref());
@@ -23,118 +25,131 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         return;
     };
 
-    let running = &overview.ec2_running;
-    let stopped = &overview.ec2_stopped;
+    let running = overview.ec2_running;
+    let stopped = overview.ec2_stopped;
 
-    let elb_line = match &overview.elb_status {
-        ServiceStatus::Ok => format!("Load Balancers: {}", overview.load_balancers),
-        ServiceStatus::AccessDenied => "Load Balancers: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "Load Balancers: ⚠️ Unavailable".into(),
-    };
-
-    let lambda_line = match &overview.lambda_status {
-        ServiceStatus::Ok => format!("Lambda: {} functions", overview.lambda_functions),
-        ServiceStatus::AccessDenied => "Lambda: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "Lambda: ⚠️ Unavailable".into(),
-    };
-
-    let apigw_line = match &overview.apigw_status {
+    let vpc_value = match &overview.vpc_status {
         ServiceStatus::Ok => format!(
-            "API Gateway: {} REST / {} HTTP",
-            overview.apigw_rest_apis, overview.apigw_http_apis
-        ),
-        ServiceStatus::AccessDenied => "API Gateway: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "API Gateway: ⚠️ Unavailable".into(),
-    };
-
-    let sqs_line = match &overview.sqs_status {
-        ServiceStatus::Ok => format!(
-            "SQS: {} queues ({} DLQs)",
-            overview.sqs_queues, overview.sqs_dlqs
-        ),
-        ServiceStatus::AccessDenied => "SQS: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "SQS: ⚠️ Unavailable".into(),
-    };
-
-    let vpc_line = match &overview.vpc_status {
-        ServiceStatus::Ok => format!(
-            "VPC: {} VPCs / {} subnets",
+            "{} VPCs / {} subnets",
             overview.vpc_count, overview.subnet_count
         ),
-        ServiceStatus::AccessDenied => "VPC: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "VPC: ⚠️ Unavailable".into(),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
     };
 
-    let cloudwatch_line = match &overview.alarms.status {
+    let cloudwatch_value = match &overview.alarms.status {
         ServiceStatus::Ok => {
             if overview.alarms.alarms_in_alarm > 0 {
                 format!(
-                    "CloudWatch: {} alarms ({} in ALARM)",
+                    "{} alarms ({} in ALARM)",
                     overview.alarms.total_alarms, overview.alarms.alarms_in_alarm
                 )
             } else {
-                format!(
-                    "CloudWatch: {} alarms (all OK)",
-                    overview.alarms.total_alarms
-                )
+                format!("{} alarms (all OK)", overview.alarms.total_alarms)
             }
         }
-        ServiceStatus::AccessDenied => "CloudWatch: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "CloudWatch: ⚠️ Unavailable".into(),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
     };
 
-    let secrets_line = match &overview.secrets.status {
-        ServiceStatus::Ok => {
-            format!(
-                "Secrets: {} total ({} without rotation)",
-                overview.secrets.total, overview.secrets.rotation_disabled
-            )
-        }
-        ServiceStatus::AccessDenied => "Secrets: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "Secrets: ⚠️ Unavailable".into(),
-    };
+    let ec2_value = format!("{} running / {} stopped", running, stopped);
 
-    let rds_line = match &overview.rds_status.status {
+    let ecs_value = format!(
+        "{} clusters / {} services",
+        overview.ecs_clusters, overview.ecs_services
+    );
+
+    let secrets_value = match &overview.secrets.status {
         ServiceStatus::Ok => format!(
-            "RDS: {} instances ({} available)",
+            "{} total ({} without rotation)",
+            overview.secrets.total, overview.secrets.rotation_disabled
+        ),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
+    };
+
+    let lambda_value = match &overview.lambda_status {
+        ServiceStatus::Ok => format!("{} functions", overview.lambda_functions),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
+    };
+
+    let apigw_value = match &overview.apigw_status {
+        ServiceStatus::Ok => format!(
+            "{} REST / {} HTTP",
+            overview.apigw_rest_apis, overview.apigw_http_apis
+        ),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
+    };
+
+    let sqs_value = match &overview.sqs_status {
+        ServiceStatus::Ok => format!(
+            "{} queues ({} DLQs)",
+            overview.sqs_queues, overview.sqs_dlqs
+        ),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
+    };
+
+    let rds_value = match &overview.rds_status.status {
+        ServiceStatus::Ok => format!(
+            "{} instances ({} available)",
             overview.rds_status.total, overview.rds_status.available
         ),
-        ServiceStatus::AccessDenied => "RDS: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "RDS: ⚠️ Unavailable".into(),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
+    };
+
+    let elb_value = match &overview.elb_status {
+        ServiceStatus::Ok => format!("{}", overview.load_balancers),
+        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
     };
 
     // ---- STATS ----
-    let stats = Paragraph::new(format!(
-        "{}\n\
-         {}\n\
-         EC2: {} running / {} stopped\n\
-         ECS: {} clusters / {} services\n\
-         {}\n\
-         {}\n\
-         {}\n\
-         {}\n\
-         {}\n\
-         {}",
-        vpc_line,
-        cloudwatch_line,
-        running,
-        stopped,
-        overview.ecs_clusters,
-        overview.ecs_services,
-        secrets_line,
-        lambda_line,
-        apigw_line,
-        sqs_line,
-        rds_line,
-        elb_line
-    ))
-    .style(Style::default().fg(app.theme.text))
-    .block(
-        Block::default()
-            .title("Key Stats")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.primary)),
+    let stats_text = format!(
+        "{:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}\n\
+     {:<LABEL_WIDTH$} {}",
+        "VPC",
+        vpc_value,
+        "CloudWatch",
+        cloudwatch_value,
+        "EC2",
+        ec2_value,
+        "ECS",
+        ecs_value,
+        "Secrets",
+        secrets_value,
+        "Lambda",
+        lambda_value,
+        "API Gateway",
+        apigw_value,
+        "SQS",
+        sqs_value,
+        "RDS",
+        rds_value,
+        "Load Balancers",
+        elb_value,
+        LABEL_WIDTH = LABEL_WIDTH
     );
+
+    let stats = Paragraph::new(stats_text)
+        .style(Style::default().fg(app.theme.text))
+        .block(
+            Block::default()
+                .title("Overview")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.theme.primary)),
+        );
 
     frame.render_widget(stats, area);
 }

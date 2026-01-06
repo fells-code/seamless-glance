@@ -16,3 +16,7 @@ pub fn load_license() -> Result<License, String> {
 
     serde_json::from_str(contents).map_err(|e| format!("Invalid license format: {}", e))
 }
+
+pub fn license_dir() -> PathBuf {
+    dirs::home_dir().expect("home dir").join(".seamless-glance")
+}

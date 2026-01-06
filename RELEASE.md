@@ -10,6 +10,7 @@ Follow this process **to the letter** to avoid version mismatches or broken inst
 **The version in `Cargo.toml` is the canonical version.**
 
 Everything else must match it:
+
 - Git tag
 - Binary filenames
 - GitHub release
@@ -46,6 +47,7 @@ version = "0.1.0-beta.X"
 ```
 
 Rules:
+
 - Use semver
 - Use `-beta.X` while in beta
 - This is the **only place** the version is defined
@@ -54,7 +56,7 @@ Rules:
 
 ### 2. Commit the Version Bump
 
-Commit *only* the version change:
+Commit _only_ the version change:
 
 ```bash
 git add Cargo.toml
@@ -102,6 +104,7 @@ Output must match the version in `Cargo.toml`.
 In the **distro repository**:
 
 1. Create a new GitHub release:
+
    - Tag: `v0.1.0-beta.X`
    - Title: `Seamless Glance v0.1.0-beta.X`
 
@@ -146,10 +149,11 @@ Update these fields:
 
 ```bash
 VERSION="0.1.0-beta.X"
-REPO="fellscode/seamless-glance-distro"
+REPO="fells-code/seamless-glance-distro"
 ```
 
 Ensure:
+
 - URLs reference the correct release tag
 - Filenames match the uploaded binaries
 - Script still installs successfully
@@ -206,17 +210,19 @@ Ensure notes reflect actual changes since the last release.
 ## Troubleshooting
 
 ### Binary reports old version
+
 - Verify `Cargo.toml`
 - Verify build artifact
 - Verify Homebrew symlink
 - Check for local `make install` overrides
 
 ### Homebrew installs wrong version
+
 - Run:
   ```bash
   brew uninstall --force seamless-glance
   brew update
-  brew install fellscode/seamless/seamless-glance
+  brew install fells-code/seamless/seamless-glance
   brew link --overwrite seamless-glance
   ```
 
@@ -225,6 +231,7 @@ Ensure notes reflect actual changes since the last release.
 ## Philosophy
 
 This process prioritizes:
+
 - correctness
 - repeatability
 - clarity over automation

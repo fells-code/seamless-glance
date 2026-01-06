@@ -1,6 +1,7 @@
 use aws_config::Region;
 use chrono::{DateTime, Utc};
 
+use crate::license::License;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::ec2::Ec2InstanceInfo;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
@@ -42,6 +43,7 @@ pub enum ActiveView {
     CloudWatch,
 }
 pub struct App {
+    pub license: Option<License>,
     // Global App properties
     pub cost_loaded: bool,
     pub regions: Vec<Region>,
@@ -107,6 +109,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
+            license: None,
             scroll_offset: 0,
             selected_row: 0,
             cost_loaded: false,

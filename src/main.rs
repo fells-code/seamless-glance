@@ -20,10 +20,12 @@ use std::{env, io::stdout};
 use crate::{
     app::ActiveView,
     config::VERSION,
+    license::{
+        ensure_license::ensure_license_present, status::print_license_status,
+        verify::validate_license,
+    },
     ui::{footer::FooterMode, views::command::COMMANDS},
 };
-
-use crate::license::{load::load_license, verify::verify_license};
 
 fn print_help() {
     println!(
@@ -38,7 +40,7 @@ OPTIONS:
   --version    Show version information
 
 INSTALL:
-  brew install fellscode/seamless/seamless-glance
+  brew install fells-code/seamless/seamless-glance
   curl -fsSL https://seamlessglance.com/install.sh | bash
 
 LICENSE:
@@ -46,23 +48,6 @@ LICENSE:
     ~/.seamless-glance/license.json
 "
     );
-}
-
-fn check_license_or_exit() {
-    match load_license().and_then(|l| verify_license(&l)) {
-        Ok(_) => {}
-        Err(err) => {
-            eprintln!();
-            eprintln!("Seamless Glance — License Error");
-            eprintln!("--------------------------------");
-            eprintln!("{}", err);
-            eprintln!();
-            eprintln!("Place a valid license at:");
-            eprintln!("  ~/.seamless-glance/license.json");
-            eprintln!();
-            std::process::exit(1);
-        }
-    }
 }
 
 async fn handle_command(app: &mut App) {
@@ -86,6 +71,10 @@ async fn main() -> anyhow::Result<()> {
                 println!("Seamless Glance v{}", VERSION);
                 return Ok(());
             }
+            "--license-status" => {
+                print_license_status();
+                return Ok(());
+            }
             _ => {
                 eprintln!("Unknown option: {}", args[1]);
                 eprintln!("Run `seamless-glance --help` for usage.");
@@ -94,7 +83,22 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    check_license_or_exit();
+    let license = ensure_license_present().map_err(anyhow::Error::msg)?;
+
+    if let Err(e) = validate_license(&license) {
+        eprintln!();
+        eprintln!("Seamless Glance — License");
+        eprintln!("-------------------------");
+        eprintln!("{}", e);
+        eprintln!();
+        eprintln!("To continue, purchase a license at:");
+        eprintln!("  https://seamlessglance.com");
+        eprintln!();
+        eprintln!("Then place the license file at:");
+        eprintln!("  ~/.seamless-glance/license.json");
+        eprintln!();
+        std::process::exit(1);
+    }
     enable_raw_mode()?;
     let mut stdout = stdout();
 
@@ -113,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
     let mut app = App::new();
     let region_names = aws::regions::fetch_enabled_regions().await;
 
+    app.license = Some(license);
     app.regions = region_names.into_iter().map(Region::new).collect();
 
     let cfg = config::load_config();
