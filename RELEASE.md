@@ -84,10 +84,8 @@ Do not reuse or retag existing versions.
 Build binaries for supported platforms:
 
 ```bash
-cargo build --release
+make release-local
 ```
-
-Or use the project’s build scripts / Makefile if available.
 
 Ensure binaries report the correct version:
 
