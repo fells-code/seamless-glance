@@ -1,5 +1,6 @@
 pub mod account;
 pub mod apigateway;
+pub mod clients;
 pub mod cloudwatch;
 pub mod cost;
 pub mod ec2;

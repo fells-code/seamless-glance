@@ -19,6 +19,7 @@ use std::{env, io::stdout};
 
 use crate::{
     app::ActiveView,
+    aws::clients::AwsClients,
     config::VERSION,
     license::{
         ensure_license::ensure_license_present, status::print_license_status,
@@ -112,21 +113,31 @@ async fn main() -> anyhow::Result<()> {
     )?;
 
     let backend = CrosstermBackend::new(stdout);
+    let cfg = config::load_config();
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
     let region_names = aws::regions::fetch_enabled_regions().await;
+    let regions: Vec<Region> = region_names.into_iter().map(Region::new).collect();
 
-    app.license = Some(license);
-    app.regions = region_names.into_iter().map(Region::new).collect();
+    let mut current_region_index = 0;
 
-    let cfg = config::load_config();
-
-    if let Some(region) = cfg.region {
-        if let Some(idx) = app.regions.iter().position(|r| r.as_ref() == region) {
-            app.current_region_index = idx;
+    if let Some(ref region_str) = cfg.region {
+        if let Some(idx) = regions.iter().position(|r| r.as_ref() == region_str) {
+            current_region_index = idx;
         }
     }
+
+    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        .region(regions[current_region_index].clone())
+        .load()
+        .await;
+
+    let aws = AwsClients::new(&sdk_config);
+
+    let mut app = App::new(aws);
+    app.license = Some(license);
+    app.regions = regions;
+    app.current_region_index = current_region_index;
 
     app.load_cost_data_once().await;
     app.trigger_refresh();
@@ -167,6 +178,10 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Char('r') => {
                 app.trigger_refresh();
             }
+            KeyCode::Esc if app.describe_overlay.is_some() => {
+                app.describe_overlay = None;
+                continue;
+            }
             KeyCode::Esc if app.show_help => {
                 app.show_help = false;
                 app.command_mode = false;
@@ -177,6 +192,7 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Esc if app.command_mode => {
                 app.command_mode = false;
                 app.footer_mode = FooterMode::Normal;
+                app.command_input.clear();
             }
             KeyCode::Enter => {
                 handle_command(&mut app).await;
@@ -199,6 +215,10 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Down => {
                 if app.show_help {
                     app.scroll_offset = app.scroll_offset.saturating_add(1);
+                }
+
+                if let Some(overlay) = &mut app.describe_overlay {
+                    overlay.scroll = overlay.scroll.saturating_add(1);
                 } else {
                     app.selected_row = app.selected_row.saturating_add(1);
                 }
@@ -206,9 +226,15 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Up => {
                 if app.show_help {
                     app.scroll_offset = app.scroll_offset.saturating_sub(1);
+                }
+                if let Some(overlay) = &mut app.describe_overlay {
+                    overlay.scroll = overlay.scroll.saturating_sub(1);
                 } else {
                     app.selected_row = app.selected_row.saturating_sub(1);
                 }
+            }
+            KeyCode::Char('o') => {
+                app.trigger_open();
             }
             KeyCode::Char('q') => {
                 config::save_config(&config::GlanceConfig {
@@ -216,6 +242,11 @@ async fn main() -> anyhow::Result<()> {
                     profile: None,
                 });
                 app.should_quit = true;
+            }
+            KeyCode::Char('d') => {
+                if app.describe_overlay.is_none() {
+                    app.trigger_describe().await;
+                }
             }
             KeyCode::Char('1') => {
                 app.active_view = ActiveView::AccountOverview;

@@ -47,6 +47,7 @@ Commands
 General
   q            Quit
   r            Refresh current view
+  d            Describe resource
   Esc          Close overlays
 "#;
 

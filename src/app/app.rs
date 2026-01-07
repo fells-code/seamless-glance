@@ -1,14 +1,19 @@
 use aws_config::Region;
 use chrono::{DateTime, Utc};
 
+use crate::aws::clients::AwsClients;
 use crate::license::License;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
+use crate::models::describable::DescribableResource;
 use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::lambda::LambdaFunctionInfo;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::secrets::{SecretInfo, SecretsSummary};
 use crate::models::service_status::ServiceStatus;
 use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo, EcsServiceInfo, EcsTaskInfo};
 use crate::ui::footer::FooterMode;
+use crate::ui::open::open_in_browser;
+use crate::ui::overlay::describe::DescribeOverlayState;
 use crate::ui::theme::Theme;
 use crate::{aws, config};
 
@@ -43,7 +48,10 @@ pub enum ActiveView {
     CloudWatch,
 }
 pub struct App {
+    pub aws: AwsClients,
     pub license: Option<License>,
+    pub describe_overlay: Option<DescribeOverlayState>,
+
     // Global App properties
     pub cost_loaded: bool,
     pub regions: Vec<Region>,
@@ -79,7 +87,7 @@ pub struct App {
     pub ecs_selected_index: usize,
 
     // Lambda
-    pub lambda_functions: Vec<crate::aws::lambda::LambdaFunctionInfo>,
+    pub lambda_functions: Vec<LambdaFunctionInfo>,
 
     // APIGW
     pub apigateway_apis: Vec<aws::apigateway::ApiGatewayInfo>,
@@ -107,9 +115,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(aws: AwsClients) -> Self {
         Self {
+            aws,
             license: None,
+            describe_overlay: None,
             scroll_offset: 0,
             selected_row: 0,
             cost_loaded: false,
@@ -272,6 +282,13 @@ impl App {
             profile: None, // future
         });
 
+        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+            .region(self.current_region().clone())
+            .load()
+            .await;
+
+        self.aws = AwsClients::new(&sdk_config);
+
         self.trigger_refresh();
     }
 
@@ -290,6 +307,13 @@ impl App {
             region: Some(self.current_region().as_ref().to_string()),
             profile: None, // future
         });
+
+        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+            .region(self.current_region().clone())
+            .load()
+            .await;
+
+        self.aws = AwsClients::new(&sdk_config);
 
         self.trigger_refresh();
     }
@@ -394,5 +418,77 @@ impl App {
         self.service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
 
         self.cost_loaded = true;
+    }
+
+    pub fn selected_resource<'a, T: DescribableResource>(
+        &'a self,
+        items: &'a [T],
+    ) -> Option<&'a T> {
+        items.get(self.selected_row)
+    }
+
+    async fn describe_from_resource<T: DescribableResource + ?Sized>(&mut self, resource: &T) {
+        match resource.describe(&self.aws).await {
+            Ok(text) => {
+                self.describe_overlay = Some(DescribeOverlayState {
+                    title: resource.resource_name(),
+                    content: text,
+                    scroll: 0,
+                });
+            }
+            Err(err) => {
+                self.describe_overlay = Some(DescribeOverlayState {
+                    title: "Error".into(),
+                    content: err.to_string(),
+                    scroll: 0,
+                });
+            }
+        }
+    }
+
+    pub async fn trigger_describe(&mut self) {
+        match self.active_view {
+            ActiveView::Ec2 => {
+                if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
+                    self.describe_from_resource(&instance).await;
+                }
+            }
+
+            ActiveView::Lambda => {
+                if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
+                    self.describe_from_resource(&func).await;
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    pub fn trigger_open(&mut self) {
+        // Always close overlay first
+        self.describe_overlay = None;
+
+        let region = self.current_region().as_ref();
+
+        match self.active_view {
+            ActiveView::Ec2 => {
+                if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
+                    if let Some(url) = instance.console_url(region) {
+                        let _ = open_in_browser(&url);
+                    }
+                }
+            }
+
+            ActiveView::Lambda => {
+                if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
+                    if let Some(url) = func.console_url(region) {
+                        let _ = open_in_browser(&url);
+                    }
+                }
+            }
+
+            // Add other services here as you implement them
+            _ => {}
+        }
     }
 }

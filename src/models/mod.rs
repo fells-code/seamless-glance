@@ -1,8 +1,10 @@
 pub mod account_overview;
 pub mod cloudwatch;
 pub mod cost;
+pub mod describable;
 pub mod ec2;
 pub mod ecs;
+pub mod lambda;
 pub mod rds;
 pub mod secrets;
 pub mod service;

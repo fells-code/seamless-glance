@@ -1,29 +1,13 @@
-use crate::{app::App, models::service_status::ServiceStatus};
-use aws_sdk_lambda::Client;
-
-#[derive(Debug, Clone)]
-pub struct LambdaSummary {
-    pub function_count: u32,
-    pub status: ServiceStatus,
-}
-
-#[derive(Debug, Clone)]
-pub struct LambdaFunctionInfo {
-    pub name: String,
-    pub runtime: String,
-    pub memory_mb: i32,
-    pub timeout_sec: i32,
-    pub last_modified: String,
-}
+use crate::{
+    app::App,
+    models::{
+        lambda::{LambdaFunctionInfo, LambdaSummary},
+        service_status::ServiceStatus,
+    },
+};
 
 pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let client = Client::new(&config);
-
-    match client.list_functions().send().await {
+    match app.aws.lambda.list_functions().send().await {
         Ok(resp) => LambdaSummary {
             function_count: resp.functions().len() as u32,
             status: ServiceStatus::Ok,
@@ -46,13 +30,7 @@ pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
 }
 
 pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let client = Client::new(&config);
-
-    let resp = match client.list_functions().send().await {
+    let resp = match app.aws.lambda.list_functions().send().await {
         Ok(r) => r,
         Err(_) => return vec![],
     };

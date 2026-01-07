@@ -2,6 +2,9 @@ use crate::app::ActiveView;
 use crate::app::App;
 use crate::ui::footer::draw_footer;
 use crate::ui::header::render_header;
+use crate::ui::overlay::help;
+use crate::ui::overlay::render::render_describe_overlay;
+use crate::ui::views::account_overview;
 use crate::ui::views::apigateway::render_apigatway;
 use crate::ui::views::cloudwatch::render_cw;
 use crate::ui::views::cost_overview::render_cost_overview;
@@ -12,7 +15,6 @@ use crate::ui::views::rds::render_rds;
 use crate::ui::views::secrets::render_sm;
 use crate::ui::views::sqs::render_sqs;
 use crate::ui::views::vpc::render_vpc;
-use crate::ui::views::{account_overview, help};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     Frame,
@@ -93,6 +95,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if app.show_help {
         help::render(frame, app);
+    }
+
+    if let Some(overlay) = &app.describe_overlay {
+        render_describe_overlay(frame, frame.size(), overlay, &app.theme);
     }
 
     draw_footer(frame, footer_area, app);

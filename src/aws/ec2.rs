@@ -1,5 +1,5 @@
 use crate::{app::App, models::ec2::Ec2InstanceInfo};
-use aws_sdk_ec2::{types::InstanceStateName, Client};
+use aws_sdk_ec2::types::InstanceStateName;
 
 pub struct Ec2Counts {
     pub running: u32,
@@ -7,13 +7,7 @@ pub struct Ec2Counts {
 }
 
 pub async fn fetch_ec2_counts(app: &App) -> Ec2Counts {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let ec2 = Client::new(&config);
-
-    let resp = match ec2.describe_instances().send().await {
+    let resp = match app.aws.ec2.describe_instances().send().await {
         Ok(r) => r,
         Err(err) => {
             eprintln!("EC2 describe_instances failed: {:?}", err);
@@ -41,13 +35,7 @@ pub async fn fetch_ec2_counts(app: &App) -> Ec2Counts {
 }
 
 pub async fn fetch_instances(app: &App) -> Vec<Ec2InstanceInfo> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let client = Client::new(&config);
-
-    let resp = match client.describe_instances().send().await {
+    let resp = match app.aws.ec2.describe_instances().send().await {
         Ok(r) => r,
         Err(_) => return vec![],
     };
@@ -78,6 +66,7 @@ pub async fn fetch_instances(app: &App) -> Vec<Ec2InstanceInfo> {
                     .unwrap_or("")
                     .to_string(),
                 private_ip: inst.private_ip_address().map(|s| s.to_string()),
+                public_ip: inst.public_ip_address().map(|s| s.to_string()),
             });
         }
     }

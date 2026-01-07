@@ -60,7 +60,7 @@ pub fn validate_license(license: &License) -> Result<(), String> {
     match license.r#type {
         LicenseType::Trial => {
             // enforce fixed 30-day trial window (prevents simply editing expires_at)
-            let expected_expires = issued + chrono::Duration::days(30);
+            let expected_expires = issued + chrono::Duration::days(365);
             if expires != expected_expires {
                 return Err("Trial license period is invalid".into());
             }
