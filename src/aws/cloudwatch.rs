@@ -1,16 +1,9 @@
 use crate::app::App;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::service_status::ServiceStatus;
-use aws_sdk_cloudwatch::Client;
 
 pub async fn fetch_cloudwatch(app: &App) -> (CloudWatchSummary, Vec<CloudWatchAlarm>) {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let client = Client::new(&config);
-
-    let resp = match client.describe_alarms().send().await {
+    let resp = match app.aws.cw.describe_alarms().send().await {
         Ok(r) => r,
         Err(err) => {
             let msg = err.to_string();

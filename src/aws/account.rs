@@ -2,19 +2,46 @@ use crate::app::App;
 use crate::aws::apigateway;
 use crate::aws::{cloudwatch, cost, ec2, ecs, elbv2, lambda, rds, secrets, sqs, vpc};
 use crate::models::AccountOverview;
-use aws_config::BehaviorVersion;
-use aws_sdk_sts::Client as StsClient;
 use tokio::join;
 
-pub async fn fetch_account_overview(app: &App) -> AccountOverview {
-    let config = aws_config::load_defaults(BehaviorVersion::v2025_08_07())
-        .await
-        .into_builder()
-        .region(app.current_region().clone())
-        .build();
+pub struct IdentityInfo {
+    pub kind: String,
+    pub name: String,
+}
 
-    let sts = StsClient::new(&config);
-    let ident = sts.get_caller_identity().send().await.unwrap();
+fn parse_identity_from_arn(arn: &str) -> IdentityInfo {
+    if arn.contains(":assumed-role/") {
+        let parts: Vec<&str> = arn.split(":assumed-role/").collect();
+        let role_part = parts.get(1).unwrap_or(&"unknown/unknown");
+        let role_name = role_part.split('/').next().unwrap_or("unknown");
+
+        IdentityInfo {
+            kind: "Assumed Role".into(),
+            name: role_name.into(),
+        }
+    } else if arn.contains(":user/") {
+        let user_name = arn.split(":user/").last().unwrap_or("unknown");
+        IdentityInfo {
+            kind: "IAM User".into(),
+            name: user_name.into(),
+        }
+    } else if arn.ends_with(":root") {
+        IdentityInfo {
+            kind: "Root".into(),
+            name: "root".into(),
+        }
+    } else {
+        IdentityInfo {
+            kind: "Unknown".into(),
+            name: arn.to_string(),
+        }
+    }
+}
+
+pub async fn fetch_account_overview(app: &App) -> AccountOverview {
+    let ident = app.aws.sts.get_caller_identity().send().await.unwrap();
+    let arn = ident.arn().unwrap_or("");
+    let identity = parse_identity_from_arn(arn);
 
     let (
         ecs_clusters,
@@ -28,24 +55,26 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         alarms,
         secrets,
     ) = join!(
-        ecs::fetch_ecs_clusters(&app),
-        ec2::fetch_ec2_counts(&app),
-        rds::fetch_rds(&app),
-        elbv2::fetch_load_balancer_count(&app),
-        lambda::fetch_lambda_summary(&app),
-        apigateway::fetch_apigateway_summary(&app),
-        sqs::fetch_sqs_summary(&app),
-        vpc::fetch_vpc_summary(&app),
-        cloudwatch::fetch_cloudwatch(&app),
-        secrets::fetch_secrets(&app)
+        ecs::fetch_ecs_clusters(app),
+        ec2::fetch_ec2_counts(app),
+        rds::fetch_rds(app),
+        elbv2::fetch_load_balancer_count(app),
+        lambda::fetch_lambda_summary(app),
+        apigateway::fetch_apigateway_summary(app),
+        sqs::fetch_sqs_summary(app),
+        vpc::fetch_vpc_summary(app),
+        cloudwatch::fetch_cloudwatch(app),
+        secrets::fetch_secrets(app)
     );
 
     let ecs_clusters_count = ecs_clusters.len() as u32;
     let ecs_services_count: u32 = ecs_clusters.iter().map(|c| c.active_services as u32).sum();
-    let budget = cost::fetch_month_to_date_cost(&app).await;
+    let budget = cost::fetch_month_to_date_cost(app).await;
 
     AccountOverview {
         account_id: ident.account().unwrap_or("unknown").to_string(),
+        identity_kind: identity.kind,
+        identity_name: identity.name,
         month_to_date_cost: budget,
         region: app.current_region().to_string(),
         role_name: ident

@@ -1,16 +1,9 @@
+use crate::app::App;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::service_status::ServiceStatus;
-use aws_sdk_rds::Client;
 
-pub async fn fetch_rds(app: &crate::app::App) -> (RdsSummary, Vec<RdsInstanceInfo>) {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let client = Client::new(&config);
-
-    let resp = match client.describe_db_instances().send().await {
+pub async fn fetch_rds(app: &App) -> (RdsSummary, Vec<RdsInstanceInfo>) {
+    let resp = match app.aws.rds.describe_db_instances().send().await {
         Ok(r) => r,
         Err(err) => {
             let msg = err.to_string();

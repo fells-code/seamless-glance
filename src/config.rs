@@ -2,22 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct GlanceConfig {
     pub region: Option<String>,
     pub profile: Option<String>,
 }
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-impl Default for GlanceConfig {
-    fn default() -> Self {
-        Self {
-            region: None,
-            profile: None,
-        }
-    }
-}
 
 fn config_path() -> PathBuf {
     dirs::home_dir()

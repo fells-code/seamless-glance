@@ -1,6 +1,7 @@
+use crate::app::App;
 use crate::models::secrets::{SecretInfo, SecretsSummary};
 use crate::models::service_status::ServiceStatus;
-use aws_sdk_secretsmanager::Client;
+
 use chrono::{DateTime, Utc};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -12,15 +13,8 @@ fn aws_datetime_to_utc(dt: &aws_sdk_secretsmanager::primitives::DateTime) -> Dat
     DateTime::<Utc>::from(system_time)
 }
 
-pub async fn fetch_secrets(app: &crate::app::App) -> (SecretsSummary, Vec<SecretInfo>) {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let client = Client::new(&config);
-
-    let resp = match client.list_secrets().send().await {
+pub async fn fetch_secrets(app: &App) -> (SecretsSummary, Vec<SecretInfo>) {
+    let resp = match app.aws.sm.list_secrets().send().await {
         Ok(r) => r,
         Err(err) => {
             let msg = err.to_string();

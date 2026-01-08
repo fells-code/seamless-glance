@@ -6,6 +6,8 @@ use crate::models::{
 #[derive(Debug, Clone)]
 pub struct AccountOverview {
     pub account_id: String,
+    pub identity_kind: String,
+    pub identity_name: String,
     pub month_to_date_cost: f64,
 
     pub role_name: Option<String>,

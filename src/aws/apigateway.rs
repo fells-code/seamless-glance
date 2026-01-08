@@ -1,32 +1,12 @@
-use aws_sdk_apigateway::Client as RestClient;
-use aws_sdk_apigatewayv2::Client as V2Client;
-
-use crate::{app::App, models::service_status::ServiceStatus};
-
-#[derive(Debug, Clone)]
-pub struct ApiGatewaySummary {
-    pub rest_count: u32,
-    pub http_count: u32,
-    pub status: ServiceStatus,
-}
-
-#[derive(Debug, Clone)]
-pub struct ApiGatewayInfo {
-    pub id: String,
-    pub name: String,
-    pub api_type: String, // REST | HTTP
-    pub created_at: String,
-}
+use crate::{
+    app::App,
+    models::{
+        apigatway::{ApiGatewayInfo, ApiGatewaySummary},
+        service_status::ServiceStatus,
+    },
+};
 
 pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let rest = RestClient::new(&config);
-    let v2 = V2Client::new(&config);
-
     let mut rest_count = 0;
     let mut http_count = 0;
 
@@ -34,7 +14,7 @@ pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
     let mut error_message: Option<String> = None;
 
     // --- REST APIs ---
-    match rest.get_rest_apis().send().await {
+    match app.aws.apigw.get_rest_apis().send().await {
         Ok(resp) => {
             rest_count = resp.items().len() as u32;
         }
@@ -49,7 +29,7 @@ pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
     }
 
     // --- HTTP APIs ---
-    match v2.get_apis().send().await {
+    match app.aws.apigwv2.get_apis().send().await {
         Ok(resp) => {
             http_count = resp.items().len() as u32;
         }
@@ -79,17 +59,9 @@ pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
 }
 
 pub async fn fetch_apigateway_apis(app: &App) -> Vec<ApiGatewayInfo> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let rest = RestClient::new(&config);
-    let v2 = V2Client::new(&config);
-
     let mut apis = vec![];
 
-    if let Ok(resp) = rest.get_rest_apis().send().await {
+    if let Ok(resp) = app.aws.apigw.get_rest_apis().send().await {
         for api in resp.items() {
             apis.push(ApiGatewayInfo {
                 id: api.id().unwrap_or("-").to_string(),
@@ -103,7 +75,7 @@ pub async fn fetch_apigateway_apis(app: &App) -> Vec<ApiGatewayInfo> {
         }
     }
 
-    if let Ok(resp) = v2.get_apis().send().await {
+    if let Ok(resp) = app.aws.apigwv2.get_apis().send().await {
         for api in resp.items() {
             apis.push(ApiGatewayInfo {
                 id: api.api_id().unwrap_or("-").to_string(),

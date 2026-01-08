@@ -1,40 +1,42 @@
+use async_trait::async_trait;
+
 use crate::{
     aws::clients::AwsClients,
     models::{describable::DescribableResource, service_status::ServiceStatus},
 };
-use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
-pub struct CloudWatchSummary {
+pub struct SqsSummary {
+    pub queue_count: u32,
+    pub dlq_count: u32,
     pub status: ServiceStatus,
-    pub total_alarms: usize,
-    pub alarms_in_alarm: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct CloudWatchAlarm {
+pub struct SqsQueueInfo {
     pub name: String,
-    pub state: String,
-    pub namespace: String,
-    pub metric: String,
+    pub is_fifo: bool,
+    pub messages_available: i64,
+    pub messages_in_flight: i64,
+    pub has_dlq: bool,
 }
 
 #[async_trait]
-impl DescribableResource for CloudWatchAlarm {
+impl DescribableResource for SqsQueueInfo {
     fn resource_name(&self) -> String {
         self.name.clone()
     }
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.cw.describe_alarms().send().await?;
+        let resp = clients.sqs.list_queues().send().await?;
 
         Ok(format!("{:#?}", resp))
     }
 
     fn console_url(&self, region: &str) -> Option<String> {
         Some(format!(
-            "https://console.aws.amazon.com/cloudwatch/home?region={region}#alarmsV2:alarm/{}",
-            self.name
+            "https://{}.console.aws.amazon.com/sqs/v3/home?region={}#/queues/{}",
+            region, region, self.name
         ))
     }
 }

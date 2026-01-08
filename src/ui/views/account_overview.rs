@@ -1,6 +1,6 @@
 use crate::{app::App, models::service_status::ServiceStatus};
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Rect},
     style::Style,
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -24,6 +24,57 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         frame.render_widget(loading, frame.size());
         return;
     };
+
+    let mut issues = Vec::new();
+
+    if overview.alarms.alarms_in_alarm > 0 {
+        issues.push(format!(
+            "CloudWatch: {} alarms in ALARM",
+            overview.alarms.alarms_in_alarm
+        ));
+    }
+
+    if overview.secrets.rotation_disabled > 0 {
+        issues.push(format!(
+            "Secrets: {} without rotation",
+            overview.secrets.rotation_disabled
+        ));
+    }
+
+    if overview.ec2_stopped > 0 {
+        issues.push(format!("EC2: {} stopped instances", overview.ec2_stopped));
+    }
+
+    let health_label = if issues.is_empty() {
+        "Healthy"
+    } else {
+        "Attention Needed"
+    };
+
+    let health_text = if issues.is_empty() {
+        "No issues detected.\nYour account appears healthy.".to_string()
+    } else {
+        format!(
+            "Issues detected:\n{}",
+            issues
+                .iter()
+                .map(|i| format!("• {}", i))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
+
+    let health = Paragraph::new(format!(
+        "Account Health: {}\n\n{}",
+        health_label, health_text
+    ))
+    .style(Style::default().fg(app.theme.text))
+    .block(
+        Block::default()
+            .title("Status")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.primary)),
+    );
 
     let running = overview.ec2_running;
     let stopped = overview.ec2_stopped;
@@ -151,5 +202,14 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 .border_style(Style::default().fg(app.theme.primary)),
         );
 
-    frame.render_widget(stats, area);
+    let chunks = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            Constraint::Length(6), // health summary
+            Constraint::Min(0),    // inventory
+        ])
+        .split(area);
+
+    frame.render_widget(health, chunks[0]);
+    frame.render_widget(stats, chunks[1]);
 }

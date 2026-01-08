@@ -37,9 +37,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         .take(visible_height)
         .map(|(i, f)| {
             let style = if i == app.selected_row {
-                Style::default()
-                    .fg(app.theme.background)
-                    .bg(app.theme.primary)
+                Style::default().fg(app.theme.highlight)
             } else {
                 Style::default().fg(app.theme.text)
             };

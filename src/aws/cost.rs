@@ -1,7 +1,4 @@
-use aws_sdk_costexplorer::{
-    types::{DateInterval, Granularity, GroupDefinition},
-    Client as CeClient,
-};
+use aws_sdk_costexplorer::types::{DateInterval, Granularity, GroupDefinition};
 
 use chrono::{Datelike, Months, NaiveDate, Utc};
 
@@ -60,13 +57,6 @@ pub fn last_6_month_labels() -> Vec<String> {
 }
 
 pub async fn fetch_service_cost_breakdown(app: &App) -> Vec<(String, f64)> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let ce = CeClient::new(&config);
-
     let (start_str, end_str) = current_month_interval();
 
     let interval = DateInterval::builder()
@@ -80,7 +70,9 @@ pub async fn fetch_service_cost_breakdown(app: &App) -> Vec<(String, f64)> {
         .r#type("DIMENSION".into())
         .build();
 
-    let resp = ce
+    let resp = app
+        .aws
+        .ce
         .get_cost_and_usage()
         .time_period(interval)
         .granularity(Granularity::Monthly)
@@ -116,13 +108,6 @@ pub async fn fetch_service_cost_breakdown(app: &App) -> Vec<(String, f64)> {
 }
 
 pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let ce = CeClient::new(&config);
-
     let (start_str, end_str) = ce_date_range(180);
 
     let interval = DateInterval::builder()
@@ -130,7 +115,9 @@ pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
         .end(&end_str)
         .build();
 
-    let resp = ce
+    let resp = app
+        .aws
+        .ce
         .get_cost_and_usage()
         .time_period(interval.expect("REASON"))
         .granularity("MONTHLY".into())
@@ -153,14 +140,6 @@ pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
 }
 
 pub async fn fetch_budget(app: &App) -> BudgetInfo {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-
-    let ce = CeClient::new(&config);
-
-    // Date interval
     let (start_str, end_str) = ce_date_range(30);
 
     let interval = DateInterval::builder()
@@ -168,7 +147,9 @@ pub async fn fetch_budget(app: &App) -> BudgetInfo {
         .end(&end_str)
         .build();
 
-    let resp = match ce
+    let resp = match app
+        .aws
+        .ce
         .get_cost_and_usage()
         .time_period(interval.expect("REASON"))
         .granularity("MONTHLY".into())
@@ -205,17 +186,13 @@ pub async fn fetch_budget(app: &App) -> BudgetInfo {
 }
 
 pub async fn fetch_month_to_date_cost(app: &App) -> f64 {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let ce = CeClient::new(&config);
-
     let (start, end) = current_month_interval();
 
     let interval = DateInterval::builder().start(start).end(end).build();
 
-    let resp = match ce
+    let resp = match app
+        .aws
+        .ce
         .get_cost_and_usage()
         .time_period(interval.expect("REASON"))
         .granularity(Granularity::Monthly)

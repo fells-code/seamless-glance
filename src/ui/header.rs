@@ -3,11 +3,35 @@ use crate::{
     config::VERSION,
 };
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::Style,
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+fn account_health_label(app: &App) -> (&'static str, ratatui::style::Style) {
+    if let Some(overview) = &app.account_overview {
+        let mut issues = 0;
+
+        if overview.alarms.alarms_in_alarm > 0 {
+            issues += 1;
+        }
+        if overview.secrets.rotation_disabled > 0 {
+            issues += 1;
+        }
+        if overview.ec2_stopped > 0 {
+            issues += 1;
+        }
+
+        if issues == 0 {
+            ("Healthy", Style::default().fg(app.theme.accent))
+        } else {
+            ("Attention Needed", Style::default().fg(app.theme.primary))
+        }
+    } else {
+        ("Loading…", Style::default().fg(app.theme.text))
+    }
+}
 
 fn refresh_text(app: &App) -> String {
     let refresh = app
@@ -29,27 +53,15 @@ fn refresh_text(app: &App) -> String {
 }
 
 pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
-    let header_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(70), // left
-            Constraint::Percentage(30), // right
-        ])
-        .split(area);
-
+    let health = account_health_label(app);
     let status = refresh_text(app);
 
     let account_label = match &app.license {
         Some(license) if license.is_paid() => "Pro Account".to_string(),
-
-        Some(license) => {
-            if let Some(days) = license.trial_days_remaining() {
-                format!("Free Trial · {} days left", days)
-            } else {
-                "Free Trial".to_string()
-            }
-        }
-
+        Some(license) => license
+            .trial_days_remaining()
+            .map(|d| format!("Free Trial · {} days left", d))
+            .unwrap_or_else(|| "Free Trial".to_string()),
         None => "Free Trial".to_string(),
     };
 
@@ -63,13 +75,21 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         ("—", app.current_region().as_ref(), "—")
     };
 
-    // LEFT: context
-    let left_text = format!(
-        "Account {}\nRegion {}\nRole {}\n{}",
-        account, region, role, status
+    let identity_line = if let Some(o) = &app.account_overview {
+        format!("Identity: {} ({})", o.identity_kind, o.identity_name)
+    } else {
+        "Identity: —".into()
+    };
+
+    let header_text = format!(
+        "Account {}  |  {}\n\
+        {}\n\
+         Account Health: {}\n\
+         {}",
+        account, region, identity_line, health.0, status
     );
 
-    let left = Paragraph::new(left_text)
+    let header = Paragraph::new(header_text)
         .style(Style::default().fg(app.theme.text))
         .block(
             Block::default()
@@ -78,24 +98,5 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
                 .border_style(Style::default().fg(app.theme.primary)),
         );
 
-    frame.render_widget(left, header_chunks[0]);
-
-    // RIGHT: MTD cost
-    let cost_text = app
-        .account_overview
-        .as_ref()
-        .map(|o| format!("${:.2}", o.month_to_date_cost))
-        .unwrap_or_else(|| "—".into());
-
-    let right = Paragraph::new(cost_text)
-        .alignment(Alignment::Right)
-        .style(Style::default().fg(app.theme.accent))
-        .block(
-            Block::default()
-                .title("MTD Cost (updated daily)")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
-
-    frame.render_widget(right, header_chunks[1]);
+    frame.render_widget(header, area);
 }

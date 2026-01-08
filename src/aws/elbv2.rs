@@ -1,19 +1,10 @@
-use crate::{app::App, models::service_status::ServiceStatus};
-use aws_sdk_elasticloadbalancingv2::Client;
-
-pub struct ElbResult {
-    pub count: u32,
-    pub status: ServiceStatus,
-}
+use crate::{
+    app::App,
+    models::{elb::ElbResult, service_status::ServiceStatus},
+};
 
 pub async fn fetch_load_balancer_count(app: &App) -> ElbResult {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let elb = Client::new(&config);
-
-    match elb.describe_load_balancers().send().await {
+    match app.aws.elb.describe_load_balancers().send().await {
         Ok(resp) => ElbResult {
             count: resp.load_balancers().len() as u32,
             status: ServiceStatus::Ok,

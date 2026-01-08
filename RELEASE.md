@@ -187,9 +187,9 @@ Both must report the **new version**.
 
 Use the following sections in GitHub Releases:
 
-- ✨ Features
-- 🐛 Fixes
-- 🧹 Chores
+- Features
+- Fixes
+- Chores
 
 Ensure notes reflect actual changes since the last release.
 

@@ -1,5 +1,6 @@
 mod app;
 mod aws;
+mod cache;
 mod config;
 mod license;
 mod models;
@@ -139,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
     app.regions = regions;
     app.current_region_index = current_region_index;
 
-    app.load_cost_data_once().await;
+    app.load_cost_data().await;
     app.trigger_refresh();
 
     loop {
@@ -175,11 +176,18 @@ async fn main() -> anyhow::Result<()> {
                 app.footer_mode = FooterMode::Help;
                 app.scroll_offset = 0;
             }
+            KeyCode::Char(c) if app.command_mode => {
+                app.command_input.push(c);
+            }
             KeyCode::Char('r') => {
-                app.trigger_refresh();
+                if !app.command_mode {
+                    app.trigger_refresh();
+                    continue;
+                }
             }
             KeyCode::Esc if app.describe_overlay.is_some() => {
                 app.describe_overlay = None;
+                app.footer_mode = FooterMode::Normal;
                 continue;
             }
             KeyCode::Esc if app.show_help => {
@@ -200,9 +208,7 @@ async fn main() -> anyhow::Result<()> {
                 app.footer_mode = FooterMode::Normal;
                 app.command_input.clear();
             }
-            KeyCode::Char(c) if app.command_mode => {
-                app.command_input.push(c);
-            }
+
             KeyCode::Backspace if app.command_mode => {
                 app.command_input.pop();
             }

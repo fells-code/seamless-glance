@@ -1,4 +1,3 @@
-use aws_sdk_ecs::Client;
 use chrono::Utc;
 
 use crate::{
@@ -7,13 +6,9 @@ use crate::{
 };
 
 pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let ecs = Client::new(&config);
-
-    let arns = ecs
+    let arns = app
+        .aws
+        .ecs
         .list_clusters()
         .send()
         .await
@@ -26,7 +21,7 @@ pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
     }
 
     // describe_clusters takes multiple .clusters("arn") calls
-    let mut builder = ecs.describe_clusters();
+    let mut builder = app.aws.ecs.describe_clusters();
     for arn in &arns {
         builder = builder.clusters(arn);
     }
@@ -49,13 +44,9 @@ pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
 }
 
 pub async fn fetch_cluster_services(cluster_arn: &str, app: &App) -> Vec<EcsServiceInfo> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let ecs = Client::new(&config);
-
-    let service_arns = ecs
+    let service_arns = app
+        .aws
+        .ecs
         .list_services()
         .cluster(cluster_arn)
         .send()
@@ -68,7 +59,7 @@ pub async fn fetch_cluster_services(cluster_arn: &str, app: &App) -> Vec<EcsServ
         return vec![];
     }
 
-    let mut builder = ecs.describe_services().cluster(cluster_arn);
+    let mut builder = app.aws.ecs.describe_services().cluster(cluster_arn);
     for arn in &service_arns {
         builder = builder.services(arn);
     }
@@ -110,13 +101,9 @@ pub async fn fetch_service_tasks(
     service_arn: &str,
     app: &App,
 ) -> Vec<EcsTaskInfo> {
-    let config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-        .region(app.current_region().clone())
-        .load()
-        .await;
-    let ecs = Client::new(&config);
-
-    let task_arns = ecs
+    let task_arns = app
+        .aws
+        .ecs
         .list_tasks()
         .cluster(cluster_arn)
         .service_name(service_arn)
@@ -130,7 +117,7 @@ pub async fn fetch_service_tasks(
         return vec![];
     }
 
-    let mut builder = ecs.describe_tasks().cluster(cluster_arn);
+    let mut builder = app.aws.ecs.describe_tasks().cluster(cluster_arn);
     for arn in &task_arns {
         builder = builder.tasks(arn);
     }

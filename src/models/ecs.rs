@@ -1,4 +1,7 @@
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+use crate::{aws::clients::AwsClients, models::describable::DescribableResource};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EcsClusterInfo {
@@ -40,4 +43,24 @@ pub struct EcsTaskInfo {
     pub cpu: Option<String>,
     pub memory: Option<String>,
     pub container_instance_arn: Option<String>,
+}
+
+#[async_trait]
+impl DescribableResource for EcsClusterInfo {
+    fn resource_name(&self) -> String {
+        self.name.clone()
+    }
+
+    async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
+        let resp = clients.ecs.list_clusters().send().await?;
+
+        Ok(format!("{:#?}", resp))
+    }
+
+    fn console_url(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "https://console.aws.amazon.com/ecs/v2/clusters/{}/services?region={}",
+            self.name, region
+        ))
+    }
 }

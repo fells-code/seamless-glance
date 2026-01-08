@@ -13,12 +13,10 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         app.scroll_offset = 0;
     }
 
-    // Clamp selection to bounds
     if total_rows > 0 {
         app.selected_row = app.selected_row.min(total_rows - 1);
     }
 
-    // How many rows can we show?
     let visible_height = area.height.saturating_sub(3) as usize; // header + borders
 
     // Keep selected row in view
@@ -36,9 +34,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         .take(visible_height)
         .map(|(i, inst)| {
             let style = if i == app.selected_row {
-                Style::default()
-                    .fg(app.theme.background)
-                    .bg(app.theme.primary)
+                Style::default().fg(app.theme.highlight)
             } else {
                 Style::default().fg(app.theme.text)
             };
@@ -48,18 +44,30 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(inst.name.clone().unwrap_or("-".into())),
                 Cell::from(inst.state.clone()),
                 Cell::from(inst.instance_type.clone()),
+                Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
+                Cell::from(inst.private_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.az.clone()),
             ])
             .style(style)
         })
         .collect();
-    let header = Row::new(vec!["Instance ID", "Name", "State", "Type", "AZ"])
-        .style(Style::default().fg(app.theme.accent));
+    let header = Row::new(vec![
+        "Instance ID",
+        "Name",
+        "State",
+        "Type",
+        "Public IP",
+        "Private IP",
+        "AZ",
+    ])
+    .style(Style::default().fg(app.theme.accent));
 
     let widths = [
         ratatui::layout::Constraint::Percentage(30),
         ratatui::layout::Constraint::Percentage(20),
         ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(20),
+        ratatui::layout::Constraint::Percentage(20),
         ratatui::layout::Constraint::Percentage(20),
         ratatui::layout::Constraint::Percentage(20),
     ];
@@ -72,10 +80,12 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.primary)),
         )
-        .widths(&[
+        .widths([
             ratatui::layout::Constraint::Percentage(30),
             ratatui::layout::Constraint::Percentage(20),
             ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(20),
+            ratatui::layout::Constraint::Percentage(20),
             ratatui::layout::Constraint::Percentage(20),
             ratatui::layout::Constraint::Percentage(20),
         ]);

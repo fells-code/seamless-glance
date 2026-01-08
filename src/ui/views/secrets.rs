@@ -52,12 +52,7 @@ pub fn render_sm(frame: &mut Frame, area: Rect, app: &mut App) {
             let is_selected = i == app.selected_row;
 
             let style = if is_selected {
-                Style::default()
-                    .fg(app.theme.background)
-                    .bg(app.theme.primary)
-            } else if !s.rotation_enabled {
-                // Subtle warning color for unrotated secrets
-                Style::default().fg(app.theme.primary)
+                Style::default().fg(app.theme.highlight)
             } else {
                 Style::default().fg(app.theme.text)
             };
