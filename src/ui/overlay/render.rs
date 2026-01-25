@@ -1,11 +1,11 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
 
-use crate::ui::overlay::describe::DescribeOverlayState;
+use crate::ui::overlay::overlays::DescribeOverlayState;
 use crate::ui::theme::Theme;
 
 pub fn render_describe_overlay(
@@ -51,7 +51,7 @@ pub fn render_describe_overlay(
         .block(block)
         .alignment(Alignment::Left)
         .scroll((overlay.scroll, 0))
-        .style(Style::default().fg(theme.text).add_modifier(Modifier::DIM));
+        .style(Style::default().fg(theme.text));
 
     frame.render_widget(paragraph, popup);
 }

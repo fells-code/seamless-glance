@@ -4,6 +4,7 @@ mod cache;
 mod config;
 mod license;
 mod models;
+mod resources;
 mod ui;
 
 use app::App;
@@ -26,7 +27,11 @@ use crate::{
         ensure_license::ensure_license_present, status::print_license_status,
         verify::validate_license,
     },
-    ui::{footer::FooterMode, views::command::COMMANDS},
+    ui::{
+        footer::FooterMode,
+        overlay::overlays::{ConfirmCommandState, OverlayState},
+        views::command::COMMANDS,
+    },
 };
 
 fn print_help() {
@@ -185,8 +190,29 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 }
             }
-            KeyCode::Esc if app.describe_overlay.is_some() => {
-                app.describe_overlay = None;
+            KeyCode::Enter => {
+                if let Some(OverlayState::ConfirmCommand(state)) = &app.overlay {
+                    let _ = crate::ui::terminal::suspend_tui();
+
+                    let _ = std::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&state.command)
+                        .status();
+
+                    let _ = crate::ui::terminal::resume_tui();
+
+                    app.overlay = None;
+                    app.footer_mode = FooterMode::Normal;
+                    continue;
+                } else {
+                    handle_command(&mut app).await;
+                    app.command_mode = false;
+                    app.footer_mode = FooterMode::Normal;
+                    app.command_input.clear();
+                }
+            }
+            KeyCode::Esc if app.overlay.is_some() => {
+                app.overlay = None;
                 app.footer_mode = FooterMode::Normal;
                 continue;
             }
@@ -202,13 +228,6 @@ async fn main() -> anyhow::Result<()> {
                 app.footer_mode = FooterMode::Normal;
                 app.command_input.clear();
             }
-            KeyCode::Enter => {
-                handle_command(&mut app).await;
-                app.command_mode = false;
-                app.footer_mode = FooterMode::Normal;
-                app.command_input.clear();
-            }
-
             KeyCode::Backspace if app.command_mode => {
                 app.command_input.pop();
             }
@@ -221,20 +240,18 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Down => {
                 if app.show_help {
                     app.scroll_offset = app.scroll_offset.saturating_add(1);
-                }
-
-                if let Some(overlay) = &mut app.describe_overlay {
-                    overlay.scroll = overlay.scroll.saturating_add(1);
+                } else if let Some(overlay) = &mut app.overlay {
+                    overlay.scroll_down();
                 } else {
                     app.selected_row = app.selected_row.saturating_add(1);
                 }
             }
+
             KeyCode::Up => {
                 if app.show_help {
                     app.scroll_offset = app.scroll_offset.saturating_sub(1);
-                }
-                if let Some(overlay) = &mut app.describe_overlay {
-                    overlay.scroll = overlay.scroll.saturating_sub(1);
+                } else if let Some(overlay) = &mut app.overlay {
+                    overlay.scroll_up();
                 } else {
                     app.selected_row = app.selected_row.saturating_sub(1);
                 }
@@ -250,17 +267,47 @@ async fn main() -> anyhow::Result<()> {
                 app.should_quit = true;
             }
             KeyCode::Char('d') => {
-                if app.describe_overlay.is_none() {
+                if app.overlay.is_none() {
                     app.trigger_describe().await;
                 }
             }
+            KeyCode::Char('s') => {
+                app.trigger_ssh();
+            }
             KeyCode::Char('1') => {
-                app.active_view = ActiveView::AccountOverview;
-                app.on_view_enter().await;
+                if let Some(OverlayState::SelectSshKey(state)) = &app.overlay {
+                    let cmd = format!("ssh {}@{}", state.context.user, state.context.host);
+
+                    app.overlay = Some(OverlayState::ConfirmCommand(ConfirmCommandState {
+                        title: format!("SSH into {}", state.context.instance_name),
+                        command: cmd,
+                        scroll: 0,
+                    }));
+                    continue;
+                } else {
+                    app.active_view = ActiveView::AccountOverview;
+                    app.on_view_enter().await;
+                }
             }
             KeyCode::Char('2') => {
-                app.active_view = ActiveView::CostOverview;
-                app.on_view_enter().await;
+                if let Some(OverlayState::SelectSshKey(state)) = &app.overlay {
+                    let cmd = format!(
+                        "ssh -i ~/{}.pem {}@{}",
+                        state.context.key_name.as_deref().unwrap_or("key"),
+                        state.context.user,
+                        state.context.host
+                    );
+
+                    app.overlay = Some(OverlayState::ConfirmCommand(ConfirmCommandState {
+                        title: "SSH with private key".into(),
+                        command: cmd,
+                        scroll: 0,
+                    }));
+                    continue;
+                } else {
+                    app.active_view = ActiveView::CostOverview;
+                    app.on_view_enter().await;
+                }
             }
             KeyCode::Char('3') => {
                 app.active_view = ActiveView::Vpc;

@@ -8,27 +8,24 @@ use crate::models::apigatway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::describable::DescribableResource;
 use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::elb::LoadBalancerInfo;
 use crate::models::lambda::LambdaFunctionInfo;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::secrets::{SecretInfo, SecretsSummary};
+use crate::models::security_group::SecurityGroupInfo;
 use crate::models::service_status::ServiceStatus;
 use crate::models::sqs::SqsQueueInfo;
+use crate::models::target_group::TargetGroupInfo;
 use crate::models::vpc::VpcInfo;
-use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo, EcsServiceInfo, EcsTaskInfo};
+use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo};
+use crate::resources::ssh;
 use crate::ui::footer::FooterMode;
 use crate::ui::open::open_in_browser;
-use crate::ui::overlay::describe::DescribeOverlayState;
+use crate::ui::overlay::overlays::{
+    ConfirmCommandState, DescribeOverlayState, OverlayState, SelectSshKeyState,
+};
 use crate::ui::theme::Theme;
 use crate::{aws, config};
-
-pub enum EcsViewMode {
-    Clusters,
-    Services(String),
-    Tasks {
-        cluster_arn: String,
-        service_arn: String,
-    },
-}
 
 #[derive(Debug, Clone)]
 pub enum RefreshPhase {
@@ -50,11 +47,14 @@ pub enum ActiveView {
     Vpc,
     Secrets,
     CloudWatch,
+    LoadBalancers,
+    TargetGroups,
+    SecurityGroups,
 }
 pub struct App {
     pub aws: AwsClients,
     pub license: Option<License>,
-    pub describe_overlay: Option<DescribeOverlayState>,
+    pub overlay: Option<OverlayState>,
 
     // Global App properties
     pub cost_loaded: bool,
@@ -81,11 +81,7 @@ pub struct App {
     pub service_costs: Vec<(String, f64)>,
 
     // ECS
-    pub ecs_view: EcsViewMode,
     pub ecs_clusters: Vec<EcsClusterInfo>,
-    pub ecs_services: Vec<EcsServiceInfo>,
-    pub ecs_tasks: Vec<EcsTaskInfo>,
-    pub ecs_selected_index: usize,
 
     // Lambda
     pub lambda_functions: Vec<LambdaFunctionInfo>,
@@ -113,6 +109,15 @@ pub struct App {
     // RDS
     pub rds_summary: RdsSummary,
     pub rds_instances: Vec<RdsInstanceInfo>,
+
+    // Load Balancers
+    pub load_balancers: Vec<LoadBalancerInfo>,
+
+    // Target Groups
+    pub target_groups: Vec<TargetGroupInfo>,
+
+    // Security Groups
+    pub security_groups: Vec<SecurityGroupInfo>,
 }
 
 impl App {
@@ -120,7 +125,7 @@ impl App {
         Self {
             aws,
             license: None,
-            describe_overlay: None,
+            overlay: None,
             scroll_offset: 0,
             selected_row: 0,
             cost_loaded: false,
@@ -139,7 +144,6 @@ impl App {
             monthly_costs: vec![0.0; 6],
             service_costs: vec![],
             theme: Theme::seamless(),
-            ecs_view: EcsViewMode::Clusters,
             lambda_functions: vec![],
             apigateway_apis: vec![],
             sqs_queues_data: vec![],
@@ -152,9 +156,6 @@ impl App {
             cloudwatch_alarms: vec![],
             ec2_instances: vec![],
             ecs_clusters: vec![],
-            ecs_services: vec![],
-            ecs_tasks: vec![],
-            ecs_selected_index: 0,
 
             secrets_summary: SecretsSummary {
                 status: ServiceStatus::Unavailable("Not loaded".into()),
@@ -162,6 +163,8 @@ impl App {
                 rotation_disabled: 0,
             },
             secrets: vec![],
+
+            load_balancers: vec![],
 
             rds_summary: RdsSummary {
                 status: ServiceStatus::Unavailable("Not loaded".into()),
@@ -175,34 +178,11 @@ impl App {
             refresh_phase: RefreshPhase::Idle,
             footer_mode: FooterMode::Normal,
             show_help: false,
+
+            target_groups: vec![],
+            security_groups: vec![],
         }
     }
-
-    // pub async fn load_services_for_cluster(&mut self, cluster_arn: &str) {
-    //     self.ecs_services = aws::ecs::fetch_cluster_services(cluster_arn).await;
-    //     self.ecs_view = EcsViewMode::ServiceList(cluster_arn.to_string());
-    //     self.ecs_selected_index = 0;
-    // }
-
-    // pub async fn load_tasks_for_service(&mut self, cluster_arn: &str, service_arn: &str) {
-    //     self.ecs_tasks = aws::ecs::fetch_service_tasks(cluster_arn, service_arn).await;
-    //     self.ecs_view = EcsViewMode::TaskList {
-    //         cluster_arn: cluster_arn.to_string(),
-    //         service_arn: service_arn.to_string(),
-    //     };
-    //     self.ecs_selected_index = 0;
-    // }
-
-    // pub fn back_to_clusters(&mut self) {
-    //     self.ecs_view = EcsViewMode::ClusterList;
-    //     self.ecs_selected_index = 0;
-    // }
-
-    // pub async fn back_to_services(&mut self, cluster_arn: &str) {
-    //     self.ecs_services = aws::ecs::fetch_cluster_services(cluster_arn).await;
-    //     self.ecs_view = EcsViewMode::ServiceList(cluster_arn.to_string());
-    //     self.ecs_selected_index = 0;
-    // }
 
     pub fn current_region(&self) -> &Region {
         &self.regions[self.current_region_index]
@@ -252,6 +232,19 @@ impl App {
                 self.rds_summary = summary;
                 self.rds_instances = instances;
             }
+
+            ActiveView::LoadBalancers => {
+                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+            }
+
+            ActiveView::TargetGroups => {
+                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+            }
+
+            ActiveView::SecurityGroups => {
+                self.security_groups = aws::security_group::fetch_security_groups(self).await;
+            }
+
             _ => {}
         }
     }
@@ -320,7 +313,6 @@ impl App {
         // Always refresh overview (header correctness)
         self.account_overview = Some(aws::account::fetch_account_overview(self).await);
 
-        // Now refresh ONLY the active view
         match self.active_view {
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
@@ -373,6 +365,20 @@ impl App {
                 self.rds_instances = instances;
             }
 
+            ActiveView::LoadBalancers => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Load Balancers"]);
+                let lbs = aws::elb::fetch_load_balancers(self).await;
+                self.load_balancers = lbs;
+            }
+
+            ActiveView::TargetGroups => {
+                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+            }
+
+            ActiveView::SecurityGroups => {
+                self.security_groups = aws::security_group::fetch_security_groups(self).await;
+            }
+
             // Views with no region-scoped data
             ActiveView::AccountOverview | ActiveView::CostOverview => {}
         }
@@ -421,18 +427,18 @@ impl App {
     async fn describe_from_resource<T: DescribableResource + ?Sized>(&mut self, resource: &T) {
         match resource.describe(&self.aws).await {
             Ok(text) => {
-                self.describe_overlay = Some(DescribeOverlayState {
+                self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
                     title: resource.resource_name(),
                     content: text,
                     scroll: 0,
-                });
+                }));
             }
             Err(err) => {
-                self.describe_overlay = Some(DescribeOverlayState {
+                self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
                     title: "Error".into(),
                     content: err.to_string(),
                     scroll: 0,
-                });
+                }));
             }
         }
     }
@@ -488,13 +494,31 @@ impl App {
                     self.describe_from_resource(&items).await;
                 }
             }
+
+            ActiveView::LoadBalancers => {
+                if let Some(lb) = self.selected_resource(&self.load_balancers).cloned() {
+                    self.describe_from_resource(&lb).await;
+                }
+            }
+
+            ActiveView::TargetGroups => {
+                if let Some(tg) = self.selected_resource(&self.target_groups).cloned() {
+                    self.describe_from_resource(&tg).await;
+                }
+            }
+
+            ActiveView::SecurityGroups => {
+                if let Some(sg) = self.selected_resource(&self.security_groups).cloned() {
+                    self.describe_from_resource(&sg).await;
+                }
+            }
             _ => self.footer_mode = FooterMode::Normal,
         }
     }
 
     pub fn trigger_open(&mut self) {
         // Always close overlay first
-        self.describe_overlay = None;
+        self.overlay = None;
 
         let region = self.current_region().as_ref();
 
@@ -563,7 +587,83 @@ impl App {
                 }
             }
 
+            ActiveView::LoadBalancers => {
+                if let Some(lb) = self.selected_resource(&self.load_balancers).cloned() {
+                    if let Some(url) = lb.console_url(self.current_region().as_ref()) {
+                        let _ = open_in_browser(&url);
+                    }
+                }
+            }
+
+            ActiveView::TargetGroups => {
+                if let Some(tg) = self.selected_resource(&self.target_groups).cloned() {
+                    if let Some(url) = tg.console_url(self.current_region().as_ref()) {
+                        let _ = open_in_browser(&url);
+                    }
+                }
+            }
+
+            ActiveView::SecurityGroups => {
+                if let Some(sg) = self.selected_resource(&self.security_groups).cloned() {
+                    if let Some(url) = sg.console_url(self.current_region().as_ref()) {
+                        let _ = open_in_browser(&url);
+                    }
+                }
+            }
+
             _ => {}
+        }
+    }
+
+    pub fn trigger_ssh(&mut self) {
+        if self.active_view != ActiveView::Ec2 {
+            return;
+        }
+
+        let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() else {
+            return;
+        };
+
+        if instance.state != "running" {
+            self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
+                title: "SSH unavailable".into(),
+                content: "Instance is not running.".into(),
+                scroll: 0,
+            }));
+            return;
+        }
+
+        let Some(ctx) = ssh::ssh_command(&instance) else {
+            self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
+            title: "Private instance".into(),
+            content:
+                "This instance has no public IP.\nSSH requires a bastion or SSM Session Manager."
+                    .into(),
+            scroll: 0,
+        }));
+            return;
+        };
+
+        // Key-aware branching
+        if ctx.key_name.is_some() {
+            self.overlay = Some(OverlayState::SelectSshKey(SelectSshKeyState {
+                title: format!(
+                    "SSH into {} ({})",
+                    ctx.instance_name,
+                    ctx.key_name.as_ref().unwrap()
+                ),
+                context: ctx,
+                selected: 0,
+            }));
+        } else {
+            // No key pair, assume agent
+            let cmd = format!("ssh {}@{}", ctx.user, ctx.host);
+
+            self.overlay = Some(OverlayState::ConfirmCommand(ConfirmCommandState {
+                title: format!("SSH into {}", ctx.instance_name),
+                command: cmd,
+                scroll: 0,
+            }));
         }
     }
 }

@@ -4,45 +4,46 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
-pub struct LoadBalancerInfo {
+pub struct TargetGroupInfo {
     pub arn: String,
     pub name: String,
-    pub lb_type: String, // application | network
-    pub scheme: String,  // internet-facing | internal
-    pub state: String,
-    pub az_count: usize,
+    pub protocol: String,
+    pub port: i32,
+    pub target_type: String,
+    pub total_targets: usize,
+    pub unhealthy_targets: usize,
 }
 
 #[async_trait]
-impl DescribableResource for LoadBalancerInfo {
+impl DescribableResource for TargetGroupInfo {
     fn resource_name(&self) -> String {
         self.name.clone()
     }
 
     async fn describe(&self, clients: &AwsClients) -> Result<String> {
-        let lbs = clients
+        let tg = clients
             .elb
-            .describe_load_balancers()
-            .load_balancer_arns(&self.arn)
+            .describe_target_groups()
+            .target_group_arns(&self.arn)
             .send()
             .await?;
 
-        let listeners = clients
+        let health = clients
             .elb
-            .describe_listeners()
-            .load_balancer_arn(&self.arn)
+            .describe_target_health()
+            .target_group_arn(&self.arn)
             .send()
             .await?;
 
         Ok(format!(
-            "Load Balancer:\n{:#?}\n\nListeners:\n{:#?}",
-            lbs, listeners
+            "Target Group:\n{:#?}\n\nTarget Health:\n{:#?}",
+            tg, health
         ))
     }
 
     fn console_url(&self, region: &str) -> Option<String> {
         Some(format!(
-            "https://console.aws.amazon.com/ec2/v2/home?region={region}#LoadBalancers:"
+            "https://console.aws.amazon.com/ec2/v2/home?region={region}#TargetGroups:"
         ))
     }
 }

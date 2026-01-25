@@ -8,7 +8,6 @@ pub struct AccountOverview {
     pub account_id: String,
     pub identity_kind: String,
     pub identity_name: String,
-    pub month_to_date_cost: f64,
 
     pub role_name: Option<String>,
     pub region: String,
@@ -19,10 +18,10 @@ pub struct AccountOverview {
     pub ecs_clusters: u32,
     pub ecs_services: u32,
 
-    pub load_balancers: u32,
+    pub target_groups_total: usize,
+    pub target_groups_unhealthy: usize,
 
     pub rds_status: RdsSummary,
-    pub elb_status: ServiceStatus,
 
     pub lambda_functions: u32,
     pub lambda_status: ServiceStatus,

@@ -65,7 +65,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         None => "Free Trial".to_string(),
     };
 
-    let (account, region, role) = if let Some(overview) = &app.account_overview {
+    let (account, region, _role) = if let Some(overview) = &app.account_overview {
         (
             overview.account_id.as_str(),
             overview.region.as_str(),

@@ -1,6 +1,6 @@
 use crate::app::App;
 use crate::aws::apigateway;
-use crate::aws::{cloudwatch, cost, ec2, ecs, elbv2, lambda, rds, secrets, sqs, vpc};
+use crate::aws::{cloudwatch, ec2, ecs, lambda, rds, secrets, sqs, target_group, vpc};
 use crate::models::AccountOverview;
 use tokio::join;
 
@@ -47,35 +47,38 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         ecs_clusters,
         ec2_counts,
         rds_result,
-        elb_result,
         lambda_result,
         apigw_result,
         sqs_result,
         vpc_result,
         alarms,
         secrets,
+        target_groups,
     ) = join!(
         ecs::fetch_ecs_clusters(app),
         ec2::fetch_ec2_counts(app),
         rds::fetch_rds(app),
-        elbv2::fetch_load_balancer_count(app),
         lambda::fetch_lambda_summary(app),
         apigateway::fetch_apigateway_summary(app),
         sqs::fetch_sqs_summary(app),
         vpc::fetch_vpc_summary(app),
         cloudwatch::fetch_cloudwatch(app),
-        secrets::fetch_secrets(app)
+        secrets::fetch_secrets(app),
+        target_group::fetch_target_groups(app)
     );
 
     let ecs_clusters_count = ecs_clusters.len() as u32;
     let ecs_services_count: u32 = ecs_clusters.iter().map(|c| c.active_services as u32).sum();
-    let budget = cost::fetch_month_to_date_cost(app).await;
+
+    let unhealthy = target_groups
+        .iter()
+        .filter(|tg| tg.unhealthy_targets > 0)
+        .count();
 
     AccountOverview {
         account_id: ident.account().unwrap_or("unknown").to_string(),
         identity_kind: identity.kind,
         identity_name: identity.name,
-        month_to_date_cost: budget,
         region: app.current_region().to_string(),
         role_name: ident
             .arn()
@@ -90,10 +93,6 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         ecs_services: ecs_services_count,
 
         rds_status: rds_result.0,
-
-        load_balancers: elb_result.count,
-        elb_status: elb_result.status,
-
         lambda_functions: lambda_result.function_count,
         lambda_status: lambda_result.status,
 
@@ -110,5 +109,8 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         vpc_status: vpc_result.status,
         alarms: alarms.0,
         secrets: secrets.0,
+
+        target_groups_total: target_groups.len(),
+        target_groups_unhealthy: unhealthy,
     }
 }

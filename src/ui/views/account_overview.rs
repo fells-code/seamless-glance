@@ -51,6 +51,25 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         "Attention Needed"
     };
 
+    let tg_value = if overview.target_groups_unhealthy > 0 {
+        format!(
+            "{} target groups ({} unhealthy)",
+            overview.target_groups_total, overview.target_groups_unhealthy
+        )
+    } else {
+        format!(
+            "{} target groups (all healthy)",
+            overview.target_groups_total
+        )
+    };
+
+    if overview.target_groups_unhealthy > 0 {
+        issues.push(format!(
+            "{} target groups ({} unhealthy)",
+            overview.target_groups_total, overview.target_groups_unhealthy
+        ));
+    }
+
     let health_text = if issues.is_empty() {
         "No issues detected.\nYour account appears healthy.".to_string()
     } else {
@@ -152,11 +171,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
     };
 
-    let elb_value = match &overview.elb_status {
-        ServiceStatus::Ok => format!("{}", overview.load_balancers),
-        ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
-    };
+    // let elb_value = match &overview.elb_status {
+    //     ServiceStatus::Ok => format!("{}", overview.load_balancers),
+    //     ServiceStatus::AccessDenied => "⚠️ Access denied".into(),
+    //     ServiceStatus::Unavailable(_) => "⚠️ Unavailable".into(),
+    // };
 
     // ---- STATS ----
     let stats_text = format!(
@@ -178,6 +197,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ec2_value,
         "ECS",
         ecs_value,
+        "Target Groups",
+        tg_value,
         "Secrets",
         secrets_value,
         "Lambda",
@@ -188,8 +209,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         sqs_value,
         "RDS",
         rds_value,
-        "Load Balancers",
-        elb_value,
+        // "Load Balancers",
+        // elb_value,
         LABEL_WIDTH = LABEL_WIDTH
     );
 

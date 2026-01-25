@@ -15,3 +15,4 @@ dist
 **/mutants.out*/
 
 .vscode
+.DS_Store

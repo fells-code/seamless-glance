@@ -67,6 +67,7 @@ pub async fn fetch_instances(app: &App) -> Vec<Ec2InstanceInfo> {
                     .to_string(),
                 private_ip: inst.private_ip_address().map(|s| s.to_string()),
                 public_ip: inst.public_ip_address().map(|s| s.to_string()),
+                key_name: inst.key_name().map(|k| k.to_string()),
             });
         }
     }

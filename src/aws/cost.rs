@@ -185,32 +185,32 @@ pub async fn fetch_budget(app: &App) -> BudgetInfo {
     }
 }
 
-pub async fn fetch_month_to_date_cost(app: &App) -> f64 {
-    let (start, end) = current_month_interval();
+// pub async fn fetch_month_to_date_cost(app: &App) -> f64 {
+//     let (start, end) = current_month_interval();
 
-    let interval = DateInterval::builder().start(start).end(end).build();
+//     let interval = DateInterval::builder().start(start).end(end).build();
 
-    let resp = match app
-        .aws
-        .ce
-        .get_cost_and_usage()
-        .time_period(interval.expect("REASON"))
-        .granularity(Granularity::Monthly)
-        .metrics("UnblendedCost")
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(_) => return 0.0,
-    };
+//     let resp = match app
+//         .aws
+//         .ce
+//         .get_cost_and_usage()
+//         .time_period(interval.expect("REASON"))
+//         .granularity(Granularity::Monthly)
+//         .metrics("UnblendedCost")
+//         .send()
+//         .await
+//     {
+//         Ok(r) => r,
+//         Err(_) => return 0.0,
+//     };
 
-    resp.results_by_time()
-        .iter()
-        .filter_map(|r| {
-            r.total()
-                .and_then(|t| t.get("UnblendedCost"))
-                .and_then(|m| m.amount())
-                .and_then(|a| a.parse::<f64>().ok())
-        })
-        .sum()
-}
+//     resp.results_by_time()
+//         .iter()
+//         .filter_map(|r| {
+//             r.total()
+//                 .and_then(|t| t.get("UnblendedCost"))
+//                 .and_then(|m| m.amount())
+//                 .and_then(|a| a.parse::<f64>().ok())
+//         })
+//         .sum()
+// }

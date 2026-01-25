@@ -2,6 +2,7 @@ pub mod footer;
 pub mod header;
 pub mod open;
 pub mod overlay;
+pub mod terminal;
 pub mod theme;
 pub mod views;
 
@@ -9,8 +10,11 @@ use crate::app::ActiveView;
 use crate::app::App;
 use crate::ui::footer::draw_footer;
 use crate::ui::header::render_header;
+use crate::ui::overlay::confirm::render_confirm_command_overlay;
 use crate::ui::overlay::help;
+use crate::ui::overlay::overlays::OverlayState;
 use crate::ui::overlay::render::render_describe_overlay;
+use crate::ui::overlay::select_ssh_key::render_select_ssh_key_overlay;
 use crate::ui::views::account_overview;
 use crate::ui::views::apigateway::render_apigatway;
 use crate::ui::views::cloudwatch::render_cw;
@@ -18,9 +22,12 @@ use crate::ui::views::cost_overview::render_cost_overview;
 use crate::ui::views::ec2::render_ec2;
 use crate::ui::views::ecs::render_ecs_clusters;
 use crate::ui::views::lambda::render;
+use crate::ui::views::load_balancers::render_lbs;
 use crate::ui::views::rds::render_rds;
 use crate::ui::views::secrets::render_sm;
+use crate::ui::views::security_groups::render_sg;
 use crate::ui::views::sqs::render_sqs;
+use crate::ui::views::target_groups::render_tg;
 use crate::ui::views::vpc::render_vpc;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -97,15 +104,33 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ActiveView::Rds => {
             render_rds(frame, main_area, app);
         }
-        _ => {}
+        ActiveView::LoadBalancers => {
+            render_lbs(frame, main_area, app);
+        }
+        ActiveView::TargetGroups => {
+            render_tg(frame, main_area, app);
+        }
+        ActiveView::SecurityGroups => {
+            render_sg(frame, main_area, app);
+        }
     }
 
     if app.show_help {
         help::render(frame, app);
     }
 
-    if let Some(overlay) = &app.describe_overlay {
-        render_describe_overlay(frame, frame.size(), overlay, &app.theme);
+    if let Some(overlay) = &app.overlay {
+        match overlay {
+            OverlayState::Describe(state) => {
+                render_describe_overlay(frame, frame.size(), &state, &app.theme);
+            }
+            OverlayState::ConfirmCommand(state) => {
+                render_confirm_command_overlay(frame, frame.size(), &state, &app.theme);
+            }
+            OverlayState::SelectSshKey(state) => {
+                render_select_ssh_key_overlay(frame, frame.size(), &state, &app.theme)
+            }
+        }
     }
 
     draw_footer(frame, footer_area, app);

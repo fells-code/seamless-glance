@@ -43,11 +43,15 @@ Commands
   vpc          Go to VPC
   cw           Go to CloudWatch
   sm           Go to Secrets Manager
+  tg           Go to Target Groups
+  sg           Go to Security Groups
 
 General
   q            Quit
   r            Refresh current view
   d            Describe resource
+  o            Open in console
+  s            Shell into instance
   Esc          Close overlays
 "#;
 

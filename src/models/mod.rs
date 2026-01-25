@@ -9,8 +9,10 @@ pub mod elb;
 pub mod lambda;
 pub mod rds;
 pub mod secrets;
+pub mod security_group;
 pub mod service_status;
 pub mod sqs;
+pub mod target_group;
 pub mod vpc;
 
 pub use account_overview::*;

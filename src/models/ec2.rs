@@ -11,6 +11,7 @@ pub struct Ec2InstanceInfo {
     pub az: String,
     pub private_ip: Option<String>,
     pub public_ip: Option<String>,
+    pub key_name: Option<String>,
 }
 
 #[async_trait]

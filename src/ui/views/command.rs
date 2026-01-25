@@ -64,6 +64,21 @@ pub const COMMANDS: &[Command] = &[
         description: "Secrets Manager",
         view: ActiveView::Secrets,
     },
+    Command {
+        name: "lb",
+        description: "Load Balancer",
+        view: ActiveView::LoadBalancers,
+    },
+    Command {
+        name: "tg",
+        description: "Target Groups",
+        view: ActiveView::TargetGroups,
+    },
+    Command {
+        name: "sg",
+        description: "Security Groups",
+        view: ActiveView::SecurityGroups,
+    },
 ];
 
 pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {
