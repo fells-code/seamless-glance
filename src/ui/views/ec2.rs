@@ -42,6 +42,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
             Row::new(vec![
                 Cell::from(inst.id.clone()),
                 Cell::from(inst.name.clone().unwrap_or("-".into())),
+                Cell::from(inst.region.clone()),
                 Cell::from(inst.state.clone()),
                 Cell::from(inst.instance_type.clone()),
                 Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
@@ -54,6 +55,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
     let header = Row::new(vec![
         "Instance ID",
         "Name",
+        "Region",
         "State",
         "Type",
         "Public IP",
@@ -70,6 +72,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         ratatui::layout::Constraint::Percentage(20),
         ratatui::layout::Constraint::Percentage(20),
         ratatui::layout::Constraint::Percentage(20),
+        ratatui::layout::Constraint::Percentage(20),
     ];
 
     let table = Table::new(rows, widths)
@@ -82,6 +85,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         )
         .widths([
             ratatui::layout::Constraint::Percentage(30),
+            ratatui::layout::Constraint::Percentage(20),
             ratatui::layout::Constraint::Percentage(20),
             ratatui::layout::Constraint::Percentage(10),
             ratatui::layout::Constraint::Percentage(20),

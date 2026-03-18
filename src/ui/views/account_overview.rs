@@ -10,7 +10,7 @@ const LABEL_WIDTH: usize = 14;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let Some(overview) = &app.account_overview else {
-        let loading_text = format!("Fetching AWS data for {}…", app.current_region().as_ref());
+        let loading_text = format!("Fetching AWS data for {}…", app.current_region_label());
 
         let loading = Paragraph::new(loading_text)
             .style(Style::default().fg(app.theme.accent))

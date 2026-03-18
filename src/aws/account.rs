@@ -79,7 +79,7 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         account_id: ident.account().unwrap_or("unknown").to_string(),
         identity_kind: identity.kind,
         identity_name: identity.name,
-        region: app.current_region().to_string(),
+        region: app.current_region_label().to_string(),
         role_name: ident
             .arn()
             .and_then(|arn| arn.split(":assumed-role/").nth(1))

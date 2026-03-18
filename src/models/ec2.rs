@@ -8,6 +8,7 @@ pub struct Ec2InstanceInfo {
     pub name: Option<String>,
     pub instance_type: String,
     pub state: String,
+    pub region: String,
     pub az: String,
     pub private_ip: Option<String>,
     pub public_ip: Option<String>,

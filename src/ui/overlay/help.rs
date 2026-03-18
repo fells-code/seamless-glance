@@ -31,25 +31,29 @@ Regions
   ↑ / ↓        Move up and down
 
 Commands
-  /            Open command palette
-  ecs          Go to ECS
-  ec2          Go to EC2
-  lambda       Go to Lambda
-  apigw        Go to ApiGateway
-  rds          Go to RDS
-  sqs          Go to SQS
-  cost         Go to Cost
-  sm           Go to Secrets Manager
-  vpc          Go to VPC
-  cw           Go to CloudWatch
-  sm           Go to Secrets Manager
-  tg           Go to Target Groups
-  sg           Go to Security Groups
+  /                   Open command palette
+  region <region>     Change to region
+  rg <region>         Change to region
+  ecs                 Go to ECS
+  ec2                 Go to EC2
+  lambda              Go to Lambda
+  apigw               Go to ApiGateway
+  rds                 Go to RDS
+  sqs                 Go to SQS
+  cost                Go to Cost
+  sm                  Go to Secrets Manager
+  vpc                 Go to VPC
+  cw                  Go to CloudWatch
+  sm                  Go to Secrets Manager
+  tg                  Go to Target Groups
+  sg                  Go to Security Groups
+  
 
 General
   q            Quit
   r            Refresh current view
   d            Describe resource
+  g            Switch to a Global view of resource
   o            Open in console
   s            Shell into instance
   Esc          Close overlays

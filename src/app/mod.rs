@@ -185,7 +185,79 @@ impl App {
     }
 
     pub fn current_region(&self) -> &Region {
-        &self.regions[self.current_region_index]
+        let idx = self
+            .current_region_index
+            .min(self.regions.len().saturating_sub(1));
+
+        &self.regions[idx]
+    }
+
+    pub fn is_global_region_selected(&self) -> bool {
+        !self.regions.is_empty() && self.current_region_index == self.regions.len()
+    }
+
+    pub fn region_slot_count(&self) -> usize {
+        if self.regions.is_empty() {
+            0
+        } else {
+            self.regions.len() + 1
+        }
+    }
+
+    pub fn current_region_label(&self) -> String {
+        if self.is_global_region_selected() {
+            "global".to_string()
+        } else {
+            self.current_region().as_ref().to_string()
+        }
+    }
+
+    pub fn set_global_region(&mut self) {
+        if self.regions.is_empty() {
+            return;
+        }
+
+        self.current_region_index = self.regions.len();
+    }
+
+    pub fn persist_region_selection(&self) {
+        config::save_config(&config::GlanceConfig {
+            region: Some(self.current_region_label()),
+            profile: None,
+        });
+    }
+
+    pub async fn set_region_by_index(&mut self, index: usize) {
+        if self.regions.is_empty() {
+            return;
+        }
+
+        if index >= self.regions.len() {
+            return;
+        }
+
+        self.current_region_index = index;
+
+        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+            .region(self.current_region().clone())
+            .load()
+            .await;
+
+        self.aws = AwsClients::new(&sdk_config);
+    }
+
+    pub async fn set_region_by_name(&mut self, name: &str) -> bool {
+        if name.eq_ignore_ascii_case("global") {
+            self.set_global_region();
+            return true;
+        }
+
+        if let Some(idx) = self.regions.iter().position(|r| r.as_ref() == name) {
+            self.set_region_by_index(idx).await;
+            return true;
+        }
+
+        false
     }
 
     pub async fn on_view_enter(&mut self) {
@@ -263,19 +335,19 @@ impl App {
             return;
         }
 
-        self.current_region_index = (self.current_region_index + 1) % self.regions.len();
+        let total_slots = self.region_slot_count();
+        self.current_region_index = (self.current_region_index + 1) % total_slots;
 
-        config::save_config(&config::GlanceConfig {
-            region: Some(self.current_region().as_ref().to_string()),
-            profile: None, // future
-        });
+        self.persist_region_selection();
 
-        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-            .region(self.current_region().clone())
-            .load()
-            .await;
+        if !self.is_global_region_selected() {
+            let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
+                .region(self.current_region().clone())
+                .load()
+                .await;
 
-        self.aws = AwsClients::new(&sdk_config);
+            self.aws = AwsClients::new(&sdk_config);
+        }
 
         self.trigger_refresh();
     }
@@ -285,23 +357,24 @@ impl App {
             return;
         }
 
+        let total_slots = self.region_slot_count();
+
         if self.current_region_index == 0 {
-            self.current_region_index = self.regions.len() - 1;
+            self.current_region_index = total_slots - 1;
         } else {
             self.current_region_index -= 1;
         }
 
-        config::save_config(&config::GlanceConfig {
-            region: Some(self.current_region().as_ref().to_string()),
-            profile: None, // future
-        });
+        self.persist_region_selection();
 
-        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
-            .region(self.current_region().clone())
-            .load()
-            .await;
+        if !self.is_global_region_selected() {
+            let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
+                .region(self.current_region().clone())
+                .load()
+                .await;
 
-        self.aws = AwsClients::new(&sdk_config);
+            self.aws = AwsClients::new(&sdk_config);
+        }
 
         self.trigger_refresh();
     }

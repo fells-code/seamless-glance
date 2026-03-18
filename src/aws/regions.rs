@@ -2,7 +2,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_ec2::Client;
 
 pub async fn fetch_enabled_regions() -> Vec<String> {
-    let config = aws_config::load_defaults(BehaviorVersion::v2025_08_07()).await;
+    let config = aws_config::load_defaults(BehaviorVersion::v2026_01_12()).await;
     let ec2 = Client::new(&config);
 
     match ec2.describe_regions().send().await {

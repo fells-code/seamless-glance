@@ -1,30 +1,30 @@
 use ratatui::style::Color;
 
 pub struct Theme {
-    pub primary: Color,    // brand / headings / borders
-    pub accent: Color,     // secondary highlights
-    pub background: Color, // main background
-    pub text: Color,       // primary text
-    pub highlight: Color,  // selection / focus
+    pub primary: Color,
+    pub accent: Color,
+    pub background: Color,
+    pub text: Color,
+    pub highlight: Color,
 }
 
 impl Theme {
     pub fn seamless() -> Self {
         Self {
-            // Burnt orange brand color (#E46B2E)
-            primary: Color::Rgb(228, 107, 46),
+            // Muted copper
+            primary: Color::Rgb(201, 120, 74),
 
-            // Softer orange accent for subtle emphasis
-            accent: Color::Rgb(255, 179, 128),
+            // Warm sand accent
+            accent: Color::Rgb(234, 204, 163),
 
-            // Deep navy-black background (#0F1320)
-            background: Color::Rgb(15, 19, 32),
+            // Brown-charcoal background
+            background: Color::Rgb(24, 20, 18),
 
-            // Near-white text for readability (#E6E6E6)
-            text: Color::Rgb(230, 230, 230),
+            // Creamy light text
+            text: Color::Rgb(236, 231, 224),
 
-            // Highlight uses brand orange (not bright yellow)
-            highlight: Color::Rgb(228, 107, 46),
+            // Warm orange highlight
+            highlight: Color::Rgb(223, 146, 92),
         }
     }
 }

@@ -30,7 +30,7 @@ use crate::{
     ui::{
         footer::FooterMode,
         overlay::overlays::{ConfirmCommandState, OverlayState},
-        views::command::COMMANDS,
+        views::command::{self, COMMANDS},
     },
 };
 
@@ -58,9 +58,29 @@ LICENSE:
 }
 
 async fn handle_command(app: &mut App) {
-    if let Some(cmd) = COMMANDS.iter().find(|c| c.name == app.command_input) {
-        app.active_view = cmd.view.clone();
-        app.on_view_enter().await;
+    let (cmd, args) = command::parse_command(&app.command_input);
+    let cmd = cmd.to_ascii_lowercase();
+    let args = args.to_string();
+
+    match cmd.as_str() {
+        "region" | "rg" => {
+            if args.is_empty() {
+                return;
+            }
+
+            if app.set_region_by_name(&args).await {
+                app.persist_region_selection();
+                app.trigger_refresh();
+            } else {
+                eprintln!("Unknown region: {}", args);
+            }
+        }
+        _ => {
+            if let Some(command) = COMMANDS.iter().find(|c| c.name == cmd.as_str()) {
+                app.active_view = command.view.clone();
+                app.on_view_enter().await;
+            }
+        }
     }
 }
 
@@ -133,13 +153,12 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
         .region(regions[current_region_index].clone())
         .load()
         .await;
 
     let aws = AwsClients::new(&sdk_config);
-
     let mut app = App::new(aws);
     app.license = Some(license);
     app.regions = regions;
@@ -260,15 +279,19 @@ async fn main() -> anyhow::Result<()> {
                 app.trigger_open();
             }
             KeyCode::Char('q') => {
-                config::save_config(&config::GlanceConfig {
-                    region: Some(app.current_region().as_ref().to_string()),
-                    profile: None,
-                });
+                app.persist_region_selection();
                 app.should_quit = true;
             }
             KeyCode::Char('d') => {
                 if app.overlay.is_none() {
                     app.trigger_describe().await;
+                }
+            }
+            KeyCode::Char('g') => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    app.set_global_region();
+                    app.persist_region_selection();
+                    app.trigger_refresh();
                 }
             }
             KeyCode::Char('s') => {

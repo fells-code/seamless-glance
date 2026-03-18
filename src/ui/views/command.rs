@@ -81,19 +81,36 @@ pub const COMMANDS: &[Command] = &[
     },
 ];
 
+pub fn parse_command(input: &str) -> (&str, &str) {
+    let trimmed = input.trim().trim_start_matches('/');
+
+    if let Some((cmd, rest)) = trimmed.split_once(char::is_whitespace) {
+        (cmd.trim(), rest.trim())
+    } else {
+        (trimmed, "")
+    }
+}
+
 pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {
     if !app.command_mode {
         return;
     }
 
-    let input = &app.command_input;
+    let input = app.command_input.trim();
+    let (cmd, _args) = parse_command(input);
 
     let matches: Vec<_> = COMMANDS
         .iter()
-        .filter(|c| c.name.starts_with(input))
+        .filter(|c| c.name.starts_with(cmd))
         .collect();
 
     let mut lines = vec![format!(":{}", input)];
+
+    if "region".starts_with(cmd) || "rg".starts_with(cmd) || cmd == "region" || cmd == "rg" {
+        lines.push("  region <name> — jump to a region".into());
+        lines.push("  region global — jump to global view".into());
+        lines.push("  rg <name>     — short alias for region".into());
+    }
 
     for cmd in matches.iter().take(5) {
         lines.push(format!("  {:<6} — {}", cmd.name, cmd.description));
