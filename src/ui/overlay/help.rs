@@ -53,6 +53,7 @@ General
   q            Quit
   r            Refresh current view
   d            Describe resource
+  c            Show AWS CLI command
   g            Switch to a Global view of resource
   o            Open in console
   s            Shell into instance

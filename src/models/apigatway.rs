@@ -2,7 +2,10 @@ use async_trait::async_trait;
 
 use crate::{
     aws::clients::AwsClients,
-    models::{describable::DescribableResource, service_status::ServiceStatus},
+    models::{
+        describable::{shell_quote, DescribableResource},
+        service_status::ServiceStatus,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -46,5 +49,21 @@ impl DescribableResource for ApiGatewayInfo {
             "https://{}.console.aws.amazon.com/apigateway/main/develop/routes?api={}&region={}",
             region, self.id, region
         ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        if self.api_type == "REST" {
+            Some(format!(
+                "aws apigateway get-rest-api --rest-api-id {} --region {}",
+                shell_quote(&self.id),
+                shell_quote(region)
+            ))
+        } else {
+            Some(format!(
+                "aws apigatewayv2 get-api --api-id {} --region {}",
+                shell_quote(&self.id),
+                shell_quote(region)
+            ))
+        }
     }
 }

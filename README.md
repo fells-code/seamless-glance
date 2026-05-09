@@ -81,12 +81,19 @@ General controls:
 - `?` open help
 - `r` refresh active view
 - `d` describe selected resource
+- `c` show the AWS CLI command for the selected resource
 - `o` open selected resource in the AWS console
 - `g` jump to the global region slot
 - `s` prepare an SSH command for the selected EC2 instance
 - `q` quit
 
 Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
+
+Current resource-action model:
+
+- `d` describe the selected resource in-app
+- `c` show and optionally run the AWS CLI command for the selected resource
+- `o` open the selected resource in the AWS console
 
 Command palette shortcuts currently include:
 

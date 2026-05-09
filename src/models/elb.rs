@@ -1,5 +1,5 @@
 use crate::aws::clients::AwsClients;
-use crate::models::describable::DescribableResource;
+use crate::models::describable::{shell_quote, DescribableResource};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -44,6 +44,14 @@ impl DescribableResource for LoadBalancerInfo {
         Some(format!(
             "https://console.aws.amazon.com/ec2/v2/home?region={region}#LoadBalancer:loadBalancerArn={}",
             self.arn
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws elbv2 describe-load-balancers --load-balancer-arns {} --region {}",
+            shell_quote(&self.arn),
+            shell_quote(region)
         ))
     }
 }

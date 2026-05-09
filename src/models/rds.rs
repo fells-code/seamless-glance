@@ -2,7 +2,10 @@ use async_trait::async_trait;
 
 use crate::{
     aws::clients::AwsClients,
-    models::{describable::DescribableResource, service_status::ServiceStatus},
+    models::{
+        describable::{shell_quote, DescribableResource},
+        service_status::ServiceStatus,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -48,6 +51,14 @@ impl DescribableResource for RdsInstanceInfo {
         Some(format!(
             "https://{}.console.aws.amazon.com/rds/home?region={}#database:id={}",
             region, region, self.identifier
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws rds describe-db-instances --db-instance-identifier {} --region {}",
+            shell_quote(&self.identifier),
+            shell_quote(region)
         ))
     }
 }

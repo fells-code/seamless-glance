@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 
-use crate::{aws::clients::AwsClients, models::describable::DescribableResource};
+use crate::{
+    aws::clients::AwsClients,
+    models::describable::{shell_quote, DescribableResource},
+};
 
 #[derive(Debug, Clone)]
 pub struct Ec2InstanceInfo {
@@ -40,6 +43,14 @@ impl DescribableResource for Ec2InstanceInfo {
         Some(format!(
             "https://console.aws.amazon.com/ec2/v2/home?region={region}#InstanceDetails:instanceId={}",
             self.id
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws ec2 describe-instances --instance-ids {} --region {}",
+            shell_quote(&self.id),
+            shell_quote(region)
         ))
     }
 }

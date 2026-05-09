@@ -2,7 +2,10 @@ use async_trait::async_trait;
 
 use crate::{
     aws::clients::AwsClients,
-    models::{describable::DescribableResource, service_status::ServiceStatus},
+    models::{
+        describable::{shell_quote, DescribableResource},
+        service_status::ServiceStatus,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -44,6 +47,14 @@ impl DescribableResource for SqsQueueInfo {
         Some(format!(
             "https://{}.console.aws.amazon.com/sqs/v3/home?region={}#/queues/{}",
             region, region, self.name
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws sqs get-queue-attributes --queue-url {} --attribute-names All --region {}",
+            shell_quote(&self.queue_url),
+            shell_quote(region)
         ))
     }
 }

@@ -30,9 +30,9 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     } else if app.show_help {
         "Help — Esc Close   ↑ / ↓ Scroll"
     } else if app.active_view == ActiveView::Ec2 {
-        "[d] Describe    [s] Shell into instance   [o] Open     [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
+        "[d] Describe   [c] CLI   [s] Shell into instance   [o] Open   [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
     } else {
-        "[d] Describe   [o] Open    [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
+        "[d] Describe   [c] CLI   [o] Open   [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
     };
 
     let footer = Paragraph::new(footer_text)

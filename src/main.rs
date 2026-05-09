@@ -287,6 +287,11 @@ async fn main() -> anyhow::Result<()> {
                     app.trigger_describe().await;
                 }
             }
+            KeyCode::Char('c') => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    app.trigger_cli();
+                }
+            }
             KeyCode::Char('g') => {
                 if !app.command_mode && !app.show_help && app.overlay.is_none() {
                     app.set_global_region();

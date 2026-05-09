@@ -718,6 +718,87 @@ impl App {
         }
     }
 
+    fn trigger_cli_for_resource<T: DescribableResource + ?Sized>(&mut self, resource: &T) {
+        let region = self.action_region_for_resource(resource);
+
+        if let Some(command) = resource.cli_command(&region) {
+            self.overlay = Some(OverlayState::ConfirmCommand(ConfirmCommandState {
+                title: format!("AWS CLI for {}", resource.resource_name()),
+                command,
+                scroll: 0,
+            }));
+            self.footer_mode = FooterMode::Overlay;
+        }
+    }
+
+    pub fn trigger_cli(&mut self) {
+        self.overlay = None;
+
+        match self.active_view {
+            ActiveView::Ec2 => {
+                if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
+                    self.trigger_cli_for_resource(&instance);
+                }
+            }
+            ActiveView::Lambda => {
+                if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
+                    self.trigger_cli_for_resource(&func);
+                }
+            }
+            ActiveView::CloudWatch => {
+                if let Some(item) = self.selected_resource(&self.cloudwatch_alarms).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::Secrets => {
+                if let Some(item) = self.selected_resource(&self.secrets).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::Vpc => {
+                if let Some(item) = self.selected_resource(&self.vpcs).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::Ecs => {
+                if let Some(item) = self.selected_resource(&self.ecs_clusters).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::Rds => {
+                if let Some(item) = self.selected_resource(&self.rds_instances).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::Apigateway => {
+                if let Some(item) = self.selected_resource(&self.apigateway_apis).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::Sqs => {
+                if let Some(item) = self.selected_resource(&self.sqs_queues_data).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::LoadBalancers => {
+                if let Some(item) = self.selected_resource(&self.load_balancers).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::TargetGroups => {
+                if let Some(item) = self.selected_resource(&self.target_groups).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            ActiveView::SecurityGroups => {
+                if let Some(item) = self.selected_resource(&self.security_groups).cloned() {
+                    self.trigger_cli_for_resource(&item);
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn trigger_ssh(&mut self) {
         if self.active_view != ActiveView::Ec2 {
             return;

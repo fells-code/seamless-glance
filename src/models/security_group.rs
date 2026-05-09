@@ -1,5 +1,5 @@
 use crate::aws::clients::AwsClients;
-use crate::models::describable::DescribableResource;
+use crate::models::describable::{shell_quote, DescribableResource};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -34,6 +34,14 @@ impl DescribableResource for SecurityGroupInfo {
         Some(format!(
             "https://console.aws.amazon.com/ec2/v2/home?region={region}#SecurityGroup:groupId={}",
             self.id
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws ec2 describe-security-groups --group-ids {} --region {}",
+            shell_quote(&self.id),
+            shell_quote(region)
         ))
     }
 }

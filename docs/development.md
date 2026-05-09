@@ -70,6 +70,12 @@ For roadmap work, also ask:
 - does this help identify waste or low-value spend?
 - does this make the next operator action obvious?
 
+When adding or changing resource actions, prefer this ladder:
+
+- in-app describe for quick context
+- AWS CLI command for precise operator handoff
+- AWS console pivot for visual follow-up
+
 ## Validation Expectations
 
 Run the strongest checks that fit the change. Minimum expectations:

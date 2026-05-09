@@ -140,10 +140,11 @@ This design keeps the header accurate even when a service view is active.
 User actions typically route through `App` helpers:
 
 - `trigger_describe`
+- `trigger_cli`
 - `trigger_open`
 - `trigger_ssh`
 
-Those helpers pull the selected row, derive a console URL or description request, and open an overlay or external browser action as needed.
+Those helpers pull the selected row, derive a description request, CLI command, or console URL, and open an overlay or external browser action as needed.
 
 For region-aware resources, action handlers should prefer the row's own region over the currently selected UI region. This matters most in global aggregation views, where a generic fallback region can otherwise produce misleading console links or failed describe calls.
 

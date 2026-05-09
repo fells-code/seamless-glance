@@ -2,7 +2,10 @@ use async_trait::async_trait;
 
 use crate::{
     aws::clients::AwsClients,
-    models::{describable::DescribableResource, service_status::ServiceStatus},
+    models::{
+        describable::{shell_quote, DescribableResource},
+        service_status::ServiceStatus,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -42,6 +45,14 @@ impl DescribableResource for VpcInfo {
         Some(format!(
             "https://console.aws.amazon.com/vpcconsole/home?region={}#VpcDetails:VpcId={}",
             region, self.vpc_id
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws ec2 describe-vpcs --vpc-ids {} --region {}",
+            shell_quote(&self.vpc_id),
+            shell_quote(region)
         ))
     }
 }

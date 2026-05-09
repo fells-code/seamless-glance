@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::aws::clients::AwsClients;
-use crate::models::describable::DescribableResource;
+use crate::models::describable::{shell_quote, DescribableResource};
 use crate::models::service_status::ServiceStatus;
 
 #[derive(Debug, Clone)]
@@ -46,6 +46,14 @@ impl DescribableResource for LambdaFunctionInfo {
         Some(format!(
             "https://console.aws.amazon.com/lambda/home?region={region}#/functions/{}",
             self.name
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws lambda get-function --function-name {} --region {}",
+            shell_quote(&self.name),
+            shell_quote(region)
         ))
     }
 }

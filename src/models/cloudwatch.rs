@@ -1,6 +1,9 @@
 use crate::{
     aws::clients::AwsClients,
-    models::{describable::DescribableResource, service_status::ServiceStatus},
+    models::{
+        describable::{shell_quote, DescribableResource},
+        service_status::ServiceStatus,
+    },
 };
 use async_trait::async_trait;
 
@@ -40,6 +43,14 @@ impl DescribableResource for CloudWatchAlarm {
         Some(format!(
             "https://console.aws.amazon.com/cloudwatch/home?region={region}#alarmsV2:alarm/{}",
             self.name
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws cloudwatch describe-alarms --alarm-names {} --region {}",
+            shell_quote(&self.name),
+            shell_quote(region)
         ))
     }
 }

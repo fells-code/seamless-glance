@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::{aws::clients::AwsClients, models::describable::DescribableResource};
+use crate::{
+    aws::clients::AwsClients,
+    models::describable::{shell_quote, DescribableResource},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EcsClusterInfo {
@@ -37,6 +40,14 @@ impl DescribableResource for EcsClusterInfo {
         Some(format!(
             "https://console.aws.amazon.com/ecs/v2/clusters/{}/services?region={}",
             self.name, region
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws ecs describe-clusters --clusters {} --include TAGS --region {}",
+            shell_quote(&self.arn),
+            shell_quote(region)
         ))
     }
 }
