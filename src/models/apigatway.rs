@@ -28,10 +28,15 @@ impl DescribableResource for ApiGatewayInfo {
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
         if self.api_type == "REST" {
-            let resp = clients.apigw.get_rest_apis().send().await?;
+            let resp = clients
+                .apigw
+                .get_rest_api()
+                .rest_api_id(&self.id)
+                .send()
+                .await?;
             Ok(format!("{:#?}", resp))
         } else {
-            let resp = clients.apigwv2.get_apis().send().await?;
+            let resp = clients.apigwv2.get_api().api_id(&self.id).send().await?;
             Ok(format!("{:#?}", resp))
         }
     }

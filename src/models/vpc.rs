@@ -28,7 +28,12 @@ impl DescribableResource for VpcInfo {
     }
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.sm.list_secrets().send().await?;
+        let resp = clients
+            .ec2
+            .describe_vpcs()
+            .vpc_ids(&self.vpc_id)
+            .send()
+            .await?;
 
         Ok(format!("{:#?}", resp))
     }

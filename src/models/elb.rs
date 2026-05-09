@@ -42,7 +42,8 @@ impl DescribableResource for LoadBalancerInfo {
 
     fn console_url(&self, region: &str) -> Option<String> {
         Some(format!(
-            "https://console.aws.amazon.com/ec2/v2/home?region={region}#LoadBalancers:"
+            "https://console.aws.amazon.com/ec2/v2/home?region={region}#LoadBalancer:loadBalancerArn={}",
+            self.arn
         ))
     }
 }

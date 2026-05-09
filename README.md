@@ -1,16 +1,157 @@
-# tfcost (Rust)
+# Seamless Glance
 
-Terraform plan → AWS daily/monthly cost estimator with an optional TUI.
+Terminal-native AWS visibility for operators who want fast account and service context without living in the AWS console.
 
-## Quick start
+The product is currently evolving from a general service inventory viewer toward a triage accelerator that highlights wasted resources and gives fast pivots into the AWS CLI and AWS console.
+
+## What It Does
+
+Seamless Glance is a Rust TUI that connects to AWS using the standard SDK credential chain and presents:
+
+- account overview data
+- monthly cost and service cost breakdowns
+- region-scoped and selected global service inventories
+- drill-down views for common AWS services
+- console deep links, resource describe overlays, and EC2 SSH helpers
+
+The long-term emphasis is:
+
+- surface what needs attention first
+- catalog waste and low-value resources
+- make next-step operator actions fast
+
+Current first-class views:
+
+- Account Overview
+- Cost Overview
+- VPC
+- EC2
+- CloudWatch
+- Lambda
+- Secrets Manager
+- ECS
+- API Gateway
+- RDS
+- SQS
+- Load Balancers
+- Target Groups
+- Security Groups
+
+## Requirements
+
+- Rust toolchain for local development
+- valid AWS credentials available to the AWS SDK
+- a Seamless Glance license file at `~/.seamless-glance/license.json`, or a first run that can create a trial license there
+
+On first run, the app can create a local trial license automatically. Paid licenses are validated at startup.
+
+## Run Locally
 
 ```bash
-# 1) Create JSON plan output from Terraform:
-terraform plan -out=plan.out
-terraform show -json plan.out > plan.json
+cargo run
+```
 
-# 2) Run the estimator (plain table):
-cargo run -- --plan plan.json --region us-east-1
+Useful CLI options:
 
-# 3) TUI mode:
-cargo run -- --plan plan.json --region us-east-1 --tui
+```bash
+cargo run -- --help
+cargo run -- --version
+cargo run -- --license-status
+```
+
+## Controls
+
+Primary navigation:
+
+- `1` Account Overview
+- `2` Cost Overview
+- `3` VPC
+- `4` EC2
+- `5` CloudWatch
+- `6` Lambda
+- `7` Secrets Manager
+- `8` ECS
+- `9` API Gateway
+
+General controls:
+
+- `←` / `→` change region
+- `↑` / `↓` move selection or scroll overlays
+- `/` open command palette
+- `?` open help
+- `r` refresh active view
+- `d` describe selected resource
+- `o` open selected resource in the AWS console
+- `g` jump to the global region slot
+- `s` prepare an SSH command for the selected EC2 instance
+- `q` quit
+
+Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
+
+Command palette shortcuts currently include:
+
+- `ecs`
+- `ec2`
+- `rds`
+- `cost`
+- `lambda`
+- `apigw`
+- `sqs`
+- `vpc`
+- `cw`
+- `sm`
+- `lb`
+- `tg`
+- `sg`
+- `region <name>`
+- `rg <name>`
+
+## Global View Notes
+
+The special `global` region slot is currently implemented for:
+
+- EC2
+- Lambda
+- RDS
+
+Other views remain region-scoped today.
+
+## Project Structure
+
+- [`src/main.rs`](/Users/brandoncorbett/git/seamless-glance/src/main.rs) owns process startup, license gating, terminal setup, and key handling.
+- [`src/app/mod.rs`](/Users/brandoncorbett/git/seamless-glance/src/app/mod.rs) owns application state, refresh orchestration, view transitions, overlays, and resource actions.
+- [`src/aws/`](/Users/brandoncorbett/git/seamless-glance/src/aws) contains AWS service fetchers and SDK client wiring.
+- [`src/models/`](/Users/brandoncorbett/git/seamless-glance/src/models) defines data models rendered by the UI.
+- [`src/ui/`](/Users/brandoncorbett/git/seamless-glance/src/ui) contains rendering, overlays, command palette, and terminal helpers.
+- [`src/license/`](/Users/brandoncorbett/git/seamless-glance/src/license) handles trial creation, paid license loading, and signature validation.
+- [`src/cache/`](/Users/brandoncorbett/git/seamless-glance/src/cache) currently caches cost data.
+
+Longer-form references:
+
+- [Architecture](docs/architecture.md)
+- [Development Guide](docs/development.md)
+- [Release Process](RELEASE.md)
+- [Agent Guidance](AGENTS.md)
+
+## Build And Quality Commands
+
+```bash
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
+cargo test --all
+make build
+make release-local
+```
+
+There is currently no meaningful committed test suite under `tests/`, so `cargo test` is mostly a safety net for future additions.
+
+## Documentation Policy
+
+This repository treats documentation as part of the product:
+
+- update `README.md` when user-facing behavior changes
+- update `docs/architecture.md` when modules, flows, or ownership change
+- update `docs/development.md` when the workflow or expectations change
+- update `AGENTS.md` whenever feature scope, team goals, or maintenance rules change
+
+If a feature ships without its docs, the change is incomplete.

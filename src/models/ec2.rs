@@ -21,6 +21,10 @@ impl DescribableResource for Ec2InstanceInfo {
         self.name.clone().unwrap_or_else(|| self.id.clone())
     }
 
+    fn action_region(&self) -> Option<&str> {
+        Some(&self.region)
+    }
+
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
         let resp = clients
             .ec2

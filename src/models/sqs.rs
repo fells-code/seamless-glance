@@ -15,6 +15,7 @@ pub struct SqsSummary {
 #[derive(Debug, Clone)]
 pub struct SqsQueueInfo {
     pub name: String,
+    pub queue_url: String,
     pub is_fifo: bool,
     pub messages_available: i64,
     pub messages_in_flight: i64,
@@ -28,7 +29,13 @@ impl DescribableResource for SqsQueueInfo {
     }
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.sqs.list_queues().send().await?;
+        let resp = clients
+            .sqs
+            .get_queue_attributes()
+            .queue_url(&self.queue_url)
+            .attribute_names(aws_sdk_sqs::types::QueueAttributeName::All)
+            .send()
+            .await?;
 
         Ok(format!("{:#?}", resp))
     }

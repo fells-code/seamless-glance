@@ -15,6 +15,7 @@ pub struct RdsSummary {
 #[derive(Debug, Clone)]
 pub struct RdsInstanceInfo {
     pub identifier: String,
+    pub region: String,
     pub engine: String,
     pub instance_class: String,
     pub status: String,
@@ -28,8 +29,17 @@ impl DescribableResource for RdsInstanceInfo {
         self.identifier.clone()
     }
 
+    fn action_region(&self) -> Option<&str> {
+        Some(&self.region)
+    }
+
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.rds.describe_db_instances().send().await?;
+        let resp = clients
+            .rds
+            .describe_db_instances()
+            .db_instance_identifier(&self.identifier)
+            .send()
+            .await?;
 
         Ok(format!("{:#?}", resp))
     }

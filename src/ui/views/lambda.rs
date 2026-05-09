@@ -14,15 +14,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         app.scroll_offset = 0;
     }
 
-    // Clamp selection to bounds
     if total_rows > 0 {
         app.selected_row = app.selected_row.min(total_rows - 1);
     }
 
-    // How many rows can we show?
-    let visible_height = area.height.saturating_sub(3) as usize; // header + borders
+    let visible_height = area.height.saturating_sub(3) as usize;
 
-    // Keep selected row in view
     if app.selected_row < app.scroll_offset as usize {
         app.scroll_offset = app.selected_row as u16;
     } else if app.selected_row >= app.scroll_offset as usize + visible_height {
@@ -41,8 +38,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             } else {
                 Style::default().fg(app.theme.text)
             };
+
             Row::new(vec![
                 Cell::from(f.name.clone()),
+                Cell::from(f.region.clone()),
                 Cell::from(f.runtime.clone()),
                 Cell::from(f.memory_mb.to_string()),
                 Cell::from(f.timeout_sec.to_string()),
@@ -54,17 +53,19 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let table = Table::new(
         rows,
-        &[
-            Constraint::Percentage(30),
-            Constraint::Percentage(15),
+        [
+            Constraint::Percentage(24),
+            Constraint::Percentage(14),
+            Constraint::Percentage(14),
             Constraint::Percentage(10),
             Constraint::Percentage(10),
-            Constraint::Percentage(35),
+            Constraint::Percentage(28),
         ],
     )
     .header(
         Row::new(vec![
             "Name",
+            "Region",
             "Runtime",
             "Memory (MB)",
             "Timeout (s)",

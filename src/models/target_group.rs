@@ -43,7 +43,8 @@ impl DescribableResource for TargetGroupInfo {
 
     fn console_url(&self, region: &str) -> Option<String> {
         Some(format!(
-            "https://console.aws.amazon.com/ec2/v2/home?region={region}#TargetGroups:"
+            "https://console.aws.amazon.com/ec2/v2/home?region={region}#TargetGroup:targetGroupArn={}",
+            self.arn
         ))
     }
 }

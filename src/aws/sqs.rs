@@ -110,6 +110,7 @@ pub async fn fetch_sqs_queues(app: &App) -> Vec<SqsQueueInfo> {
 
         queues.push(SqsQueueInfo {
             name,
+            queue_url: url.to_string(),
             is_fifo,
             messages_available,
             messages_in_flight,

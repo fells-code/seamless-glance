@@ -32,7 +32,8 @@ impl DescribableResource for SecurityGroupInfo {
 
     fn console_url(&self, region: &str) -> Option<String> {
         Some(format!(
-            "https://console.aws.amazon.com/ec2/v2/home?region={region}#SecurityGroups:"
+            "https://console.aws.amazon.com/ec2/v2/home?region={region}#SecurityGroup:groupId={}",
+            self.id
         ))
     }
 }

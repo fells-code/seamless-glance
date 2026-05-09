@@ -23,7 +23,12 @@ impl DescribableResource for SecretInfo {
     }
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.sm.list_secrets().send().await?;
+        let resp = clients
+            .sm
+            .describe_secret()
+            .secret_id(&self.name)
+            .send()
+            .await?;
 
         Ok(format!("{:#?}", resp))
     }

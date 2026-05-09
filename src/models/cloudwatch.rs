@@ -26,7 +26,12 @@ impl DescribableResource for CloudWatchAlarm {
     }
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.cw.describe_alarms().send().await?;
+        let resp = clients
+            .cw
+            .describe_alarms()
+            .alarm_names(&self.name)
+            .send()
+            .await?;
 
         Ok(format!("{:#?}", resp))
     }

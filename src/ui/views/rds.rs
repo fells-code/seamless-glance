@@ -18,9 +18,8 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
         app.selected_row = app.selected_row.min(total_rows - 1);
     }
 
-    let visible_height = area.height.saturating_sub(3) as usize; // header + borders
+    let visible_height = area.height.saturating_sub(3) as usize;
 
-    // Keep selected row in view
     if app.selected_row < app.scroll_offset as usize {
         app.scroll_offset = app.selected_row as u16;
     } else if app.selected_row >= app.scroll_offset as usize + visible_height {
@@ -28,10 +27,16 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     if !matches!(app.rds_summary.status, ServiceStatus::Ok) {
-        let msg = match app.rds_summary.status {
-            ServiceStatus::AccessDenied => "Access denied to RDS",
-            ServiceStatus::Unavailable(_) => "RDS unavailable",
-            _ => "",
+        let msg = match &app.rds_summary.status {
+            ServiceStatus::AccessDenied => "Access denied to RDS".to_string(),
+            ServiceStatus::Unavailable(msg) => {
+                if msg.is_empty() {
+                    "RDS unavailable".to_string()
+                } else {
+                    format!("RDS unavailable: {}", msg)
+                }
+            }
+            _ => String::new(),
         };
 
         let p = Paragraph::new(msg)
@@ -57,6 +62,7 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
 
             Row::new(vec![
                 Cell::from(db.identifier.clone()),
+                Cell::from(db.region.clone()),
                 Cell::from(db.engine.clone()),
                 Cell::from(db.instance_class.clone()),
                 Cell::from(db.status.clone()),
@@ -68,11 +74,12 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
         .collect();
 
     let widths = [
-        Constraint::Percentage(30),
-        Constraint::Percentage(15),
-        Constraint::Percentage(20),
+        Constraint::Percentage(22),
+        Constraint::Percentage(14),
+        Constraint::Percentage(12),
+        Constraint::Percentage(18),
         Constraint::Percentage(10),
-        Constraint::Percentage(15),
+        Constraint::Percentage(14),
         Constraint::Percentage(10),
     ];
 
@@ -80,6 +87,7 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
         .header(
             Row::new(vec![
                 "Identifier",
+                "Region",
                 "Engine",
                 "Class",
                 "Status",

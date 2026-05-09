@@ -238,7 +238,7 @@ impl App {
 
         self.current_region_index = index;
 
-        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
+        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
             .region(self.current_region().clone())
             .load()
             .await;
@@ -497,8 +497,29 @@ impl App {
         items.get(self.selected_row)
     }
 
+    fn action_region_for_resource<T: DescribableResource + ?Sized>(&self, resource: &T) -> String {
+        resource
+            .action_region()
+            .unwrap_or_else(|| self.current_region().as_ref())
+            .to_string()
+    }
+
     async fn describe_from_resource<T: DescribableResource + ?Sized>(&mut self, resource: &T) {
-        match resource.describe(&self.aws).await {
+        let action_region = self.action_region_for_resource(resource);
+
+        let result = if action_region == self.current_region().as_ref() {
+            resource.describe(&self.aws).await
+        } else {
+            let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
+                .region(Region::new(action_region.clone()))
+                .load()
+                .await;
+
+            let aws = AwsClients::new(&sdk_config);
+            resource.describe(&aws).await
+        };
+
+        match result {
             Ok(text) => {
                 self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
                     title: resource.resource_name(),
@@ -593,12 +614,11 @@ impl App {
         // Always close overlay first
         self.overlay = None;
 
-        let region = self.current_region().as_ref();
-
         match self.active_view {
             ActiveView::Ec2 => {
                 if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
-                    if let Some(url) = instance.console_url(region) {
+                    let region = self.action_region_for_resource(&instance);
+                    if let Some(url) = instance.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -606,7 +626,8 @@ impl App {
 
             ActiveView::Lambda => {
                 if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
-                    if let Some(url) = func.console_url(region) {
+                    let region = self.action_region_for_resource(&func);
+                    if let Some(url) = func.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -614,7 +635,8 @@ impl App {
 
             ActiveView::CloudWatch => {
                 if let Some(item) = self.selected_resource(&self.cloudwatch_alarms).cloned() {
-                    if let Some(url) = item.console_url(region) {
+                    let region = self.action_region_for_resource(&item);
+                    if let Some(url) = item.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -622,7 +644,8 @@ impl App {
 
             ActiveView::Secrets => {
                 if let Some(item) = self.selected_resource(&self.secrets).cloned() {
-                    if let Some(url) = item.console_url(region) {
+                    let region = self.action_region_for_resource(&item);
+                    if let Some(url) = item.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -630,7 +653,8 @@ impl App {
 
             ActiveView::Vpc => {
                 if let Some(item) = self.selected_resource(&self.vpcs).cloned() {
-                    if let Some(url) = item.console_url(region) {
+                    let region = self.action_region_for_resource(&item);
+                    if let Some(url) = item.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -638,7 +662,8 @@ impl App {
 
             ActiveView::Ecs => {
                 if let Some(item) = self.selected_resource(&self.ecs_clusters).cloned() {
-                    if let Some(url) = item.console_url(region) {
+                    let region = self.action_region_for_resource(&item);
+                    if let Some(url) = item.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -646,7 +671,8 @@ impl App {
 
             ActiveView::Rds => {
                 if let Some(item) = self.selected_resource(&self.rds_instances).cloned() {
-                    if let Some(url) = item.console_url(region) {
+                    let region = self.action_region_for_resource(&item);
+                    if let Some(url) = item.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -654,7 +680,8 @@ impl App {
 
             ActiveView::Apigateway => {
                 if let Some(item) = self.selected_resource(&self.apigateway_apis).cloned() {
-                    if let Some(url) = item.console_url(region) {
+                    let region = self.action_region_for_resource(&item);
+                    if let Some(url) = item.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -662,7 +689,8 @@ impl App {
 
             ActiveView::LoadBalancers => {
                 if let Some(lb) = self.selected_resource(&self.load_balancers).cloned() {
-                    if let Some(url) = lb.console_url(self.current_region().as_ref()) {
+                    let region = self.action_region_for_resource(&lb);
+                    if let Some(url) = lb.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -670,7 +698,8 @@ impl App {
 
             ActiveView::TargetGroups => {
                 if let Some(tg) = self.selected_resource(&self.target_groups).cloned() {
-                    if let Some(url) = tg.console_url(self.current_region().as_ref()) {
+                    let region = self.action_region_for_resource(&tg);
+                    if let Some(url) = tg.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }
@@ -678,7 +707,8 @@ impl App {
 
             ActiveView::SecurityGroups => {
                 if let Some(sg) = self.selected_resource(&self.security_groups).cloned() {
-                    if let Some(url) = sg.console_url(self.current_region().as_ref()) {
+                    let region = self.action_region_for_resource(&sg);
+                    if let Some(url) = sg.console_url(&region) {
                         let _ = open_in_browser(&url);
                     }
                 }

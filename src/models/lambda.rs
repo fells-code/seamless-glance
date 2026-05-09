@@ -14,6 +14,7 @@ pub struct LambdaSummary {
 #[derive(Debug, Clone)]
 pub struct LambdaFunctionInfo {
     pub name: String,
+    pub region: String,
     pub runtime: String,
     pub memory_mb: i32,
     pub timeout_sec: i32,
@@ -24,6 +25,10 @@ pub struct LambdaFunctionInfo {
 impl DescribableResource for LambdaFunctionInfo {
     fn resource_name(&self) -> String {
         self.name.clone()
+    }
+
+    fn action_region(&self) -> Option<&str> {
+        Some(&self.region)
     }
 
     async fn describe(&self, clients: &AwsClients) -> Result<String> {

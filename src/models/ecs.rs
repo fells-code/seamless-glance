@@ -22,7 +22,13 @@ impl DescribableResource for EcsClusterInfo {
     }
 
     async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
-        let resp = clients.ecs.list_clusters().send().await?;
+        let resp = clients
+            .ecs
+            .describe_clusters()
+            .clusters(&self.arn)
+            .include(aws_sdk_ecs::types::ClusterField::Tags)
+            .send()
+            .await?;
 
         Ok(format!("{:#?}", resp))
     }
