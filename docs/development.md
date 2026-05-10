@@ -51,10 +51,12 @@ Be careful when changing startup behavior because licensing, config, and AWS reg
 ### App-first orchestration
 
 Most interactive behavior is coordinated from [`src/app/mod.rs`](/Users/brandoncorbett/git/seamless-glance/src/app/mod.rs). If a change affects refreshes, selected rows, overlays, or region behavior, inspect that file first.
+This is also where cost-savings opportunities are derived from the combination of cached billing insight and live AWS resource data.
 
 ### Service fetchers return UI-ready data
 
 The `src/aws/` modules generally map AWS responses into model structs that are ready for display. Keep UI formatting concerns out of fetchers where possible, but include enough structure that the UI layer stays simple.
+Cost Explorer is a slight exception: richer aggregation in `src/aws/cost.rs` is intentional so usage-type summaries can be cached and reused by both Cost Overview and Cost Savings.
 
 ### Terminal UX matters
 
@@ -77,6 +79,12 @@ When adding or changing resource actions, prefer this ladder:
 - in-app describe for quick context
 - AWS CLI command for precise operator handoff
 - AWS console pivot for visual follow-up
+
+When adding or changing cost-oriented features, prefer this ladder:
+
+- improve cached factual billing data first
+- derive explainable savings heuristics from cost + usage + findings
+- surface recommendations in a way that routes back into actionable service screens
 
 ## Validation Expectations
 

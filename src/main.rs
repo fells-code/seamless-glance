@@ -268,6 +268,11 @@ async fn main() -> anyhow::Result<()> {
                     && app.overlay.is_none()
                 {
                     app.open_selected_finding().await;
+                } else if app.active_view == ActiveView::CostSavings
+                    && !app.show_help
+                    && app.overlay.is_none()
+                {
+                    app.open_selected_cost_savings_opportunity().await;
                 }
             }
             KeyCode::Esc if app.overlay.is_some() => {
@@ -454,6 +459,9 @@ async fn main() -> anyhow::Result<()> {
 
             KeyCode::Char('9') => {
                 activate_view(&mut app, ActiveView::Apigateway).await;
+            }
+            KeyCode::Char('0') => {
+                activate_view(&mut app, ActiveView::CostSavings).await;
             }
             _ => {}
         }

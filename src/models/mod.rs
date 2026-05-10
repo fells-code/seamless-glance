@@ -17,5 +17,7 @@ pub mod target_group;
 pub mod vpc;
 
 pub use account_overview::*;
-pub use cost::BudgetInfo;
+pub use cost::{
+    BudgetInfo, CostSavingsOpportunity, SavingsRoute, ServiceCostInsight, UsageTypeCost,
+};
 pub use ecs::*;

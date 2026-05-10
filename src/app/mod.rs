@@ -19,7 +19,10 @@ use crate::models::service_status::ServiceStatus;
 use crate::models::sqs::SqsQueueInfo;
 use crate::models::target_group::TargetGroupInfo;
 use crate::models::vpc::VpcInfo;
-use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo};
+use crate::models::{
+    AccountOverview, BudgetInfo, CostSavingsOpportunity, EcsClusterInfo, SavingsRoute,
+    ServiceCostInsight,
+};
 use crate::resources::ssh;
 use crate::ui::footer::FooterMode;
 use crate::ui::open::open_in_browser;
@@ -41,6 +44,7 @@ pub enum ActiveView {
     Findings,
     AccountOverview,
     CostOverview,
+    CostSavings,
     Ecs,
     Ec2,
     Rds,
@@ -84,6 +88,8 @@ pub struct App {
     pub budget: BudgetInfo,
     pub monthly_costs: Vec<f64>,
     pub service_costs: Vec<(String, f64)>,
+    pub service_cost_insights: Vec<ServiceCostInsight>,
+    pub cost_savings_opportunities: Vec<CostSavingsOpportunity>,
 
     // ECS
     pub ecs_clusters: Vec<EcsClusterInfo>,
@@ -145,9 +151,13 @@ impl App {
                 monthly_budget: 0.0,
                 month_to_date_cost: 0.0,
                 forecast: 0.0,
+                forecast_low: None,
+                forecast_high: None,
             },
             monthly_costs: vec![0.0; 6],
             service_costs: vec![],
+            service_cost_insights: vec![],
+            cost_savings_opportunities: vec![],
             theme: Theme::autumn(),
             theme_name: ThemeName::Autumn,
             findings: vec![],
@@ -299,6 +309,7 @@ impl App {
             ActiveView::Findings => self.findings.len(),
             ActiveView::Ecs => self.ecs_clusters.len(),
             ActiveView::Ec2 => self.ec2_instances.len(),
+            ActiveView::CostSavings => self.cost_savings_opportunities.len(),
             ActiveView::Rds => self.rds_instances.len(),
             ActiveView::Lambda => self.lambda_functions.len(),
             ActiveView::Apigateway => self.apigateway_apis.len(),
@@ -1234,6 +1245,230 @@ impl App {
         });
 
         self.findings = findings;
+        self.rebuild_cost_savings();
+    }
+
+    fn service_insights_for_aliases<'a>(&'a self, aliases: &[&str]) -> Vec<&'a ServiceCostInsight> {
+        self.service_cost_insights
+            .iter()
+            .filter(|insight| {
+                aliases
+                    .iter()
+                    .any(|alias| insight.service.eq_ignore_ascii_case(alias))
+            })
+            .collect()
+    }
+
+    fn service_cost_for_aliases(&self, aliases: &[&str]) -> f64 {
+        self.service_insights_for_aliases(aliases)
+            .into_iter()
+            .map(|insight| insight.monthly_cost)
+            .sum()
+    }
+
+    fn service_usage_preview_for_aliases(&self, aliases: &[&str]) -> String {
+        let mut usage_lines = self
+            .service_insights_for_aliases(aliases)
+            .into_iter()
+            .flat_map(|insight| insight.top_usage_types.iter().map(|usage| usage.summary()))
+            .collect::<Vec<_>>();
+
+        usage_lines.dedup();
+
+        if usage_lines.is_empty() {
+            "No usage detail available in cache".into()
+        } else {
+            usage_lines
+                .into_iter()
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    }
+
+    pub fn rebuild_cost_savings(&mut self) {
+        let mut opportunities = Vec::new();
+
+        let running_instances = self
+            .ec2_instances
+            .iter()
+            .filter(|instance| instance.is_running())
+            .count();
+        let low_cpu_instances = self
+            .ec2_instances
+            .iter()
+            .filter(|instance| instance.has_sustained_low_cpu())
+            .count();
+        let stopped_instances = self
+            .ec2_instances
+            .iter()
+            .filter(|instance| instance.is_stopped())
+            .count();
+        let total_instances = self.ec2_instances.len();
+
+        let ec2_compute_cost =
+            self.service_cost_for_aliases(&["Amazon Elastic Compute Cloud - Compute"]);
+        let ec2_other_cost = self.service_cost_for_aliases(&["EC2 - Other"]);
+        let ec2_usage = self.service_usage_preview_for_aliases(&[
+            "Amazon Elastic Compute Cloud - Compute",
+            "EC2 - Other",
+        ]);
+
+        if low_cpu_instances > 0 && running_instances > 0 && ec2_compute_cost > 0.0 {
+            let ratio = low_cpu_instances as f64 / running_instances as f64;
+            let estimated_monthly_savings = ec2_compute_cost * (ratio * 0.5).min(0.40);
+
+            if estimated_monthly_savings > 0.0 {
+                opportunities.push(CostSavingsOpportunity {
+                    title: "Right-size underused EC2".into(),
+                    service: "EC2".into(),
+                    monthly_cost: ec2_compute_cost,
+                    estimated_monthly_savings,
+                    evidence: format!(
+                        "{low_cpu_instances} running instance(s) averaged below {:.1}% CPU over the last {} days",
+                        Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
+                        Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS
+                    ),
+                    usage_context: ec2_usage.clone(),
+                    recommendation:
+                        "Open EC2 and right-size or stop persistently underused instances."
+                            .into(),
+                    route: SavingsRoute::Ec2,
+                });
+            }
+        }
+
+        if stopped_instances > 0 && total_instances > 0 && ec2_other_cost > 0.0 {
+            let ratio = stopped_instances as f64 / total_instances as f64;
+            let estimated_monthly_savings = ec2_other_cost * (ratio * 0.6).min(0.35);
+
+            if estimated_monthly_savings > 0.0 {
+                opportunities.push(CostSavingsOpportunity {
+                    title: "Trim stopped-instance drag".into(),
+                    service: "EC2".into(),
+                    monthly_cost: ec2_other_cost,
+                    estimated_monthly_savings,
+                    evidence: format!(
+                        "{stopped_instances} stopped instance(s) may still be carrying EBS, IP, or ancillary EC2-Other charges"
+                    ),
+                    usage_context: self
+                        .service_usage_preview_for_aliases(&["EC2 - Other"]),
+                    recommendation:
+                        "Review stopped EC2 instances and remove unused volumes, IPs, or old support resources."
+                            .into(),
+                    route: SavingsRoute::Ec2,
+                });
+            }
+        }
+
+        let total_load_balancers = self.load_balancers.len();
+        let load_balancers_without_path = self
+            .load_balancers
+            .iter()
+            .filter(|lb| lb.has_no_active_targets())
+            .count();
+        let orphan_target_groups = self
+            .target_groups
+            .iter()
+            .filter(|tg| tg.is_orphan_candidate())
+            .count();
+        let elb_cost = self.service_cost_for_aliases(&["Amazon Elastic Load Balancing"]);
+
+        if (load_balancers_without_path > 0 || orphan_target_groups > 0)
+            && total_load_balancers > 0
+            && elb_cost > 0.0
+        {
+            let ratio = load_balancers_without_path.max(orphan_target_groups) as f64
+                / total_load_balancers.max(1) as f64;
+            let estimated_monthly_savings = elb_cost * (ratio * 0.75).min(0.60);
+
+            if estimated_monthly_savings > 0.0 {
+                opportunities.push(CostSavingsOpportunity {
+                    title: "Clean up idle load-balancing paths".into(),
+                    service: "Load Balancing".into(),
+                    monthly_cost: elb_cost,
+                    estimated_monthly_savings,
+                    evidence: format!(
+                        "{load_balancers_without_path} load balancer(s) have no active target path and {orphan_target_groups} target group(s) look orphaned"
+                    ),
+                    usage_context: self
+                        .service_usage_preview_for_aliases(&["Amazon Elastic Load Balancing"]),
+                    recommendation:
+                        "Open load balancers and target groups, then remove idle listeners or detached paths."
+                            .into(),
+                    route: SavingsRoute::LoadBalancers,
+                });
+            }
+        }
+
+        let lambda_high_memory = self
+            .lambda_functions
+            .iter()
+            .filter(|function| function.has_high_memory())
+            .count();
+        let lambda_cost = self.service_cost_for_aliases(&["AWS Lambda"]);
+
+        if lambda_high_memory > 0 && !self.lambda_functions.is_empty() && lambda_cost > 0.0 {
+            let ratio = lambda_high_memory as f64 / self.lambda_functions.len() as f64;
+            let estimated_monthly_savings = lambda_cost * (ratio * 0.5).min(0.35);
+
+            if estimated_monthly_savings > 0.0 {
+                opportunities.push(CostSavingsOpportunity {
+                    title: "Right-size Lambda memory".into(),
+                    service: "Lambda".into(),
+                    monthly_cost: lambda_cost,
+                    estimated_monthly_savings,
+                    evidence: format!(
+                        "{lambda_high_memory} function(s) are provisioned at or above {} MB",
+                        LambdaFunctionInfo::HIGH_MEMORY_THRESHOLD_MB
+                    ),
+                    usage_context: self.service_usage_preview_for_aliases(&["AWS Lambda"]),
+                    recommendation:
+                        "Open Lambda and reduce memory on overprovisioned functions where latency allows."
+                            .into(),
+                    route: SavingsRoute::Lambda,
+                });
+            }
+        }
+
+        let apis_needing_review = self
+            .apigateway_apis
+            .iter()
+            .filter(|api| api.needs_review())
+            .count();
+        let api_gateway_cost = self.service_cost_for_aliases(&["Amazon API Gateway"]);
+
+        if apis_needing_review > 0 && !self.apigateway_apis.is_empty() && api_gateway_cost > 0.0 {
+            let ratio = apis_needing_review as f64 / self.apigateway_apis.len() as f64;
+            let estimated_monthly_savings = api_gateway_cost * (ratio * 0.5).min(0.30);
+
+            if estimated_monthly_savings > 0.0 {
+                opportunities.push(CostSavingsOpportunity {
+                    title: "Retire stale API Gateway surfaces".into(),
+                    service: "API Gateway".into(),
+                    monthly_cost: api_gateway_cost,
+                    estimated_monthly_savings,
+                    evidence: format!(
+                        "{apis_needing_review} API(s) look generic or stale enough to review for retirement"
+                    ),
+                    usage_context: self
+                        .service_usage_preview_for_aliases(&["Amazon API Gateway"]),
+                    recommendation:
+                        "Open API Gateway and remove abandoned APIs or consolidate duplicated endpoints."
+                            .into(),
+                    route: SavingsRoute::Apigateway,
+                });
+            }
+        }
+
+        opportunities.sort_by(|left, right| {
+            right
+                .estimated_monthly_savings
+                .partial_cmp(&left.estimated_monthly_savings)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        self.cost_savings_opportunities = opportunities;
     }
 
     pub fn trigger_refresh(&mut self) {
@@ -1337,6 +1572,23 @@ impl App {
                 self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
                 self.vpcs = aws::vpc::fetch_vpcs(self).await;
             }
+            ActiveView::CostSavings => {
+                self.refresh_phase = RefreshPhase::Services(vec![
+                    "Cost Explorer",
+                    "EC2",
+                    "API Gateway",
+                    "Lambda",
+                    "Load Balancers",
+                    "Target Groups",
+                ]);
+                self.refresh_cost_data(true).await;
+                self.ec2_instances = aws::ec2::fetch_instances(self).await;
+                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
+                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
+                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+                aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
+            }
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
@@ -1406,7 +1658,11 @@ impl App {
             }
 
             // Views with no region-scoped data
-            ActiveView::AccountOverview | ActiveView::CostOverview => {}
+            ActiveView::AccountOverview => {}
+            ActiveView::CostOverview => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Cost Explorer"]);
+                self.refresh_cost_data(true).await;
+            }
         }
 
         self.rebuild_findings();
@@ -1418,30 +1674,70 @@ impl App {
     }
 
     pub async fn load_cost_data(&mut self) {
-        if let Some(cache) = load_if_fresh() {
-            self.budget = cache.budget;
-            self.monthly_costs = cache.monthly_costs;
-            self.service_costs = cache.service_costs;
-            self.cost_loaded = true;
-            return;
+        self.refresh_cost_data(false).await;
+    }
+
+    pub async fn refresh_cost_data(&mut self, force_refresh: bool) {
+        if !force_refresh {
+            if let Some(cache) = load_if_fresh() {
+                let cache_has_usage_insight =
+                    !cache.service_cost_insights.is_empty() || cache.service_costs.is_empty();
+
+                if cache_has_usage_insight {
+                    self.budget = cache.budget;
+                    self.monthly_costs = cache.monthly_costs;
+                    self.service_costs = cache.service_costs;
+                    self.service_cost_insights = cache.service_cost_insights;
+                    self.cost_loaded = true;
+                    self.rebuild_cost_savings();
+                    return;
+                }
+            }
         }
 
-        // Fetch fresh data
         let budget = aws::cost::fetch_budget(self).await;
         let monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
-        let service_costs = aws::cost::fetch_service_cost_breakdown(self).await;
+        let service_cost_insights = aws::cost::fetch_service_cost_insights(self).await;
+        let service_costs = service_cost_insights
+            .iter()
+            .map(|insight| (insight.service.clone(), insight.monthly_cost))
+            .collect::<Vec<_>>();
 
         self.budget = budget.clone();
         self.monthly_costs = monthly_costs.clone();
         self.service_costs = service_costs.clone();
+        self.service_cost_insights = service_cost_insights.clone();
         self.cost_loaded = true;
+        self.rebuild_cost_savings();
 
         save(&CostCache {
             fetched_at: Utc::now(),
             budget,
             monthly_costs,
             service_costs,
+            service_cost_insights,
         });
+    }
+
+    pub fn selected_cost_savings_opportunity(&self) -> Option<&CostSavingsOpportunity> {
+        self.cost_savings_opportunities.get(self.selected_row)
+    }
+
+    pub async fn open_selected_cost_savings_opportunity(&mut self) {
+        let Some(opportunity) = self.selected_cost_savings_opportunity().cloned() else {
+            return;
+        };
+
+        self.active_view = match opportunity.route {
+            SavingsRoute::Ec2 => ActiveView::Ec2,
+            SavingsRoute::Lambda => ActiveView::Lambda,
+            SavingsRoute::Apigateway => ActiveView::Apigateway,
+            SavingsRoute::LoadBalancers => ActiveView::LoadBalancers,
+        };
+
+        self.selected_row = 0;
+        self.scroll_offset = 0;
+        self.on_view_enter().await;
     }
 
     pub fn selected_resource<'a, T: DescribableResource>(

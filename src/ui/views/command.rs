@@ -71,6 +71,14 @@ pub const COMMANDS: &[Command] = &[
         aliases: &["billing", "spend"],
     },
     Command {
+        name: "savings",
+        description: "Cost savings opportunities",
+        view: ActiveView::CostSavings,
+        group: CommandGroup::Overview,
+        shortcut: Some('0'),
+        aliases: &["cost-savings", "optimize", "optimization"],
+    },
+    Command {
         name: "ec2",
         description: "EC2 instances",
         view: ActiveView::Ec2,

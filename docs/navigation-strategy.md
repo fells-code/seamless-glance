@@ -10,7 +10,7 @@ The current keyboard model works for a compact service list, but the long-term p
 
 Today the app uses a mix of:
 
-- one-key view shortcuts such as `f`, `1` through `9`
+- one-key view shortcuts such as `f`, `0`, and `1` through `9`
 - a slash command palette
 - `Tab` / `Shift+Tab` cycling across major views
 - in-view actions such as `d`, `c`, and `o`
@@ -44,6 +44,7 @@ Current expectation:
 - Findings is the default startup screen and mental hub
 - service views are drill-down destinations
 - Account Overview is the inventory snapshot for account-wide context, not the default inbox
+- Cost Savings is a recommendation layer that sits between Findings and raw billing screens
 
 ### Command Palette First
 
@@ -95,6 +96,7 @@ Recommended strategy:
 Always available:
 
 - `f` Findings
+- `0` Cost Savings
 - `/` command palette
 - `Tab` / `Shift+Tab` view cycling
 - `?` help

@@ -31,6 +31,7 @@ Current first-class views:
 - Findings
 - Account Overview
 - Cost Overview
+- Cost Savings
 - VPC
 - EC2
 - CloudWatch
@@ -76,6 +77,7 @@ Primary navigation:
 - `t` cycle through the Seamless theme set
 - `1` Account Overview
 - `2` Cost Overview
+- `0` Cost Savings
 - `3` VPC
 - `4` EC2
 - `5` CloudWatch
@@ -103,6 +105,8 @@ General controls:
 View transitions now show a loading overlay while the next screen refreshes, instead of blocking silently during fetches.
 The app now opens on Findings by default so triage is the first thing you see.
 Account Overview now serves as an inventory snapshot for the current AWS profile, with account context, footprint summaries, and a service inventory table rather than findings-style callouts.
+Cost Overview now includes budget, forecast, and usage-aware service cost context from the local billing cache.
+Cost Savings is a dedicated recommendation screen that combines spend, usage types, and waste-oriented findings into savings opportunities.
 
 Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
 
@@ -122,6 +126,7 @@ Command palette shortcuts currently include:
 
 - `findings`
 - `account`
+- `savings`
 - `ecs`
 - `ec2`
 - `rds`

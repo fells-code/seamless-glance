@@ -20,6 +20,7 @@ use crate::ui::views::apigateway::render_apigatway;
 use crate::ui::views::cloudwatch::render_cw;
 use crate::ui::views::command::command_for_view;
 use crate::ui::views::cost_overview::render_cost_overview;
+use crate::ui::views::cost_savings::render as render_cost_savings;
 use crate::ui::views::ec2::render_ec2;
 use crate::ui::views::ecs::render_ecs_clusters;
 use crate::ui::views::findings::render as render_findings;
@@ -86,6 +87,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         ActiveView::CostOverview => {
             render_cost_overview(frame, main_area, app);
+        }
+        ActiveView::CostSavings => {
+            render_cost_savings(frame, main_area, app);
         }
         ActiveView::Lambda => {
             render(frame, main_area, app);

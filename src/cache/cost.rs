@@ -7,7 +7,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::models::BudgetInfo;
+use crate::models::{BudgetInfo, ServiceCostInsight};
 
 const CACHE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 
@@ -17,6 +17,8 @@ pub struct CostCache {
     pub budget: BudgetInfo,
     pub monthly_costs: Vec<f64>,
     pub service_costs: Vec<(String, f64)>,
+    #[serde(default)]
+    pub service_cost_insights: Vec<ServiceCostInsight>,
 }
 
 fn cache_path() -> PathBuf {

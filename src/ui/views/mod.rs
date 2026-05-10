@@ -3,6 +3,7 @@ pub mod apigateway;
 pub mod cloudwatch;
 pub mod command;
 pub mod cost_overview;
+pub mod cost_savings;
 pub mod ec2;
 pub mod ecs;
 pub mod findings;

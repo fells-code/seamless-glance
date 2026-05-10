@@ -1,216 +1,298 @@
-use aws_sdk_costexplorer::types::{DateInterval, Granularity, GroupDefinition};
+use std::collections::BTreeMap;
 
+use aws_sdk_costexplorer::types::{DateInterval, Granularity, GroupDefinition, Metric};
 use chrono::{Datelike, Months, NaiveDate, Utc};
 
-use crate::{app::App, models::BudgetInfo};
+use crate::{
+    app::App,
+    models::{BudgetInfo, ServiceCostInsight, UsageTypeCost},
+};
 
-fn ce_date_range(days: i64) -> (String, String) {
-    let end = Utc::now()
-        .date_naive()
-        .pred_opt() // yesterday
-        .expect("valid date");
+fn today_exclusive() -> NaiveDate {
+    Utc::now().date_naive()
+}
 
-    let start = end - chrono::Duration::days(days);
+fn first_day_of_month(date: NaiveDate) -> NaiveDate {
+    NaiveDate::from_ymd_opt(date.year(), date.month(), 1).expect("valid first day of month")
+}
 
+fn first_day_of_next_month(date: NaiveDate) -> NaiveDate {
+    if date.month() == 12 {
+        NaiveDate::from_ymd_opt(date.year() + 1, 1, 1).expect("valid first day of next year")
+    } else {
+        NaiveDate::from_ymd_opt(date.year(), date.month() + 1, 1)
+            .expect("valid first day of next month")
+    }
+}
+
+fn interval_strings(start: NaiveDate, end_exclusive: NaiveDate) -> (String, String) {
     (
         start.format("%Y-%m-%d").to_string(),
-        end.format("%Y-%m-%d").to_string(),
+        end_exclusive.format("%Y-%m-%d").to_string(),
     )
 }
 
-pub fn current_month_interval() -> (String, String) {
-    let now = Utc::now().date_naive();
+fn interval(start: NaiveDate, end_exclusive: NaiveDate) -> DateInterval {
+    let (start, end) = interval_strings(start, end_exclusive);
 
-    // First day of the month
-    let first_day =
-        NaiveDate::from_ymd_opt(now.year(), now.month(), 1).expect("valid first day of month");
+    DateInterval::builder()
+        .start(start)
+        .end(end)
+        .build()
+        .expect("valid Cost Explorer interval")
+}
 
-    // First day of next month
-    let first_next_month = if now.month() == 12 {
-        NaiveDate::from_ymd_opt(now.year() + 1, 1, 1).expect("valid first day of next year")
-    } else {
-        NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
-            .expect("valid first day of next month")
-    };
+fn current_month_dates() -> (NaiveDate, NaiveDate) {
+    let today = today_exclusive();
+    (first_day_of_month(today), today)
+}
 
-    // Last day of this month = day before next month
-    let last_day = first_next_month
-        .pred_opt()
-        .expect("valid last day of month");
+fn forecast_month_dates() -> (NaiveDate, NaiveDate) {
+    let today = today_exclusive();
+    (today, first_day_of_next_month(today))
+}
 
-    (
-        first_day.format("%Y-%m-%d").to_string(),
-        last_day.format("%Y-%m-%d").to_string(),
-    )
+fn trailing_six_month_dates() -> (NaiveDate, NaiveDate) {
+    let today = today_exclusive();
+    let start = first_day_of_month(
+        today
+            .checked_sub_months(Months::new(5))
+            .expect("valid six month window"),
+    );
+
+    (start, today)
 }
 
 pub fn last_6_month_labels() -> Vec<String> {
-    let now = Utc::now();
+    let now = today_exclusive();
 
     (0..6)
         .map(|i| {
-            let month = now.checked_sub_months(Months::new((6 - i) as u32)).unwrap();
-
-            month.format("%b").to_string()
+            now.checked_sub_months(Months::new((5 - i) as u32))
+                .expect("valid month")
+                .format("%b")
+                .to_string()
         })
         .collect()
 }
 
-pub async fn fetch_service_cost_breakdown(app: &App) -> Vec<(String, f64)> {
-    let (start_str, end_str) = current_month_interval();
+fn metric_amount(metric_value: Option<&aws_sdk_costexplorer::types::MetricValue>) -> f64 {
+    metric_value
+        .and_then(|metric| metric.amount())
+        .and_then(|amount| amount.parse::<f64>().ok())
+        .unwrap_or(0.0)
+}
 
-    let interval = DateInterval::builder()
-        .start(&start_str)
-        .end(&end_str)
-        .build()
-        .unwrap();
+fn metric_unit(metric_value: Option<&aws_sdk_costexplorer::types::MetricValue>) -> String {
+    metric_value
+        .and_then(|metric| metric.unit())
+        .unwrap_or("")
+        .to_string()
+}
 
-    let group_def = GroupDefinition::builder()
+pub async fn fetch_service_cost_insights(app: &App) -> Vec<ServiceCostInsight> {
+    let (start, end) = current_month_dates();
+    let service_group = GroupDefinition::builder()
         .key("SERVICE")
         .r#type("DIMENSION".into())
         .build();
+    let usage_type_group = GroupDefinition::builder()
+        .key("USAGE_TYPE")
+        .r#type("DIMENSION".into())
+        .build();
 
-    let resp = app
+    let response = match app
         .aws
         .ce
         .get_cost_and_usage()
-        .time_period(interval)
+        .time_period(interval(start, end))
         .granularity(Granularity::Monthly)
-        .metrics("UnblendedCost")
-        .group_by(group_def)
+        .metrics(Metric::UnblendedCost.as_str())
+        .metrics(Metric::UsageQuantity.as_str())
+        .group_by(service_group)
+        .group_by(usage_type_group)
         .send()
         .await
-        .unwrap();
+    {
+        Ok(response) => response,
+        Err(err) => {
+            eprintln!("Cost Explorer service usage error: {:?}", err);
+            return vec![];
+        }
+    };
 
-    let mut values = vec![];
+    let mut usage_by_service = BTreeMap::<String, Vec<UsageTypeCost>>::new();
 
-    if let Some(result) = resp.results_by_time().first() {
+    if let Some(result) = response.results_by_time().first() {
         for group in result.groups() {
-            let name = group
+            let service = group
                 .keys()
                 .first()
                 .cloned()
                 .unwrap_or_else(|| "Unknown".to_string());
+            let usage_type = group
+                .keys()
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| "Unknown usage".to_string());
 
-            let amount = group
-                .metrics()
-                .expect("REASON")
-                .get("UnblendedCost")
-                .and_then(|m| m.amount())
-                .and_then(|a| a.parse::<f64>().ok())
-                .unwrap_or(0.0);
+            let metrics = group.metrics();
+            let monthly_cost =
+                metric_amount(metrics.and_then(|values| values.get("UnblendedCost")));
+            let usage_amount =
+                metric_amount(metrics.and_then(|values| values.get("UsageQuantity")));
+            let unit = metric_unit(metrics.and_then(|values| values.get("UsageQuantity")));
 
-            values.push((name, amount));
+            if monthly_cost <= 0.0 && usage_amount <= 0.0 {
+                continue;
+            }
+
+            usage_by_service
+                .entry(service)
+                .or_default()
+                .push(UsageTypeCost {
+                    usage_type,
+                    monthly_cost,
+                    usage_amount,
+                    unit,
+                });
         }
     }
 
-    values
-}
+    usage_by_service
+        .into_iter()
+        .filter_map(|(service, mut usage_lines)| {
+            usage_lines.sort_by(|left, right| {
+                right
+                    .monthly_cost
+                    .partial_cmp(&left.monthly_cost)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
-pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
-    let (start_str, end_str) = ce_date_range(180);
+            let monthly_cost = usage_lines
+                .iter()
+                .map(|usage| usage.monthly_cost)
+                .sum::<f64>();
 
-    let interval = DateInterval::builder()
-        .start(&start_str)
-        .end(&end_str)
-        .build();
-
-    let resp = app
-        .aws
-        .ce
-        .get_cost_and_usage()
-        .time_period(interval.expect("REASON"))
-        .granularity("MONTHLY".into())
-        .metrics("UnblendedCost")
-        .send()
-        .await
-        .unwrap();
-
-    resp.results_by_time()
-        .iter()
-        .map(|t| {
-            t.total()
-                .expect("REASON")
-                .get("UnblendedCost")
-                .and_then(|c| c.amount())
-                .and_then(|a| a.parse::<f64>().ok())
-                .unwrap_or(0.0)
+            (monthly_cost > 0.0).then_some(ServiceCostInsight {
+                service,
+                monthly_cost,
+                top_usage_types: usage_lines.into_iter().take(3).collect(),
+            })
         })
         .collect()
 }
 
-pub async fn fetch_budget(app: &App) -> BudgetInfo {
-    let (start_str, end_str) = ce_date_range(30);
+pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
+    let (start, end) = trailing_six_month_dates();
 
-    let interval = DateInterval::builder()
-        .start(&start_str)
-        .end(&end_str)
-        .build();
-
-    let resp = match app
+    let response = match app
         .aws
         .ce
         .get_cost_and_usage()
-        .time_period(interval.expect("REASON"))
-        .granularity("MONTHLY".into())
-        .metrics("UnblendedCost")
+        .time_period(interval(start, end))
+        .granularity(Granularity::Monthly)
+        .metrics(Metric::UnblendedCost.as_str())
         .send()
         .await
     {
-        Ok(r) => r,
+        Ok(response) => response,
         Err(err) => {
-            eprintln!("Cost Explorer error: {:?}", err);
-            return BudgetInfo {
-                monthly_budget: 0.0,
-                month_to_date_cost: 0.0,
-                forecast: 0.0,
-            };
+            eprintln!("Cost Explorer trailing monthly cost error: {:?}", err);
+            return vec![0.0; 6];
         }
     };
 
-    let month_to_date_cost = resp
+    let mut values = response
+        .results_by_time()
+        .iter()
+        .map(|time_bucket| {
+            metric_amount(
+                time_bucket
+                    .total()
+                    .and_then(|total| total.get("UnblendedCost")),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    while values.len() < 6 {
+        values.insert(0, 0.0);
+    }
+
+    values.truncate(6);
+    values
+}
+
+pub async fn fetch_budget(app: &App) -> BudgetInfo {
+    let (month_start, today) = current_month_dates();
+    let (forecast_start, forecast_end) = forecast_month_dates();
+
+    let actuals_response = match app
+        .aws
+        .ce
+        .get_cost_and_usage()
+        .time_period(interval(month_start, today))
+        .granularity(Granularity::Monthly)
+        .metrics(Metric::UnblendedCost.as_str())
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(err) => {
+            eprintln!("Cost Explorer month-to-date error: {:?}", err);
+            return BudgetInfo::default();
+        }
+    };
+
+    let month_to_date_cost = actuals_response
         .results_by_time()
         .first()
-        .and_then(|t| t.total()?.get("UnblendedCost"))
-        .and_then(|c| c.amount())
-        .and_then(|a| a.parse::<f64>().ok())
+        .map(|time_bucket| {
+            metric_amount(
+                time_bucket
+                    .total()
+                    .and_then(|total| total.get("UnblendedCost")),
+            )
+        })
         .unwrap_or(0.0);
 
-    let forecast = month_to_date_cost * 1.12;
+    let forecast_response = app
+        .aws
+        .ce
+        .get_cost_forecast()
+        .time_period(interval(forecast_start, forecast_end))
+        .metric(Metric::UnblendedCost)
+        .granularity(Granularity::Monthly)
+        .prediction_interval_level(80)
+        .send()
+        .await;
+
+    let (forecast, forecast_low, forecast_high) = match forecast_response {
+        Ok(response) => {
+            let remaining = metric_amount(response.total());
+            let range = response.forecast_results_by_time().first();
+            let low = range
+                .and_then(|forecast| forecast.prediction_interval_lower_bound())
+                .and_then(|value| value.parse::<f64>().ok())
+                .map(|value| month_to_date_cost + value);
+            let high = range
+                .and_then(|forecast| forecast.prediction_interval_upper_bound())
+                .and_then(|value| value.parse::<f64>().ok())
+                .map(|value| month_to_date_cost + value);
+
+            (month_to_date_cost + remaining, low, high)
+        }
+        Err(err) => {
+            eprintln!("Cost Explorer forecast error: {:?}", err);
+            (month_to_date_cost, None, None)
+        }
+    };
 
     BudgetInfo {
         monthly_budget: 100.0,
         month_to_date_cost,
         forecast,
+        forecast_low,
+        forecast_high,
     }
 }
-
-// pub async fn fetch_month_to_date_cost(app: &App) -> f64 {
-//     let (start, end) = current_month_interval();
-
-//     let interval = DateInterval::builder().start(start).end(end).build();
-
-//     let resp = match app
-//         .aws
-//         .ce
-//         .get_cost_and_usage()
-//         .time_period(interval.expect("REASON"))
-//         .granularity(Granularity::Monthly)
-//         .metrics("UnblendedCost")
-//         .send()
-//         .await
-//     {
-//         Ok(r) => r,
-//         Err(_) => return 0.0,
-//     };
-
-//     resp.results_by_time()
-//         .iter()
-//         .filter_map(|r| {
-//             r.total()
-//                 .and_then(|t| t.get("UnblendedCost"))
-//                 .and_then(|m| m.amount())
-//                 .and_then(|a| a.parse::<f64>().ok())
-//         })
-//         .sum()
-// }

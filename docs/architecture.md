@@ -59,7 +59,7 @@ Representative files:
 
 - [`src/aws/account.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/account.rs): account overview fan-out
 - [`src/aws/clients.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/clients.rs): shared SDK client bundle
-- [`src/aws/cost.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/cost.rs): cost explorer and budget queries
+- [`src/aws/cost.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
 - [`src/aws/ec2.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/ec2.rs): EC2 inventory and global aggregation
 
 ### `src/models/`
@@ -95,7 +95,7 @@ This area is a good home for future shared action helpers such as CLI command ge
 
 ### `src/cache/`
 
-Currently used for cost caching. Cost data is loaded outside the main refresh loop so the app can feel responsive while still surfacing recent billing information.
+Currently used for cost caching. The cache now stores budget, forecast, trailing spend, and usage-aware service cost insight so cost-oriented views can open quickly without re-querying Cost Explorer every time.
 
 ### `src/license/`
 
@@ -122,7 +122,7 @@ At startup, `main`:
 - fetches enabled AWS regions
 - creates `AwsClients` for the selected region
 - constructs `App`
-- preloads cost data
+- preloads cost data and usage-aware service cost insight
 - triggers the first refresh
 
 ### Refresh Flow
@@ -137,6 +137,8 @@ At startup, `main`:
 
 This design keeps the header accurate even when a service view is active.
 It also allows the TUI to render a loading state between view transitions instead of blocking silently on inline fetches.
+
+Cost views are a partial exception: they still rely on cached Cost Explorer data, but can force a fresh reload when the active view is `Cost Overview` or `Cost Savings`.
 
 ### View Entry Flow
 
@@ -161,6 +163,7 @@ User actions typically route through `App` helpers:
 - `trigger_open`
 - `trigger_ssh`
 - `open_selected_finding`
+- `open_selected_cost_savings_opportunity`
 
 Those helpers pull the selected row, derive a description request, CLI command, or console URL, and open an overlay or external browser action as needed.
 
@@ -214,6 +217,12 @@ The initial findings implementation follows that pattern with:
 - a `Finding` model in `src/models/finding.rs`
 - derived findings stored in `App`
 - a dedicated `Findings` view that routes into related service screens
+
+The cost-savings implementation follows a similar pattern:
+
+- usage-aware service spend is cached through `src/cache/cost.rs`
+- `App` derives cost-savings opportunities by combining spend, usage types, and waste-oriented resource signals
+- a dedicated `Cost Savings` view routes operators into the underlying service screen for action
 
 ## Current Gaps
 
