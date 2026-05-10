@@ -42,6 +42,7 @@ The app currently implements an initial set of high-signal findings:
 - named CloudWatch alarms in `ALARM`
 - target groups with zero healthy targets
 - unhealthy target groups
+- stopped instances with public IP or production-like naming
 - SQS queues without DLQs
 - RDS instances not `available`
 - Lambda functions with suspiciously high memory
@@ -66,13 +67,6 @@ These are the best next additions because they fit the current architecture and 
 - Why it matters: stopped compute often indicates abandoned dev or old experiments
 - Needed data: existing instance list, plus optional age or tags later
 - Best pivots: EC2 view, CLI describe-instances, console link
-
-#### Stopped instances with public IP or production-like naming
-
-- Category: `Hygiene` or `Waste`
-- Why it matters: a stopped resource that still looks externally relevant or production-scoped should be reviewed more carefully
-- Needed data: instance tags, public IP, name pattern
-- Best pivots: EC2 view, CLI, console
 
 ### Security Groups
 
@@ -216,7 +210,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. EC2 stopped instances with public IP or production-like naming
+1. SQS high visible or in-flight messages
 
 ## Implementation Guidance
 

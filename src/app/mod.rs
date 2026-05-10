@@ -270,6 +270,7 @@ impl App {
             ActiveView::Findings => {
                 self.refresh_phase = RefreshPhase::Services(vec![
                     "CloudWatch",
+                    "EC2",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -280,6 +281,7 @@ impl App {
                 let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
                 self.cloudwatch_summary = summary;
                 self.cloudwatch_alarms = alarms;
+                self.ec2_instances = aws::ec2::fetch_instances(self).await;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
@@ -476,7 +478,67 @@ impl App {
                 });
             }
 
-            if overview.ec2_stopped > 0 {
+            let stopped_instances_needing_review = self
+                .ec2_instances
+                .iter()
+                .filter(|instance| instance.needs_stopped_review())
+                .collect::<Vec<_>>();
+
+            if !stopped_instances_needing_review.is_empty() {
+                let sample_names = stopped_instances_needing_review
+                    .iter()
+                    .take(3)
+                    .map(|instance| instance.name.clone().unwrap_or_else(|| instance.id.clone()))
+                    .collect::<Vec<_>>();
+                let sample_count = sample_names.len();
+                let remaining = stopped_instances_needing_review
+                    .len()
+                    .saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} stopped instance(s) still look important: {} (+{} more)",
+                        stopped_instances_needing_review.len(),
+                        sample_names.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} stopped instance(s) still look important: {}",
+                        stopped_instances_needing_review.len(),
+                        sample_names.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Hygiene,
+                    service: "EC2".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step:
+                        "Open EC2 and review stopped instances with public IPs or production-like names"
+                            .into(),
+                    route: FindingRoute::Ec2,
+                });
+            }
+
+            let plain_stopped_instances = self
+                .ec2_instances
+                .iter()
+                .filter(|instance| instance.is_stopped() && !instance.needs_stopped_review())
+                .count();
+
+            if plain_stopped_instances > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Waste,
+                    service: "EC2".into(),
+                    region: self.current_region_label(),
+                    summary: format!("{plain_stopped_instances} stopped instance(s) may be unused"),
+                    next_step: "Review stopped instances for cleanup or restart".into(),
+                    route: FindingRoute::Ec2,
+                });
+            } else if overview.ec2_stopped > 0 && self.ec2_instances.is_empty() {
                 findings.push(Finding {
                     severity: FindingSeverity::Medium,
                     category: FindingCategory::Waste,
@@ -707,6 +769,7 @@ impl App {
             ActiveView::Findings => {
                 self.refresh_phase = RefreshPhase::Services(vec![
                     "CloudWatch",
+                    "EC2",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -718,6 +781,7 @@ impl App {
                 let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
                 self.cloudwatch_summary = summary;
                 self.cloudwatch_alarms = alarms;
+                self.ec2_instances = aws::ec2::fetch_instances(self).await;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;

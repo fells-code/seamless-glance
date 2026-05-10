@@ -35,6 +35,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, inst)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if inst.needs_stopped_review() {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };
@@ -48,6 +50,14 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.private_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.az.clone()),
+                Cell::from({
+                    let signals = inst.review_signals();
+                    if signals.is_empty() {
+                        "-".into()
+                    } else {
+                        signals.join(",")
+                    }
+                }),
             ])
             .style(style)
         })
@@ -61,18 +71,20 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         "Public IP",
         "Private IP",
         "AZ",
+        "Signals",
     ])
     .style(Style::default().fg(app.theme.accent));
 
     let widths = [
         ratatui::layout::Constraint::Percentage(30),
-        ratatui::layout::Constraint::Percentage(20),
+        ratatui::layout::Constraint::Percentage(18),
         ratatui::layout::Constraint::Percentage(10),
-        ratatui::layout::Constraint::Percentage(20),
-        ratatui::layout::Constraint::Percentage(20),
-        ratatui::layout::Constraint::Percentage(20),
-        ratatui::layout::Constraint::Percentage(20),
-        ratatui::layout::Constraint::Percentage(20),
+        ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(12),
+        ratatui::layout::Constraint::Percentage(12),
+        ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(12),
     ];
 
     let table = Table::new(rows, widths)
@@ -85,13 +97,14 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         )
         .widths([
             ratatui::layout::Constraint::Percentage(30),
-            ratatui::layout::Constraint::Percentage(20),
-            ratatui::layout::Constraint::Percentage(20),
+            ratatui::layout::Constraint::Percentage(18),
             ratatui::layout::Constraint::Percentage(10),
-            ratatui::layout::Constraint::Percentage(20),
-            ratatui::layout::Constraint::Percentage(20),
-            ratatui::layout::Constraint::Percentage(20),
-            ratatui::layout::Constraint::Percentage(20),
+            ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(12),
+            ratatui::layout::Constraint::Percentage(12),
+            ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(12),
         ]);
 
     frame.render_widget(table, area);

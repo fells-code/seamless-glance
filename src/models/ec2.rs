@@ -18,6 +18,55 @@ pub struct Ec2InstanceInfo {
     pub key_name: Option<String>,
 }
 
+impl Ec2InstanceInfo {
+    pub const PRODUCTION_NAME_HINTS: [&str; 7] = [
+        "prod",
+        "production",
+        "live",
+        "critical",
+        "primary",
+        "main",
+        "customer",
+    ];
+
+    pub fn is_stopped(&self) -> bool {
+        self.state == "stopped"
+    }
+
+    pub fn has_public_ip(&self) -> bool {
+        self.public_ip.is_some()
+    }
+
+    pub fn has_production_like_name(&self) -> bool {
+        let Some(name) = &self.name else {
+            return false;
+        };
+
+        let normalized = name.to_ascii_lowercase();
+        Self::PRODUCTION_NAME_HINTS
+            .iter()
+            .any(|hint| normalized.contains(hint))
+    }
+
+    pub fn needs_stopped_review(&self) -> bool {
+        self.is_stopped() && (self.has_public_ip() || self.has_production_like_name())
+    }
+
+    pub fn review_signals(&self) -> Vec<&'static str> {
+        let mut signals = Vec::new();
+
+        if self.has_public_ip() {
+            signals.push("public-ip");
+        }
+
+        if self.has_production_like_name() {
+            signals.push("prod-name");
+        }
+
+        signals
+    }
+}
+
 #[async_trait]
 impl DescribableResource for Ec2InstanceInfo {
     fn resource_name(&self) -> String {
