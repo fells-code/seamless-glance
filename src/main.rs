@@ -235,6 +235,11 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+            KeyCode::Char('w') => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    app.toggle_wrap_mode();
+                }
+            }
             KeyCode::Char(c) if app.command_mode => {
                 app.command_input.push(c);
             }
@@ -337,6 +342,8 @@ async fn main() -> anyhow::Result<()> {
                     app.scroll_offset = app.scroll_offset.saturating_add(PAGE_SCROLL_LINES as u16);
                 } else if let Some(overlay) = &mut app.overlay {
                     overlay.page_down(PAGE_SCROLL_LINES as u16);
+                } else if app.wrap_mode_active() {
+                    app.scroll_wrapped_detail_down(PAGE_SCROLL_LINES);
                 } else {
                     app.scroll_active_view_down(PAGE_SCROLL_LINES);
                 }
@@ -346,6 +353,8 @@ async fn main() -> anyhow::Result<()> {
                     app.scroll_offset = app.scroll_offset.saturating_sub(PAGE_SCROLL_LINES as u16);
                 } else if let Some(overlay) = &mut app.overlay {
                     overlay.page_up(PAGE_SCROLL_LINES as u16);
+                } else if app.wrap_mode_active() {
+                    app.scroll_wrapped_detail_up(PAGE_SCROLL_LINES);
                 } else {
                     app.scroll_active_view_up(PAGE_SCROLL_LINES);
                 }
@@ -355,6 +364,8 @@ async fn main() -> anyhow::Result<()> {
                     app.scroll_offset = 0;
                 } else if let Some(overlay) = &mut app.overlay {
                     overlay.scroll_to_top();
+                } else if app.wrap_mode_active() {
+                    app.scroll_wrapped_detail_to_top();
                 } else {
                     app.scroll_active_view_to_top();
                 }
@@ -364,6 +375,8 @@ async fn main() -> anyhow::Result<()> {
                     app.scroll_offset = u16::MAX;
                 } else if let Some(overlay) = &mut app.overlay {
                     overlay.scroll_to_bottom();
+                } else if app.wrap_mode_active() {
+                    app.scroll_wrapped_detail_to_bottom();
                 } else {
                     app.scroll_active_view_to_bottom();
                 }

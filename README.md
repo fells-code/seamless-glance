@@ -75,6 +75,7 @@ Primary navigation:
 - `Tab` / `Shift+Tab` cycle through major views
 - `/` open the command palette with grouped view suggestions and aliases
 - `t` cycle through the Seamless theme set
+- `w` toggle wrapped detail mode on supported text-heavy views
 - `1` Account Overview
 - `2` Cost Overview
 - `0` Cost Savings
@@ -90,7 +91,7 @@ General controls:
 
 - `←` / `→` change region
 - `↑` / `↓` move selection or scroll overlays
-- `PgUp` / `PgDn` jump-scroll lists, overlays, and help
+- `PgUp` / `PgDn` jump-scroll lists, overlays, help, or wrapped detail
 - `Home` / `End` jump to the top or bottom of long views
 - `?` open help
 - `r` refresh active view
@@ -107,6 +108,7 @@ The app now opens on Findings by default so triage is the first thing you see.
 Account Overview now serves as an inventory snapshot for the current AWS profile, with account context, footprint summaries, and a service inventory table rather than findings-style callouts.
 Cost Overview now includes budget, forecast, and usage-aware service cost context from the local billing cache.
 Cost Savings is a dedicated recommendation screen that combines spend, usage types, and waste-oriented findings into savings opportunities.
+Findings, Cost Overview, and Cost Savings now support a wrapped detail mode so long summaries, usage strings, and recommendations are readable without relying on wide terminals.
 
 Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
 

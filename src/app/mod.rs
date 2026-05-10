@@ -74,6 +74,8 @@ pub struct App {
     pub show_help: bool,
     pub scroll_offset: u16,
     pub selected_row: usize,
+    pub wrap_text: bool,
+    pub detail_scroll_offset: u16,
     pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
     pub is_refreshing: bool,
     pub refresh_phase: RefreshPhase,
@@ -139,6 +141,8 @@ impl App {
             overlay: None,
             scroll_offset: 0,
             selected_row: 0,
+            wrap_text: false,
+            detail_scroll_offset: 0,
             cost_loaded: false,
             account_overview: None,
             regions: vec![],
@@ -294,14 +298,32 @@ impl App {
     pub async fn on_view_enter(&mut self) {
         self.selected_row = 0;
         self.scroll_offset = 0;
+        self.detail_scroll_offset = 0;
         self.trigger_refresh();
     }
 
     fn view_uses_free_scroll(&self) -> bool {
+        matches!(self.active_view, ActiveView::AccountOverview)
+    }
+
+    pub fn active_view_supports_wrap(&self) -> bool {
         matches!(
             self.active_view,
-            ActiveView::AccountOverview | ActiveView::CostOverview
+            ActiveView::Findings | ActiveView::CostOverview | ActiveView::CostSavings
         )
+    }
+
+    pub fn wrap_mode_active(&self) -> bool {
+        self.wrap_text && self.active_view_supports_wrap()
+    }
+
+    pub fn toggle_wrap_mode(&mut self) {
+        if !self.active_view_supports_wrap() {
+            return;
+        }
+
+        self.wrap_text = !self.wrap_text;
+        self.detail_scroll_offset = 0;
     }
 
     fn active_view_item_count(&self) -> usize {
@@ -321,7 +343,7 @@ impl App {
             ActiveView::TargetGroups => self.target_groups.len(),
             ActiveView::SecurityGroups => self.security_groups.len(),
             ActiveView::AccountOverview => 10,
-            ActiveView::CostOverview => self.service_costs.len(),
+            ActiveView::CostOverview => self.service_cost_insights.len(),
         }
     }
 
@@ -329,7 +351,11 @@ impl App {
         if self.view_uses_free_scroll() {
             self.scroll_offset = self.scroll_offset.saturating_sub(lines as u16);
         } else {
+            let previous = self.selected_row;
             self.selected_row = self.selected_row.saturating_sub(lines);
+            if self.selected_row != previous {
+                self.detail_scroll_offset = 0;
+            }
         }
     }
 
@@ -345,12 +371,17 @@ impl App {
             return;
         }
 
+        let previous = self.selected_row;
         self.selected_row = self.selected_row.saturating_add(lines).min(total - 1);
+        if self.selected_row != previous {
+            self.detail_scroll_offset = 0;
+        }
     }
 
     pub fn scroll_active_view_to_top(&mut self) {
         self.scroll_offset = 0;
         self.selected_row = 0;
+        self.detail_scroll_offset = 0;
     }
 
     pub fn scroll_active_view_to_bottom(&mut self) {
@@ -361,6 +392,23 @@ impl App {
 
         let total = self.active_view_item_count();
         self.selected_row = total.saturating_sub(1);
+        self.detail_scroll_offset = 0;
+    }
+
+    pub fn scroll_wrapped_detail_up(&mut self, lines: usize) {
+        self.detail_scroll_offset = self.detail_scroll_offset.saturating_sub(lines as u16);
+    }
+
+    pub fn scroll_wrapped_detail_down(&mut self, lines: usize) {
+        self.detail_scroll_offset = self.detail_scroll_offset.saturating_add(lines as u16);
+    }
+
+    pub fn scroll_wrapped_detail_to_top(&mut self) {
+        self.detail_scroll_offset = 0;
+    }
+
+    pub fn scroll_wrapped_detail_to_bottom(&mut self) {
+        self.detail_scroll_offset = u16::MAX;
     }
 
     pub fn rebuild_findings(&mut self) {

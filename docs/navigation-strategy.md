@@ -13,6 +13,7 @@ Today the app uses a mix of:
 - one-key view shortcuts such as `f`, `0`, and `1` through `9`
 - a slash command palette
 - `Tab` / `Shift+Tab` cycling across major views
+- `w` wrapped-detail mode for text-heavy screens
 - in-view actions such as `d`, `c`, and `o`
 
 This is effective for a small number of screens, but it will not scale well as the app adds more AWS services and more triage-specific views.
@@ -108,6 +109,7 @@ Always available:
 Context-sensitive:
 
 - `Enter` open related service from Findings
+- `w` expand long clipped text into a wrapped readable detail view
 - `d` describe selected item
 - `c` AWS CLI handoff
 - `o` AWS console handoff

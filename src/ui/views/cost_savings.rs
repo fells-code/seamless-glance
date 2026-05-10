@@ -7,11 +7,6 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(8), Constraint::Min(0)])
-        .split(area);
-
     let total_estimated_savings = app
         .cost_savings_opportunities
         .iter()
@@ -31,22 +26,27 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         app.budget.month_to_date_cost, app.budget.forecast, budget_gap, forecast_range
     );
 
-    let summary = Paragraph::new(summary_text)
-        .style(Style::default().fg(app.theme.text))
-        .wrap(Wrap { trim: true })
-        .block(
-            Block::default()
-                .title("Cost Savings")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
-
-    frame.render_widget(summary, layout[0]);
-
     let total_rows = app.cost_savings_opportunities.len();
     if total_rows == 0 {
         app.selected_row = 0;
         app.scroll_offset = 0;
+
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(8), Constraint::Min(0)])
+            .split(area);
+
+        let summary = Paragraph::new(summary_text)
+            .style(Style::default().fg(app.theme.text))
+            .wrap(Wrap { trim: true })
+            .block(
+                Block::default()
+                    .title("Cost Savings")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(app.theme.primary)),
+            );
+
+        frame.render_widget(summary, layout[0]);
 
         let empty = Paragraph::new(
             "No concrete cost-savings opportunities are available yet.\n\
@@ -65,6 +65,28 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     app.selected_row = app.selected_row.min(total_rows - 1);
+    if app.wrap_mode_active() {
+        render_wrapped_detail(frame, area, app, &summary_text);
+        return;
+    }
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(8), Constraint::Min(0)])
+        .split(area);
+
+    let summary = Paragraph::new(summary_text)
+        .style(Style::default().fg(app.theme.text))
+        .wrap(Wrap { trim: true })
+        .block(
+            Block::default()
+                .title("Cost Savings")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.theme.primary)),
+        );
+
+    frame.render_widget(summary, layout[0]);
+
     let visible_height = layout[1].height.saturating_sub(3) as usize;
 
     if app.selected_row < app.scroll_offset as usize {
@@ -137,4 +159,64 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     );
 
     frame.render_widget(table, layout[1]);
+}
+
+fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App, summary_text: &str) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(8),
+            Constraint::Length(6),
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let summary = Paragraph::new(summary_text.to_string())
+        .style(Style::default().fg(app.theme.text))
+        .wrap(Wrap { trim: true })
+        .block(
+            Block::default()
+                .title("Cost Savings")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.theme.primary)),
+        );
+
+    frame.render_widget(summary, layout[0]);
+
+    let opportunity = &app.cost_savings_opportunities[app.selected_row];
+    let metadata = Paragraph::new(format!(
+        "Opportunity {}/{}\n{}  |  Current ${:.2}  |  Estimated savings ${:.2}\n{}",
+        app.selected_row + 1,
+        app.cost_savings_opportunities.len(),
+        opportunity.service,
+        opportunity.monthly_cost,
+        opportunity.estimated_monthly_savings,
+        opportunity.title
+    ))
+    .style(Style::default().fg(app.theme.text))
+    .wrap(Wrap { trim: true })
+    .block(
+        Block::default()
+            .title("Selected Opportunity")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.primary)),
+    );
+
+    frame.render_widget(metadata, layout[1]);
+
+    let detail = Paragraph::new(format!(
+        "Evidence\n{}\n\nUsage Context\n{}\n\nRecommendation\n{}",
+        opportunity.evidence, opportunity.usage_context, opportunity.recommendation
+    ))
+    .style(Style::default().fg(app.theme.text))
+    .wrap(Wrap { trim: true })
+    .scroll((app.detail_scroll_offset, 0))
+    .block(
+        Block::default()
+            .title("Wrapped Detail")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.primary)),
+    );
+
+    frame.render_widget(detail, layout[2]);
 }

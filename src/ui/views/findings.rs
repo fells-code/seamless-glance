@@ -3,9 +3,9 @@ use crate::{
     models::finding::{FindingCategory, FindingSeverity},
 };
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
     Frame,
 };
 
@@ -32,6 +32,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     app.selected_row = app.selected_row.min(total_rows - 1);
+
+    if app.wrap_mode_active() {
+        render_wrapped_detail(frame, area, app);
+        return;
+    }
 
     let visible_height = area.height.saturating_sub(3) as usize;
 
@@ -111,4 +116,48 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     );
 
     frame.render_widget(table, area);
+}
+
+fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App) {
+    let finding = &app.findings[app.selected_row];
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Min(0)])
+        .split(area);
+
+    let metadata = Paragraph::new(format!(
+        "Finding {}/{}\n{}  |  {}  |  {}  |  {}",
+        app.selected_row + 1,
+        app.findings.len(),
+        finding.severity.as_str(),
+        finding.category.as_str(),
+        finding.service,
+        finding.region
+    ))
+    .style(Style::default().fg(app.theme.text))
+    .wrap(Wrap { trim: true })
+    .block(
+        Block::default()
+            .title("Findings Detail")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.primary)),
+    );
+
+    frame.render_widget(metadata, layout[0]);
+
+    let detail = Paragraph::new(format!(
+        "Summary\n{}\n\nNext Step\n{}",
+        finding.summary, finding.next_step
+    ))
+    .style(Style::default().fg(app.theme.text))
+    .wrap(Wrap { trim: true })
+    .scroll((app.detail_scroll_offset, 0))
+    .block(
+        Block::default()
+            .title("Wrapped Detail")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(app.theme.primary)),
+    );
+
+    frame.render_widget(detail, layout[1]);
 }
