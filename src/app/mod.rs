@@ -26,7 +26,7 @@ use crate::ui::open::open_in_browser;
 use crate::ui::overlay::overlays::{
     ConfirmCommandState, DescribeOverlayState, OverlayState, SelectSshKeyState,
 };
-use crate::ui::theme::Theme;
+use crate::ui::theme::{Theme, ThemeName};
 use crate::{aws, config};
 
 #[derive(Debug, Clone)]
@@ -77,6 +77,7 @@ pub struct App {
     pub footer_mode: FooterMode,
 
     pub theme: Theme,
+    pub theme_name: ThemeName,
     pub findings: Vec<Finding>,
     // Account overview
     pub account_overview: Option<AccountOverview>,
@@ -147,7 +148,8 @@ impl App {
             },
             monthly_costs: vec![0.0; 6],
             service_costs: vec![],
-            theme: Theme::seamless(),
+            theme: Theme::autumn(),
+            theme_name: ThemeName::Autumn,
             findings: vec![],
             lambda_functions: vec![],
             apigateway_apis: vec![],
@@ -226,10 +228,24 @@ impl App {
     }
 
     pub fn persist_region_selection(&self) {
-        config::save_config(&config::GlanceConfig {
-            region: Some(self.current_region_label()),
-            profile: None,
-        });
+        self.persist_preferences();
+    }
+
+    pub fn persist_preferences(&self) {
+        let mut cfg = config::load_config();
+        cfg.region = Some(self.current_region_label());
+        cfg.theme = Some(self.theme_name.as_str().to_string());
+        config::save_config(&cfg);
+    }
+
+    pub fn set_theme_name(&mut self, theme_name: ThemeName) {
+        self.theme_name = theme_name;
+        self.theme = Theme::from_name(theme_name);
+        self.persist_preferences();
+    }
+
+    pub fn cycle_theme(&mut self) {
+        self.set_theme_name(self.theme_name.next());
     }
 
     pub async fn set_region_by_index(&mut self, index: usize) {

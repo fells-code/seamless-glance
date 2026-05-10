@@ -6,6 +6,7 @@ use ratatui::{
 };
 
 use crate::app::{ActiveView, App};
+use crate::ui::theme::ThemeName;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CommandGroup {
@@ -275,6 +276,25 @@ pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {
         lines.push("  rg <name>        Short alias for region".into());
     }
 
+    if "theme".starts_with(cmd)
+        || "themes".starts_with(cmd)
+        || cmd == "theme"
+        || cmd == "themes"
+        || "th".starts_with(cmd)
+    {
+        lines.push("".into());
+        lines.push("  Themes".into());
+        lines.push("  theme <name>     Switch to a Seamless theme".into());
+
+        for theme_name in ThemeName::ALL {
+            lines.push(format!(
+                "  theme {:<9} {}",
+                theme_name.as_str(),
+                theme_name.description()
+            ));
+        }
+    }
+
     let mut last_group = None;
     for command in matches.iter().take(8) {
         if last_group != Some(command.group) {
@@ -299,7 +319,13 @@ pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {
         ));
     }
 
-    if matches.is_empty() && !cmd.is_empty() && cmd != "region" && cmd != "rg" {
+    let is_special_query = cmd == "region"
+        || cmd == "rg"
+        || cmd == "theme"
+        || cmd == "themes"
+        || "th".starts_with(cmd);
+
+    if matches.is_empty() && !cmd.is_empty() && !is_special_query {
         lines.push("".into());
         lines.push("  No matching view commands".into());
     }

@@ -95,11 +95,20 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
     let header_text = format!(
         "View: {}  |  Region: {} ({})\n\
+        Theme: {}  |  {}\n\
         Account: {}\n\
         {}\n\
         Account Health: {}\n\
         {}",
-        view_name, region_label, region_mode, account, identity_line, health.0, status
+        view_name,
+        region_label,
+        region_mode,
+        app.theme_name.label(),
+        app.theme_name.description(),
+        account,
+        identity_line,
+        health.0,
+        status
     );
 
     let header = Paragraph::new(header_text)

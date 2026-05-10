@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub struct GlanceConfig {
     pub region: Option<String>,
     pub profile: Option<String>,
+    pub theme: Option<String>,
 }
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

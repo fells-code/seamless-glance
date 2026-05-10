@@ -79,6 +79,7 @@ Owns presentation concerns:
 - screen layout
 - headers and footers
 - shared navigation metadata and command palette rendering
+- theme definitions and theme switching presentation
 - individual views
 - help and overlay rendering
 - terminal suspend/resume helpers used for shell execution
@@ -117,6 +118,7 @@ At startup, `main`:
 - ensures a license file exists
 - validates the license
 - loads config from `~/.seamless-glance/config.json`
+- loads persisted theme preference from `~/.seamless-glance/config.json`
 - fetches enabled AWS regions
 - creates `AwsClients` for the selected region
 - constructs `App`

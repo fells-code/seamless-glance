@@ -54,6 +54,7 @@ Current palette behavior now includes:
 - grouped results by service domain
 - current-view highlighting
 - region jump hints
+- theme switch hints
 
 Desired future evolution:
 

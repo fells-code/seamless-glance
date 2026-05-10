@@ -47,6 +47,7 @@ fn build_help_text() -> String {
         "  f                    Findings home".into(),
         "  /                    Open command palette".into(),
         "  Tab / Shift+Tab      Cycle through major views".into(),
+        "  t                    Cycle through Seamless themes".into(),
         "  ?                    Open help".into(),
         "  r                    Refresh active view".into(),
         "  q                    Quit".into(),
@@ -66,9 +67,11 @@ fn build_help_text() -> String {
         "".into(),
         "Command Palette".into(),
         "  findings             Jump to findings".into(),
+        "  theme <name>         Switch to a named Seamless theme".into(),
         "  region <name>        Jump to a specific AWS region".into(),
         "  region global        Jump to the synthetic global slot".into(),
         "  rg <name>            Short alias for region".into(),
+        "  themes               autumn, winter, summer, spring, developer".into(),
     ];
 
     for group in [

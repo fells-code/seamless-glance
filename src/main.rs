@@ -30,6 +30,7 @@ use crate::{
     ui::{
         footer::FooterMode,
         overlay::overlays::{ConfirmCommandState, OverlayState},
+        theme::ThemeName,
         views::command::{self, next_command, previous_command},
     },
 };
@@ -77,6 +78,17 @@ async fn handle_command(app: &mut App) {
                 app.trigger_refresh();
             } else {
                 eprintln!("Unknown region: {}", args);
+            }
+        }
+        "theme" => {
+            if args.is_empty() {
+                return;
+            }
+
+            if let Some(theme_name) = ThemeName::from_str(&args) {
+                app.set_theme_name(theme_name);
+            } else {
+                eprintln!("Unknown theme: {}", args);
             }
         }
         _ => {
@@ -172,6 +184,10 @@ async fn main() -> anyhow::Result<()> {
     app.license = Some(license);
     app.regions = regions;
     app.current_region_index = current_region_index;
+    if let Some(theme_name) = cfg.theme.as_deref().and_then(ThemeName::from_str) {
+        app.theme_name = theme_name;
+        app.theme = crate::ui::theme::Theme::from_name(theme_name);
+    }
 
     app.load_cost_data().await;
     app.trigger_refresh();
@@ -332,6 +348,11 @@ async fn main() -> anyhow::Result<()> {
             }
             KeyCode::Char('s') => {
                 app.trigger_ssh();
+            }
+            KeyCode::Char('t') => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    app.cycle_theme();
+                }
             }
             KeyCode::Char('1') => {
                 if let Some(OverlayState::SelectSshKey(state)) = &app.overlay {

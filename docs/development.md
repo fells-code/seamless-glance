@@ -41,6 +41,7 @@ The app relies on:
 
 - AWS credentials resolved by the AWS Rust SDK
 - `~/.seamless-glance/config.json` for persisted region selection
+- `~/.seamless-glance/config.json` for persisted theme selection
 - `~/.seamless-glance/license.json` for trial or paid license state
 
 Be careful when changing startup behavior because licensing, config, and AWS region selection all happen very early in process startup.

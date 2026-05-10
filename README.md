@@ -73,6 +73,7 @@ Primary navigation:
 - `f` Findings
 - `Tab` / `Shift+Tab` cycle through major views
 - `/` open the command palette with grouped view suggestions and aliases
+- `t` cycle through the Seamless theme set
 - `1` Account Overview
 - `2` Cost Overview
 - `3` VPC
@@ -129,6 +130,7 @@ Command palette shortcuts currently include:
 - `tg`
 - `sg`
 - aliases such as `overview`, `billing`, `api`, `queues`, `secrets`, and `alarms`
+- `theme <name>` with `autumn`, `winter`, `summer`, `spring`, or `developer`
 - `region <name>`
 - `rg <name>`
 
