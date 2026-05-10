@@ -47,6 +47,7 @@ pub enum FindingRoute {
     Sqs,
     TargetGroups,
     SecurityGroups,
+    Vpc,
 }
 
 #[derive(Debug, Clone)]

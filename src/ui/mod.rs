@@ -126,13 +126,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if let Some(overlay) = &app.overlay {
         match overlay {
             OverlayState::Describe(state) => {
-                render_describe_overlay(frame, frame.size(), &state, &app.theme);
+                render_describe_overlay(frame, frame.size(), state, &app.theme);
             }
             OverlayState::ConfirmCommand(state) => {
-                render_confirm_command_overlay(frame, frame.size(), &state, &app.theme);
+                render_confirm_command_overlay(frame, frame.size(), state, &app.theme);
             }
             OverlayState::SelectSshKey(state) => {
-                render_select_ssh_key_overlay(frame, frame.size(), &state, &app.theme)
+                render_select_ssh_key_overlay(frame, frame.size(), state, &app.theme)
             }
         }
     }

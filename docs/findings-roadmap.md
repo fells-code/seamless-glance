@@ -46,6 +46,7 @@ The app currently implements an initial set of high-signal findings:
 - RDS instances not `available`
 - Lambda functions with suspiciously high memory
 - Lambda functions with very old last-modified dates
+- default VPC still present
 - secrets without rotation
 - stopped EC2 instances
 - security groups open to the world
@@ -134,17 +135,6 @@ These are the best next additions because they fit the current architecture and 
 - Why it matters: resilience posture may be weaker than the workload suggests
 - Needed data: existing `multi_az` plus tag or naming heuristics
 - Best pivots: RDS view, CLI, console
-
-### Lambda
-
-### VPC
-
-#### Default VPC still present
-
-- Category: `Hygiene`
-- Why it matters: default-network usage often correlates with low-governance deployments
-- Needed data: existing `is_default`
-- Best pivots: VPC view, CLI describe-vpcs, console
 
 ### API Gateway
 
@@ -235,8 +225,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. default VPC present
-2. CloudWatch findings expanded from counts to named failing alarms
+1. CloudWatch findings expanded from counts to named failing alarms
 
 ## Implementation Guidance
 

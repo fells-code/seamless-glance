@@ -77,10 +77,9 @@ pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
 
         all
     } else {
-        match fetch_lambda_for_region(app.current_region().clone()).await {
-            Ok(funcs) => funcs,
-            Err(_) => vec![],
-        }
+        fetch_lambda_for_region(app.current_region().clone())
+            .await
+            .unwrap_or_default()
     };
 
     functions.sort_by(|a, b| a.region.cmp(&b.region).then_with(|| a.name.cmp(&b.name)));

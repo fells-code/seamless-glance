@@ -274,6 +274,7 @@ impl App {
                     "SQS",
                     "RDS",
                     "Lambda",
+                    "VPC",
                 ]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
@@ -282,6 +283,7 @@ impl App {
                 self.rds_summary = summary;
                 self.rds_instances = instances;
                 self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
+                self.vpcs = aws::vpc::fetch_vpcs(self).await;
                 self.rebuild_findings();
                 self.refresh_phase = RefreshPhase::Idle;
             }
@@ -525,6 +527,21 @@ impl App {
             });
         }
 
+        let default_vpcs = self.vpcs.iter().filter(|vpc| vpc.is_default).count();
+
+        if default_vpcs > 0 {
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Hygiene,
+                service: "VPC".into(),
+                region: self.current_region_label(),
+                summary: format!("{default_vpcs} default VPC(s) are still present"),
+                next_step: "Review default VPC usage and remove or restrict it if unnecessary"
+                    .into(),
+                route: FindingRoute::Vpc,
+            });
+        }
+
         let high_memory_functions = self
             .lambda_functions
             .iter()
@@ -651,6 +668,7 @@ impl App {
                     "SQS",
                     "RDS",
                     "Lambda",
+                    "VPC",
                     "Findings",
                 ]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
@@ -660,6 +678,7 @@ impl App {
                 self.rds_summary = summary;
                 self.rds_instances = instances;
                 self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
+                self.vpcs = aws::vpc::fetch_vpcs(self).await;
             }
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
@@ -1092,6 +1111,7 @@ impl App {
             FindingRoute::Sqs => ActiveView::Sqs,
             FindingRoute::TargetGroups => ActiveView::TargetGroups,
             FindingRoute::SecurityGroups => ActiveView::SecurityGroups,
+            FindingRoute::Vpc => ActiveView::Vpc,
         };
 
         self.selected_row = 0;
@@ -1129,13 +1149,9 @@ impl App {
         };
 
         // Key-aware branching
-        if ctx.key_name.is_some() {
+        if let Some(key_name) = &ctx.key_name {
             self.overlay = Some(OverlayState::SelectSshKey(SelectSshKeyState {
-                title: format!(
-                    "SSH into {} ({})",
-                    ctx.instance_name,
-                    ctx.key_name.as_ref().unwrap()
-                ),
+                title: format!("SSH into {} ({})", ctx.instance_name, key_name),
                 context: ctx,
             }));
         } else {

@@ -36,6 +36,8 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, v)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if v.is_default {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };
