@@ -272,6 +272,7 @@ impl App {
                     "CloudWatch",
                     "EC2",
                     "API Gateway",
+                    "Secrets",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -284,6 +285,9 @@ impl App {
                 self.cloudwatch_alarms = alarms;
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
                 self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
+                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
+                self.secrets_summary = summary;
+                self.secrets = secrets;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
@@ -465,7 +469,67 @@ impl App {
                 });
             }
 
-            if overview.secrets.rotation_disabled > 0 {
+            let production_like_rotation_disabled = self
+                .secrets
+                .iter()
+                .filter(|secret| secret.needs_rotation_review())
+                .collect::<Vec<_>>();
+
+            if !production_like_rotation_disabled.is_empty() {
+                let sample_secrets = production_like_rotation_disabled
+                    .iter()
+                    .take(3)
+                    .map(|secret| secret.name.clone())
+                    .collect::<Vec<_>>();
+                let sample_count = sample_secrets.len();
+                let remaining = production_like_rotation_disabled
+                    .len()
+                    .saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} production-like secret(s) do not have rotation enabled: {} (+{} more)",
+                        production_like_rotation_disabled.len(),
+                        sample_secrets.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} production-like secret(s) do not have rotation enabled: {}",
+                        production_like_rotation_disabled.len(),
+                        sample_secrets.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::High,
+                    category: FindingCategory::Hygiene,
+                    service: "Secrets Manager".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step:
+                        "Open Secrets Manager and enable rotation on production-like secrets"
+                            .into(),
+                    route: FindingRoute::Secrets,
+                });
+            }
+
+            let rotation_disabled = self
+                .secrets
+                .iter()
+                .filter(|secret| secret.rotation_disabled() && !secret.needs_rotation_review())
+                .count();
+
+            if rotation_disabled > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Hygiene,
+                    service: "Secrets Manager".into(),
+                    region: self.current_region_label(),
+                    summary: format!("{rotation_disabled} secret(s) do not have rotation enabled"),
+                    next_step: "Review secrets that should rotate automatically".into(),
+                    route: FindingRoute::Secrets,
+                });
+            } else if overview.secrets.rotation_disabled > 0 && self.secrets.is_empty() {
                 findings.push(Finding {
                     severity: FindingSeverity::Medium,
                     category: FindingCategory::Hygiene,
@@ -476,6 +540,51 @@ impl App {
                         overview.secrets.rotation_disabled
                     ),
                     next_step: "Review secrets that should rotate automatically".into(),
+                    route: FindingRoute::Secrets,
+                });
+            }
+
+            let stale_rotation_secrets = self
+                .secrets
+                .iter()
+                .filter(|secret| secret.has_stale_rotation())
+                .collect::<Vec<_>>();
+
+            if !stale_rotation_secrets.is_empty() {
+                let sample_secrets = stale_rotation_secrets
+                    .iter()
+                    .take(3)
+                    .map(|secret| secret.name.clone())
+                    .collect::<Vec<_>>();
+                let sample_count = sample_secrets.len();
+                let remaining = stale_rotation_secrets.len().saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} secret(s) have not rotated in {}+ days: {} (+{} more)",
+                        stale_rotation_secrets.len(),
+                        SecretInfo::STALE_ROTATION_DAYS,
+                        sample_secrets.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} secret(s) have not rotated in {}+ days: {}",
+                        stale_rotation_secrets.len(),
+                        SecretInfo::STALE_ROTATION_DAYS,
+                        sample_secrets.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Hygiene,
+                    service: "Secrets Manager".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step: format!(
+                        "Open Secrets Manager and review secrets that have not rotated in {}+ days",
+                        SecretInfo::STALE_ROTATION_DAYS
+                    ),
                     route: FindingRoute::Secrets,
                 });
             }
@@ -909,6 +1018,7 @@ impl App {
                     "CloudWatch",
                     "EC2",
                     "API Gateway",
+                    "Secrets",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -922,6 +1032,9 @@ impl App {
                 self.cloudwatch_alarms = alarms;
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
                 self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
+                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
+                self.secrets_summary = summary;
+                self.secrets = secrets;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;

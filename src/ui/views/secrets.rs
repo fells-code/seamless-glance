@@ -53,6 +53,10 @@ pub fn render_sm(frame: &mut Frame, area: Rect, app: &mut App) {
 
             let style = if is_selected {
                 Style::default().fg(app.theme.highlight)
+            } else if s.needs_rotation_review() {
+                Style::default().fg(app.theme.primary)
+            } else if s.has_stale_rotation() || s.rotation_disabled() {
+                Style::default().fg(app.theme.accent)
             } else {
                 Style::default().fg(app.theme.text)
             };
@@ -61,20 +65,29 @@ pub fn render_sm(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(s.name.clone()),
                 Cell::from(if s.rotation_enabled { "Yes" } else { "No" }),
                 Cell::from(s.last_rotated.clone().unwrap_or("—".into())),
+                Cell::from({
+                    let signals = s.review_signals();
+                    if signals.is_empty() {
+                        "-".into()
+                    } else {
+                        signals.join(",")
+                    }
+                }),
             ])
             .style(style)
         })
         .collect();
 
     let widths = [
-        Constraint::Percentage(50),
+        Constraint::Percentage(40),
         Constraint::Percentage(20),
         Constraint::Percentage(30),
+        Constraint::Percentage(10),
     ];
 
     let table = Table::new(rows, widths)
         .header(
-            Row::new(vec!["Name", "Rotation", "Last Rotated"])
+            Row::new(vec!["Name", "Rotation", "Last Rotated", "Signals"])
                 .style(Style::default().fg(app.theme.accent)),
         )
         .block(

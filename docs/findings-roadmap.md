@@ -48,6 +48,8 @@ The app currently implements an initial set of high-signal findings:
 - SQS queues without DLQs
 - RDS instances not `available`
 - production-like single-AZ RDS instances
+- production-like secrets without rotation
+- secrets with stale rotation despite rotation being enabled
 - Lambda functions with suspiciously high memory
 - Lambda functions with very old last-modified dates
 - default VPC still present
@@ -98,14 +100,6 @@ These are the best next additions because they fit the current architecture and 
 - Needed data: existing secret summary and secret list
 - Best pivots: Secrets view, CLI describe-secret, console
 
-#### Rotation disabled on likely production secrets
-
-- Category: `Hygiene`
-- Suggested severity: `High`
-- Why it matters: the same problem matters more when the secret appears production-scoped
-- Needed data: naming or tag heuristics
-- Best pivots: Secrets view, CLI, console
-
 ## Findings Requiring Moderate Data Expansion
 
 These are strong candidates once the team adds a little more fetch depth.
@@ -140,10 +134,6 @@ These are strong candidates once the team adds a little more fetch depth.
 
 - important services with no alarms at all
 - alarm coverage gaps for deployed workloads
-
-### Secrets Manager
-
-- secrets not rotated for an unacceptably long time even when rotation is enabled
 
 ### Security Groups
 
@@ -186,7 +176,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. Secrets with rotation disabled that also look production-like
+1. CloudWatch alarm coverage gaps for important deployed workloads
 
 ## Implementation Guidance
 
@@ -202,11 +192,13 @@ Current implemented thresholds that should stay explainable:
 
 - SQS backlog incident when a queue has `>= 100` visible messages
 - SQS backlog incident when a queue has `>= 50` in-flight messages
+- Secrets stale-rotation review when a secret has rotation enabled but `last_rotated` is at least `180` days old
 
 Current implemented heuristics that should stay explainable:
 
 - RDS resilience review when an instance is available, single-AZ, and its identifier contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
 - API Gateway review when an API name is generic like `unnamed`, `default`, `test`, `example`, `sample`, `temp`, `tmp`, `my-api`, or `api`, or when its creation date is at least `365` days old
+- Secrets review when rotation is disabled and the secret name contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
 
 ## Future Direction
 
