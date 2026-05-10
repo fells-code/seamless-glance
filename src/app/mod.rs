@@ -345,6 +345,71 @@ impl App {
                 });
             }
 
+            let alarm_namespaces = self
+                .cloudwatch_alarms
+                .iter()
+                .map(|alarm| alarm.namespace.as_str())
+                .collect::<BTreeSet<_>>();
+
+            let mut coverage_gaps = Vec::new();
+
+            if overview.ec2_running > 0 && !alarm_namespaces.contains("AWS/EC2") {
+                coverage_gaps.push(format!("EC2 ({} running)", overview.ec2_running));
+            }
+
+            if overview.lambda_functions > 0 && !alarm_namespaces.contains("AWS/Lambda") {
+                coverage_gaps.push(format!("Lambda ({} functions)", overview.lambda_functions));
+            }
+
+            if overview.rds_status.total > 0 && !alarm_namespaces.contains("AWS/RDS") {
+                coverage_gaps.push(format!("RDS ({} instances)", overview.rds_status.total));
+            }
+
+            if overview.ecs_services > 0 && !alarm_namespaces.contains("AWS/ECS") {
+                coverage_gaps.push(format!("ECS ({} services)", overview.ecs_services));
+            }
+
+            let api_total = overview.apigw_rest_apis + overview.apigw_http_apis;
+            if api_total > 0 && !alarm_namespaces.contains("AWS/ApiGateway") {
+                coverage_gaps.push(format!("API Gateway ({} APIs)", api_total));
+            }
+
+            if overview.sqs_queues > 0 && !alarm_namespaces.contains("AWS/SQS") {
+                coverage_gaps.push(format!("SQS ({} queues)", overview.sqs_queues));
+            }
+
+            if !coverage_gaps.is_empty() {
+                let sample_services = coverage_gaps.iter().take(3).cloned().collect::<Vec<_>>();
+                let sample_count = sample_services.len();
+                let remaining = coverage_gaps.len().saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} deployed service area(s) appear to have no CloudWatch alarm coverage: {} (+{} more)",
+                        coverage_gaps.len(),
+                        sample_services.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} deployed service area(s) appear to have no CloudWatch alarm coverage: {}",
+                        coverage_gaps.len(),
+                        sample_services.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Hygiene,
+                    service: "CloudWatch".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step:
+                        "Open CloudWatch and add alarms for deployed services without namespace coverage"
+                            .into(),
+                    route: FindingRoute::CloudWatch,
+                });
+            }
+
             let zero_healthy_target_groups = self
                 .target_groups
                 .iter()
@@ -557,6 +622,52 @@ impl App {
                     summary,
                     next_step:
                         "Open EC2 and review stopped instances with public IPs or production-like names"
+                            .into(),
+                    route: FindingRoute::Ec2,
+                });
+            }
+
+            let instances_with_tag_gaps = self
+                .ec2_instances
+                .iter()
+                .filter(|instance| instance.has_tag_coverage_gap())
+                .collect::<Vec<_>>();
+
+            if !instances_with_tag_gaps.is_empty() {
+                let sample_instances = instances_with_tag_gaps
+                    .iter()
+                    .take(3)
+                    .map(|instance| {
+                        let label = instance.name.clone().unwrap_or_else(|| instance.id.clone());
+                        let missing = instance.missing_required_tags().join("/");
+                        format!("{label} ({missing})")
+                    })
+                    .collect::<Vec<_>>();
+                let sample_count = sample_instances.len();
+                let remaining = instances_with_tag_gaps.len().saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} EC2 instance(s) are missing Name, Owner, or Environment tags: {} (+{} more)",
+                        instances_with_tag_gaps.len(),
+                        sample_instances.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} EC2 instance(s) are missing Name, Owner, or Environment tags: {}",
+                        instances_with_tag_gaps.len(),
+                        sample_instances.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Hygiene,
+                    service: "EC2".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step:
+                        "Open EC2 and add Name, Owner, or Environment tags to unmanaged instances"
                             .into(),
                     route: FindingRoute::Ec2,
                 });

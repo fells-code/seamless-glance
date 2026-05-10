@@ -33,6 +33,13 @@ async fn fetch_instances_for_region(region: Region) -> Result<Vec<Ec2InstanceInf
 
     for reservation in resp.reservations() {
         for inst in reservation.instances() {
+            let tag_value = |key: &str| {
+                inst.tags()
+                    .iter()
+                    .find(|t| t.key().unwrap_or("") == key)
+                    .and_then(|t| t.value().map(|v| v.to_string()))
+            };
+
             let name = inst
                 .tags()
                 .iter()
@@ -42,6 +49,8 @@ async fn fetch_instances_for_region(region: Region) -> Result<Vec<Ec2InstanceInf
             instances.push(Ec2InstanceInfo {
                 id: inst.instance_id().unwrap_or("").to_string(),
                 name,
+                owner: tag_value("Owner"),
+                environment: tag_value("Environment"),
                 region: region.as_ref().to_string(),
                 instance_type: inst
                     .instance_type()

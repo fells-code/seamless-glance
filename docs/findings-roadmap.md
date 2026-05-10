@@ -40,9 +40,11 @@ Each finding should also carry:
 The app currently implements an initial set of high-signal findings:
 
 - named CloudWatch alarms in `ALARM`
+- CloudWatch coverage gaps for deployed services without matching alarm namespaces
 - target groups with zero healthy targets
 - unhealthy target groups
 - stopped instances with public IP or production-like naming
+- EC2 instances missing `Name`, `Owner`, or `Environment` tags
 - API Gateway APIs with generic names or age over one year
 - SQS queues with high visible or in-flight message counts
 - SQS queues without DLQs
@@ -107,7 +109,6 @@ These are strong candidates once the team adds a little more fetch depth.
 ### EC2
 
 - low CPU for sustained periods
-- missing `Name`, `Owner`, or `Environment` tags
 - long-running dev or staging instances
 
 ### ELB / Target Groups
@@ -129,11 +130,6 @@ These are strong candidates once the team adds a little more fetch depth.
 
 - DLQ growth spikes
 - queues with growing backlog over time rather than point-in-time volume only
-
-### CloudWatch
-
-- important services with no alarms at all
-- alarm coverage gaps for deployed workloads
 
 ### Security Groups
 
@@ -176,7 +172,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. CloudWatch alarm coverage gaps for important deployed workloads
+1. EC2 low CPU for sustained periods
 
 ## Implementation Guidance
 
@@ -199,6 +195,8 @@ Current implemented heuristics that should stay explainable:
 - RDS resilience review when an instance is available, single-AZ, and its identifier contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
 - API Gateway review when an API name is generic like `unnamed`, `default`, `test`, `example`, `sample`, `temp`, `tmp`, `my-api`, or `api`, or when its creation date is at least `365` days old
 - Secrets review when rotation is disabled and the secret name contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
+- CloudWatch coverage-gap review when deployed inventories exist for `EC2`, `Lambda`, `RDS`, `ECS`, `API Gateway`, or `SQS` but no alarms are present in the corresponding AWS namespace
+- EC2 tag-coverage review when an instance is missing any of the `Name`, `Owner`, or `Environment` tags
 
 ## Future Direction
 

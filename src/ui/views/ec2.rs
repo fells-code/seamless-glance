@@ -35,6 +35,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, inst)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if inst.has_tag_coverage_gap() {
+                Style::default().fg(app.theme.accent)
             } else if inst.needs_stopped_review() {
                 Style::default().fg(app.theme.primary)
             } else {
@@ -47,6 +49,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(inst.region.clone()),
                 Cell::from(inst.state.clone()),
                 Cell::from(inst.instance_type.clone()),
+                Cell::from(inst.owner.clone().unwrap_or("-".into())),
+                Cell::from(inst.environment.clone().unwrap_or("-".into())),
                 Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.private_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.az.clone()),
@@ -68,6 +72,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         "Region",
         "State",
         "Type",
+        "Owner",
+        "Env",
         "Public IP",
         "Private IP",
         "AZ",
@@ -80,6 +86,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         ratatui::layout::Constraint::Percentage(18),
         ratatui::layout::Constraint::Percentage(10),
         ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(12),
         ratatui::layout::Constraint::Percentage(10),
         ratatui::layout::Constraint::Percentage(12),
         ratatui::layout::Constraint::Percentage(12),
@@ -100,6 +108,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
             ratatui::layout::Constraint::Percentage(18),
             ratatui::layout::Constraint::Percentage(10),
             ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(12),
             ratatui::layout::Constraint::Percentage(10),
             ratatui::layout::Constraint::Percentage(12),
             ratatui::layout::Constraint::Percentage(12),

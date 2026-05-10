@@ -9,6 +9,8 @@ use crate::{
 pub struct Ec2InstanceInfo {
     pub id: String,
     pub name: Option<String>,
+    pub owner: Option<String>,
+    pub environment: Option<String>,
     pub instance_type: String,
     pub state: String,
     pub region: String,
@@ -52,6 +54,43 @@ impl Ec2InstanceInfo {
         self.is_stopped() && (self.has_public_ip() || self.has_production_like_name())
     }
 
+    pub fn missing_required_tags(&self) -> Vec<&'static str> {
+        let mut missing = Vec::new();
+
+        if self
+            .name
+            .as_deref()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true)
+        {
+            missing.push("Name");
+        }
+
+        if self
+            .owner
+            .as_deref()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true)
+        {
+            missing.push("Owner");
+        }
+
+        if self
+            .environment
+            .as_deref()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true)
+        {
+            missing.push("Environment");
+        }
+
+        missing
+    }
+
+    pub fn has_tag_coverage_gap(&self) -> bool {
+        !self.missing_required_tags().is_empty()
+    }
+
     pub fn review_signals(&self) -> Vec<&'static str> {
         let mut signals = Vec::new();
 
@@ -61,6 +100,10 @@ impl Ec2InstanceInfo {
 
         if self.has_production_like_name() {
             signals.push("prod-name");
+        }
+
+        if self.has_tag_coverage_gap() {
+            signals.push("missing-tags");
         }
 
         signals

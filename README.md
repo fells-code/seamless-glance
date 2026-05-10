@@ -99,7 +99,7 @@ General controls:
 
 View transitions now show a loading overlay while the next screen refreshes, instead of blocking silently during fetches.
 The app now opens on Findings by default so triage is the first thing you see.
-Account Overview now serves as an inventory snapshot for the current AWS profile, with account context, footprint summaries, and service inventory cards rather than findings-style callouts.
+Account Overview now serves as an inventory snapshot for the current AWS profile, with account context, footprint summaries, and a service inventory table rather than findings-style callouts.
 
 Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
 
@@ -112,7 +112,7 @@ Current resource-action model:
 Findings view behavior:
 
 - `Enter` opens the related service view for the selected finding
-- the initial finding set includes named CloudWatch alarms in `ALARM`, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
+- the initial finding set includes named CloudWatch alarms in `ALARM`, CloudWatch coverage gaps for deployed services without matching alarm namespaces, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, EC2 instances missing `Name`, `Owner`, or `Environment` tags, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
 
 Command palette shortcuts currently include:
 
