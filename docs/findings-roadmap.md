@@ -43,6 +43,7 @@ The app currently implements an initial set of high-signal findings:
 - target groups with zero healthy targets
 - unhealthy target groups
 - stopped instances with public IP or production-like naming
+- API Gateway APIs with generic names or age over one year
 - SQS queues with high visible or in-flight message counts
 - SQS queues without DLQs
 - RDS instances not `available`
@@ -104,15 +105,6 @@ These are the best next additions because they fit the current architecture and 
 - Why it matters: the same problem matters more when the secret appears production-scoped
 - Needed data: naming or tag heuristics
 - Best pivots: Secrets view, CLI, console
-
-### API Gateway
-
-#### Generic or stale APIs
-
-- Category: `Waste` or `Hygiene`
-- Why it matters: unnamed or untouched APIs are often drift or leftovers
-- Needed data: existing name and created date, plus simple heuristics
-- Best pivots: API Gateway view, CLI, console
 
 ## Findings Requiring Moderate Data Expansion
 
@@ -194,7 +186,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. API Gateway generic or stale APIs
+1. Secrets with rotation disabled that also look production-like
 
 ## Implementation Guidance
 
@@ -214,6 +206,7 @@ Current implemented thresholds that should stay explainable:
 Current implemented heuristics that should stay explainable:
 
 - RDS resilience review when an instance is available, single-AZ, and its identifier contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
+- API Gateway review when an API name is generic like `unnamed`, `default`, `test`, `example`, `sample`, `temp`, `tmp`, `my-api`, or `api`, or when its creation date is at least `365` days old
 
 ## Future Direction
 

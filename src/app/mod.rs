@@ -271,6 +271,7 @@ impl App {
                 self.refresh_phase = RefreshPhase::Services(vec![
                     "CloudWatch",
                     "EC2",
+                    "API Gateway",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -282,6 +283,7 @@ impl App {
                 self.cloudwatch_summary = summary;
                 self.cloudwatch_alarms = alarms;
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
+                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
@@ -599,6 +601,51 @@ impl App {
             });
         }
 
+        let apis_needing_review = self
+            .apigateway_apis
+            .iter()
+            .filter(|api| api.needs_review())
+            .collect::<Vec<_>>();
+
+        if !apis_needing_review.is_empty() {
+            let sample_apis = apis_needing_review
+                .iter()
+                .take(3)
+                .map(|api| {
+                    let signals = api.review_signals().join("/");
+                    format!("{} ({signals})", api.name)
+                })
+                .collect::<Vec<_>>();
+            let sample_count = sample_apis.len();
+            let remaining = apis_needing_review.len().saturating_sub(sample_count);
+            let summary = if remaining > 0 {
+                format!(
+                    "{} API Gateway API(s) look generic or stale: {} (+{} more)",
+                    apis_needing_review.len(),
+                    sample_apis.join(", "),
+                    remaining
+                )
+            } else {
+                format!(
+                    "{} API Gateway API(s) look generic or stale: {}",
+                    apis_needing_review.len(),
+                    sample_apis.join(", ")
+                )
+            };
+
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Waste,
+                service: "API Gateway".into(),
+                region: self.current_region_label(),
+                summary,
+                next_step:
+                    "Open API Gateway and review generic or year-old APIs for ownership and cleanup"
+                        .into(),
+                route: FindingRoute::Apigateway,
+            });
+        }
+
         let queues_without_dlq = self.sqs_queues_data.iter().filter(|q| !q.has_dlq).count();
 
         if queues_without_dlq > 0 {
@@ -861,6 +908,7 @@ impl App {
                 self.refresh_phase = RefreshPhase::Services(vec![
                     "CloudWatch",
                     "EC2",
+                    "API Gateway",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -873,6 +921,7 @@ impl App {
                 self.cloudwatch_summary = summary;
                 self.cloudwatch_alarms = alarms;
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
+                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
@@ -1309,6 +1358,7 @@ impl App {
             FindingRoute::CloudWatch => ActiveView::CloudWatch,
             FindingRoute::Lambda => ActiveView::Lambda,
             FindingRoute::Rds => ActiveView::Rds,
+            FindingRoute::Apigateway => ActiveView::Apigateway,
             FindingRoute::Secrets => ActiveView::Secrets,
             FindingRoute::Sqs => ActiveView::Sqs,
             FindingRoute::TargetGroups => ActiveView::TargetGroups,

@@ -1,3 +1,5 @@
+use chrono::{DateTime, Duration, TimeZone, Utc};
+
 use async_trait::async_trait;
 
 use crate::{
@@ -21,6 +23,63 @@ pub struct ApiGatewayInfo {
     pub name: String,
     pub api_type: String, // REST | HTTP
     pub created_at: String,
+}
+
+impl ApiGatewayInfo {
+    pub const STALE_API_DAYS: i64 = 365;
+    pub const GENERIC_NAME_HINTS: [&str; 8] = [
+        "unnamed", "default", "test", "example", "sample", "temp", "tmp", "my-api",
+    ];
+
+    pub fn has_generic_name(&self) -> bool {
+        let normalized = self.name.trim().to_ascii_lowercase();
+
+        if normalized.is_empty() || normalized == "api" {
+            return true;
+        }
+
+        Self::GENERIC_NAME_HINTS
+            .iter()
+            .any(|hint| normalized == *hint || normalized.starts_with(&format!("{hint}-")))
+    }
+
+    pub fn is_stale(&self) -> bool {
+        let Some(created_at) = self.parsed_created_at() else {
+            return false;
+        };
+
+        created_at <= Utc::now() - Duration::days(Self::STALE_API_DAYS)
+    }
+
+    pub fn needs_review(&self) -> bool {
+        self.has_generic_name() || self.is_stale()
+    }
+
+    pub fn review_signals(&self) -> Vec<&'static str> {
+        let mut signals = Vec::new();
+
+        if self.has_generic_name() {
+            signals.push("generic-name");
+        }
+
+        if self.is_stale() {
+            signals.push("stale");
+        }
+
+        signals
+    }
+
+    fn parsed_created_at(&self) -> Option<DateTime<Utc>> {
+        if let Ok(dt) = DateTime::parse_from_rfc3339(&self.created_at) {
+            return Some(dt.with_timezone(&Utc));
+        }
+
+        if let Ok(epoch_seconds) = self.created_at.parse::<i64>() {
+            return Utc.timestamp_opt(epoch_seconds, 0).single();
+        }
+
+        None
+    }
 }
 
 #[async_trait]

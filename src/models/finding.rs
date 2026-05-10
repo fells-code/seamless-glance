@@ -43,6 +43,7 @@ pub enum FindingRoute {
     CloudWatch,
     Lambda,
     Rds,
+    Apigateway,
     Secrets,
     Sqs,
     TargetGroups,

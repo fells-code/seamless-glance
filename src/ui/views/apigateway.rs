@@ -8,7 +8,7 @@ use ratatui::{
 use crate::app::App;
 
 pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
-    let total_rows = app.rds_instances.len();
+    let total_rows = app.apigateway_apis.len();
     if total_rows == 0 {
         app.selected_row = 0;
         app.scroll_offset = 0;
@@ -36,6 +36,8 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
         .map(|(i, api)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if api.needs_review() {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };
@@ -45,6 +47,14 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
                 Cell::from(api.api_type.clone()),
                 Cell::from(api.id.clone()),
                 Cell::from(api.created_at.clone()),
+                Cell::from({
+                    let signals = api.review_signals();
+                    if signals.is_empty() {
+                        "-".into()
+                    } else {
+                        signals.join(",")
+                    }
+                }),
             ])
             .style(style)
         })
@@ -56,11 +66,12 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
             Constraint::Percentage(30),
             Constraint::Percentage(10),
             Constraint::Percentage(20),
-            Constraint::Percentage(40),
+            Constraint::Percentage(25),
+            Constraint::Percentage(15),
         ],
     )
     .header(
-        Row::new(vec!["Name", "Type", "ID", "Created"])
+        Row::new(vec!["Name", "Type", "ID", "Created", "Signals"])
             .style(Style::default().fg(app.theme.accent)),
     )
     .block(
