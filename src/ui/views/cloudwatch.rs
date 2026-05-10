@@ -50,6 +50,8 @@ pub fn render_cw(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, a)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if a.state == "ALARM" {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };

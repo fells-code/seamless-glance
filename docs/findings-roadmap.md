@@ -39,7 +39,7 @@ Each finding should also carry:
 
 The app currently implements an initial set of high-signal findings:
 
-- CloudWatch alarms in `ALARM`
+- named CloudWatch alarms in `ALARM`
 - target groups with zero healthy targets
 - unhealthy target groups
 - SQS queues without DLQs
@@ -57,15 +57,6 @@ These are a foundation, not the target end state.
 ## Near-Term Findings
 
 These are the best next additions because they fit the current architecture and the data is mostly already present or easy to add.
-
-### CloudWatch
-
-#### Alarms in ALARM by resource and age
-
-- Category: `Incident`
-- Why it matters: a count is useful, but the operator needs the actual failing alarms first
-- Needed data: alarm name, state, last state update if available, related metric context
-- Best pivots: CloudWatch view, CLI describe-alarms, console link
 
 ### EC2
 
@@ -225,7 +216,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. CloudWatch findings expanded from counts to named failing alarms
+1. EC2 stopped instances with public IP or production-like naming
 
 ## Implementation Guidance
 

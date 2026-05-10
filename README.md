@@ -106,7 +106,7 @@ Current resource-action model:
 Findings view behavior:
 
 - `Enter` opens the related service view for the selected finding
-- the initial finding set includes alarms in `ALARM`, stopped EC2 instances, RDS instances that are not available, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
+- the initial finding set includes named CloudWatch alarms in `ALARM`, stopped EC2 instances, RDS instances that are not available, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
 
 Command palette shortcuts currently include:
 

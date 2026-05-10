@@ -38,6 +38,16 @@ pub async fn fetch_cloudwatch(app: &App) -> (CloudWatchSummary, Vec<CloudWatchAl
             metric: a.metric_name().unwrap_or("").to_string(),
         })
         .collect();
+    let mut alarms = alarms;
+    alarms.sort_by(|a, b| {
+        let a_rank = if a.state == "ALARM" { 0 } else { 1 };
+        let b_rank = if b.state == "ALARM" { 0 } else { 1 };
+
+        a_rank
+            .cmp(&b_rank)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.namespace.cmp(&b.namespace))
+    });
 
     let total = alarms.len();
     let alarming = alarms.iter().filter(|a| a.state == "ALARM").count();

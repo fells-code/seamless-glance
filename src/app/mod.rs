@@ -269,6 +269,7 @@ impl App {
         match self.active_view {
             ActiveView::Findings => {
                 self.refresh_phase = RefreshPhase::Services(vec![
+                    "CloudWatch",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -276,6 +277,9 @@ impl App {
                     "Lambda",
                     "VPC",
                 ]);
+                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
+                self.cloudwatch_summary = summary;
+                self.cloudwatch_alarms = alarms;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
@@ -350,7 +354,46 @@ impl App {
         let mut findings = Vec::new();
 
         if let Some(overview) = &self.account_overview {
-            if overview.alarms.alarms_in_alarm > 0 {
+            let alarming_alarms = self
+                .cloudwatch_alarms
+                .iter()
+                .filter(|alarm| alarm.state == "ALARM")
+                .collect::<Vec<_>>();
+
+            if !alarming_alarms.is_empty() {
+                let sample_names = alarming_alarms
+                    .iter()
+                    .take(3)
+                    .map(|alarm| alarm.name.clone())
+                    .collect::<Vec<_>>();
+                let sample_count = sample_names.len();
+                let remaining = alarming_alarms.len().saturating_sub(sample_count);
+                let sample_summary = sample_names.join(", ");
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} alarm(s) are in ALARM: {} (+{} more)",
+                        alarming_alarms.len(),
+                        sample_summary,
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} alarm(s) are in ALARM: {}",
+                        alarming_alarms.len(),
+                        sample_summary
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::High,
+                    category: FindingCategory::Incident,
+                    service: "CloudWatch".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step: "Open CloudWatch and inspect failing alarms".into(),
+                    route: FindingRoute::CloudWatch,
+                });
+            } else if overview.alarms.alarms_in_alarm > 0 {
                 findings.push(Finding {
                     severity: FindingSeverity::High,
                     category: FindingCategory::Incident,
@@ -663,6 +706,7 @@ impl App {
         match self.active_view {
             ActiveView::Findings => {
                 self.refresh_phase = RefreshPhase::Services(vec![
+                    "CloudWatch",
                     "Security Groups",
                     "Target Groups",
                     "SQS",
@@ -671,6 +715,9 @@ impl App {
                     "VPC",
                     "Findings",
                 ]);
+                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
+                self.cloudwatch_summary = summary;
+                self.cloudwatch_alarms = alarms;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
