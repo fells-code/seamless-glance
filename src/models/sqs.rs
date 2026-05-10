@@ -25,6 +25,37 @@ pub struct SqsQueueInfo {
     pub has_dlq: bool,
 }
 
+impl SqsQueueInfo {
+    pub const HIGH_VISIBLE_THRESHOLD: i64 = 100;
+    pub const HIGH_IN_FLIGHT_THRESHOLD: i64 = 50;
+
+    pub fn has_high_visible_messages(&self) -> bool {
+        self.messages_available >= Self::HIGH_VISIBLE_THRESHOLD
+    }
+
+    pub fn has_high_in_flight_messages(&self) -> bool {
+        self.messages_in_flight >= Self::HIGH_IN_FLIGHT_THRESHOLD
+    }
+
+    pub fn has_backlog_incident(&self) -> bool {
+        self.has_high_visible_messages() || self.has_high_in_flight_messages()
+    }
+
+    pub fn backlog_signals(&self) -> Vec<&'static str> {
+        let mut signals = Vec::new();
+
+        if self.has_high_visible_messages() {
+            signals.push("visible");
+        }
+
+        if self.has_high_in_flight_messages() {
+            signals.push("in-flight");
+        }
+
+        signals
+    }
+}
+
 #[async_trait]
 impl DescribableResource for SqsQueueInfo {
     fn resource_name(&self) -> String {

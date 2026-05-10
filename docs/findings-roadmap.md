@@ -43,6 +43,7 @@ The app currently implements an initial set of high-signal findings:
 - target groups with zero healthy targets
 - unhealthy target groups
 - stopped instances with public IP or production-like naming
+- SQS queues with high visible or in-flight message counts
 - SQS queues without DLQs
 - RDS instances not `available`
 - Lambda functions with suspiciously high memory
@@ -102,15 +103,6 @@ These are the best next additions because they fit the current architecture and 
 - Why it matters: the same problem matters more when the secret appears production-scoped
 - Needed data: naming or tag heuristics
 - Best pivots: Secrets view, CLI, console
-
-### SQS
-
-#### High visible or in-flight messages
-
-- Category: `Incident`
-- Why it matters: backlog and stuck work are operationally meaningful
-- Needed data: existing message counters plus thresholds
-- Best pivots: SQS view, CLI, console
 
 ### RDS
 
@@ -210,7 +202,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. SQS high visible or in-flight messages
+1. RDS single-AZ database that appears production-like
 
 ## Implementation Guidance
 
@@ -221,6 +213,11 @@ When adding a new finding:
 3. avoid scoring everything as urgent
 4. always pair the finding with a next-step pivot
 5. document thresholds and heuristics when they are non-obvious
+
+Current implemented thresholds that should stay explainable:
+
+- SQS backlog incident when a queue has `>= 100` visible messages
+- SQS backlog incident when a queue has `>= 50` in-flight messages
 
 ## Future Direction
 

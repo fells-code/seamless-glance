@@ -36,6 +36,8 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
         .map(|(i, q)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if q.has_backlog_incident() {
+                Style::default().fg(app.theme.accent)
             } else if !q.has_dlq {
                 Style::default().fg(app.theme.primary)
             } else {
@@ -48,6 +50,14 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
                 Cell::from(q.messages_available.to_string()),
                 Cell::from(q.messages_in_flight.to_string()),
                 Cell::from(if q.has_dlq { "Yes" } else { "No" }),
+                Cell::from({
+                    let signals = q.backlog_signals();
+                    if signals.is_empty() {
+                        "-".into()
+                    } else {
+                        signals.join(",")
+                    }
+                }),
             ])
             .style(style)
         })
@@ -61,11 +71,19 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
             Constraint::Percentage(15),
             Constraint::Percentage(15),
             Constraint::Percentage(10),
+            Constraint::Percentage(15),
         ],
     )
     .header(
-        Row::new(vec!["Queue", "Type", "Available", "In Flight", "DLQ"])
-            .style(Style::default().fg(app.theme.accent)),
+        Row::new(vec![
+            "Queue",
+            "Type",
+            "Available",
+            "In Flight",
+            "DLQ",
+            "Signals",
+        ])
+        .style(Style::default().fg(app.theme.accent)),
     )
     .block(
         Block::default()

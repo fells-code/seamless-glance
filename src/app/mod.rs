@@ -614,6 +614,53 @@ impl App {
             });
         }
 
+        let backlog_queues = self
+            .sqs_queues_data
+            .iter()
+            .filter(|queue| queue.has_backlog_incident())
+            .collect::<Vec<_>>();
+
+        if !backlog_queues.is_empty() {
+            let sample_queues = backlog_queues
+                .iter()
+                .take(3)
+                .map(|queue| {
+                    let signals = queue.backlog_signals().join("/");
+                    format!("{} ({signals})", queue.name)
+                })
+                .collect::<Vec<_>>();
+            let sample_count = sample_queues.len();
+            let remaining = backlog_queues.len().saturating_sub(sample_count);
+            let summary = if remaining > 0 {
+                format!(
+                    "{} queue(s) have high backlog or stuck work: {} (+{} more)",
+                    backlog_queues.len(),
+                    sample_queues.join(", "),
+                    remaining
+                )
+            } else {
+                format!(
+                    "{} queue(s) have high backlog or stuck work: {}",
+                    backlog_queues.len(),
+                    sample_queues.join(", ")
+                )
+            };
+
+            findings.push(Finding {
+                severity: FindingSeverity::High,
+                category: FindingCategory::Incident,
+                service: "SQS".into(),
+                region: self.current_region_label(),
+                summary,
+                next_step: format!(
+                    "Open SQS and inspect queues with >= {} visible or >= {} in-flight messages",
+                    SqsQueueInfo::HIGH_VISIBLE_THRESHOLD,
+                    SqsQueueInfo::HIGH_IN_FLIGHT_THRESHOLD
+                ),
+                route: FindingRoute::Sqs,
+            });
+        }
+
         let rds_not_available = self
             .rds_instances
             .iter()
