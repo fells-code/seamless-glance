@@ -268,14 +268,20 @@ impl App {
     pub async fn on_view_enter(&mut self) {
         match self.active_view {
             ActiveView::Findings => {
-                self.refresh_phase =
-                    RefreshPhase::Services(vec!["Security Groups", "Target Groups", "SQS", "RDS"]);
+                self.refresh_phase = RefreshPhase::Services(vec![
+                    "Security Groups",
+                    "Target Groups",
+                    "SQS",
+                    "RDS",
+                    "Lambda",
+                ]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
                 let (summary, instances) = aws::rds::fetch_rds(self).await;
                 self.rds_summary = summary;
                 self.rds_instances = instances;
+                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
                 self.rebuild_findings();
                 self.refresh_phase = RefreshPhase::Idle;
             }
@@ -519,6 +525,48 @@ impl App {
             });
         }
 
+        let high_memory_functions = self
+            .lambda_functions
+            .iter()
+            .filter(|f| f.has_high_memory())
+            .count();
+
+        if high_memory_functions > 0 {
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Waste,
+                service: "Lambda".into(),
+                region: self.current_region_label(),
+                summary: format!(
+                    "{high_memory_functions} function(s) have memory >= {} MB",
+                    LambdaFunctionInfo::HIGH_MEMORY_THRESHOLD_MB
+                ),
+                next_step: "Review high-memory Lambda functions for right-sizing".into(),
+                route: FindingRoute::Lambda,
+            });
+        }
+
+        let stale_functions = self
+            .lambda_functions
+            .iter()
+            .filter(|f| f.is_stale())
+            .count();
+
+        if stale_functions > 0 {
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Waste,
+                service: "Lambda".into(),
+                region: self.current_region_label(),
+                summary: format!(
+                    "{stale_functions} function(s) have not been modified in {}+ days",
+                    LambdaFunctionInfo::STALE_DEPLOY_DAYS
+                ),
+                next_step: "Review stale Lambda functions for ownership or cleanup".into(),
+                route: FindingRoute::Lambda,
+            });
+        }
+
         findings.sort_by(|a, b| {
             a.severity
                 .rank()
@@ -602,6 +650,7 @@ impl App {
                     "Target Groups",
                     "SQS",
                     "RDS",
+                    "Lambda",
                     "Findings",
                 ]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
@@ -610,6 +659,7 @@ impl App {
                 let (summary, instances) = aws::rds::fetch_rds(self).await;
                 self.rds_summary = summary;
                 self.rds_instances = instances;
+                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
             }
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
@@ -1036,6 +1086,7 @@ impl App {
         self.active_view = match finding.route {
             FindingRoute::Ec2 => ActiveView::Ec2,
             FindingRoute::CloudWatch => ActiveView::CloudWatch,
+            FindingRoute::Lambda => ActiveView::Lambda,
             FindingRoute::Rds => ActiveView::Rds,
             FindingRoute::Secrets => ActiveView::Secrets,
             FindingRoute::Sqs => ActiveView::Sqs,
@@ -1086,7 +1137,6 @@ impl App {
                     ctx.key_name.as_ref().unwrap()
                 ),
                 context: ctx,
-                selected: 0,
             }));
         } else {
             // No key pair, assume agent

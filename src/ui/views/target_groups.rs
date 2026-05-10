@@ -42,6 +42,7 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &App) {
 
         Row::new(vec![
             tg.name.clone(),
+            tg.protocol.clone(),
             tg.target_type.clone(),
             tg.port.to_string(),
             tg.total_targets.to_string(),
@@ -54,7 +55,8 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &App) {
     let table = Table::new(
         rows,
         [
-            ratatui::layout::Constraint::Percentage(35),
+            ratatui::layout::Constraint::Percentage(28),
+            ratatui::layout::Constraint::Length(10),
             ratatui::layout::Constraint::Length(10),
             ratatui::layout::Constraint::Length(6),
             ratatui::layout::Constraint::Length(8),
@@ -63,8 +65,16 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &App) {
         ],
     )
     .header(
-        Row::new(["NAME", "TYPE", "PORT", "TARGETS", "HEALTHY", "UNHEALTHY"])
-            .style(Style::default().add_modifier(Modifier::BOLD)),
+        Row::new([
+            "NAME",
+            "PROTO",
+            "TYPE",
+            "PORT",
+            "TARGETS",
+            "HEALTHY",
+            "UNHEALTHY",
+        ])
+        .style(Style::default().add_modifier(Modifier::BOLD)),
     )
     .block(
         Block::default()

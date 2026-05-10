@@ -44,6 +44,8 @@ The app currently implements an initial set of high-signal findings:
 - unhealthy target groups
 - SQS queues without DLQs
 - RDS instances not `available`
+- Lambda functions with suspiciously high memory
+- Lambda functions with very old last-modified dates
 - secrets without rotation
 - stopped EC2 instances
 - security groups open to the world
@@ -134,20 +136,6 @@ These are the best next additions because they fit the current architecture and 
 - Best pivots: RDS view, CLI, console
 
 ### Lambda
-
-#### Suspiciously high memory allocation
-
-- Category: `Waste`
-- Why it matters: high configured memory often signals avoidable cost
-- Needed data: existing memory setting plus thresholding
-- Best pivots: Lambda view, CLI get-function, console
-
-#### Very old last-modified functions
-
-- Category: `Waste` or `Hygiene`
-- Why it matters: stale functions may be abandoned or under-owned
-- Needed data: existing last modified timestamp plus aging heuristic
-- Best pivots: Lambda view, CLI, console
 
 ### VPC
 
@@ -247,9 +235,8 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. Lambda functions with suspiciously high memory or very old deploy dates
-2. default VPC present
-3. CloudWatch findings expanded from counts to named failing alarms
+1. default VPC present
+2. CloudWatch findings expanded from counts to named failing alarms
 
 ## Implementation Guidance
 

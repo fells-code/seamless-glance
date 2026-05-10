@@ -15,7 +15,6 @@ pub struct ConfirmCommandState {
 pub struct SelectSshKeyState {
     pub title: String,
     pub context: SshContext,
-    pub selected: usize,
 }
 
 pub enum OverlayState {

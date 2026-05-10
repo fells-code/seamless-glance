@@ -1,3 +1,5 @@
+use chrono::{DateTime, Duration, Utc};
+
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -19,6 +21,34 @@ pub struct LambdaFunctionInfo {
     pub memory_mb: i32,
     pub timeout_sec: i32,
     pub last_modified: String,
+}
+
+impl LambdaFunctionInfo {
+    pub const HIGH_MEMORY_THRESHOLD_MB: i32 = 2048;
+    pub const STALE_DEPLOY_DAYS: i64 = 180;
+
+    pub fn has_high_memory(&self) -> bool {
+        self.memory_mb >= Self::HIGH_MEMORY_THRESHOLD_MB
+    }
+
+    pub fn is_stale(&self) -> bool {
+        let Some(last_modified) = self.parsed_last_modified() else {
+            return false;
+        };
+
+        last_modified <= Utc::now() - Duration::days(Self::STALE_DEPLOY_DAYS)
+    }
+
+    fn parsed_last_modified(&self) -> Option<DateTime<Utc>> {
+        [
+            "%Y-%m-%dT%H:%M:%S%.3f%z",
+            "%Y-%m-%dT%H:%M:%S%.f%z",
+            "%Y-%m-%dT%H:%M:%S%z",
+        ]
+        .iter()
+        .find_map(|fmt| DateTime::parse_from_str(&self.last_modified, fmt).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+    }
 }
 
 #[async_trait]

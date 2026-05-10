@@ -35,6 +35,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, f)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if f.has_high_memory() || f.is_stale() {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };
