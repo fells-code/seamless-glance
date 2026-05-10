@@ -1,7 +1,7 @@
 use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
-    style::Style,
+    style::{Modifier, Style},
     widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
@@ -35,6 +35,12 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, lb)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if lb.has_zero_healthy_targets() {
+                Style::default()
+                    .fg(app.theme.primary)
+                    .add_modifier(Modifier::BOLD)
+            } else if lb.has_no_active_targets() {
+                Style::default().fg(app.theme.accent)
             } else {
                 Style::default().fg(app.theme.text)
             };
@@ -44,6 +50,17 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(lb.scheme.clone()),
                 Cell::from(lb.state.clone()),
                 Cell::from(lb.az_count.to_string()),
+                Cell::from(lb.attached_target_groups.to_string()),
+                Cell::from(lb.total_targets.to_string()),
+                Cell::from(lb.healthy_targets.to_string()),
+                Cell::from({
+                    let signals = lb.review_signals();
+                    if signals.is_empty() {
+                        "-".into()
+                    } else {
+                        signals.join(",")
+                    }
+                }),
             ])
             .style(style)
         })
@@ -55,17 +72,25 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
         Cell::from("Scheme"),
         Cell::from("State"),
         Cell::from("AZs"),
+        Cell::from("TGs"),
+        Cell::from("Targets"),
+        Cell::from("Healthy"),
+        Cell::from("Signals"),
     ])
     .style(Style::default().fg(app.theme.accent));
 
     let table = Table::new(
         rows,
         &[
-            Constraint::Percentage(30),
-            Constraint::Length(20),
-            Constraint::Length(20),
+            Constraint::Percentage(24),
+            Constraint::Length(18),
+            Constraint::Length(18),
             Constraint::Length(10),
-            Constraint::Length(10),
+            Constraint::Length(6),
+            Constraint::Length(6),
+            Constraint::Length(8),
+            Constraint::Length(8),
+            Constraint::Length(18),
         ],
     )
     .header(header)

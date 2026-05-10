@@ -47,6 +47,7 @@ pub enum FindingRoute {
     Secrets,
     Sqs,
     TargetGroups,
+    LoadBalancers,
     SecurityGroups,
     Vpc,
 }

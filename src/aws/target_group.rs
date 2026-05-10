@@ -50,6 +50,11 @@ pub async fn fetch_target_groups(app: &App) -> Vec<TargetGroupInfo> {
                 .target_type()
                 .map(|t| format!("{:?}", t))
                 .unwrap_or_else(|| "unknown".into()),
+            attached_load_balancer_arns: tg
+                .load_balancer_arns()
+                .iter()
+                .map(|arn| arn.to_string())
+                .collect(),
             total_targets: total,
             unhealthy_targets: unhealthy,
         });

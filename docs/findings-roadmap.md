@@ -43,6 +43,9 @@ The app currently implements an initial set of high-signal findings:
 - CloudWatch coverage gaps for deployed services without matching alarm namespaces
 - target groups with zero healthy targets
 - unhealthy target groups
+- target groups with no load balancer attachment and no registered targets
+- load balancers with no active target path
+- load balancers with zero healthy targets
 - running EC2 instances averaging below 5 percent CPU over the last 7 days
 - stopped instances with public IP or production-like naming
 - EC2 instances missing `Name`, `Owner`, or `Environment` tags
@@ -112,9 +115,6 @@ These are strong candidates once the team adds a little more fetch depth.
 - long-running dev or staging instances
 
 ### ELB / Target Groups
-
-- load balancer with no active or healthy targets
-- orphan target groups with no meaningful attachment
 
 ### RDS
 
@@ -198,6 +198,9 @@ Current implemented heuristics that should stay explainable:
 - Secrets review when rotation is disabled and the secret name contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
 - CloudWatch coverage-gap review when deployed inventories exist for `EC2`, `Lambda`, `RDS`, `ECS`, `API Gateway`, or `SQS` but no alarms are present in the corresponding AWS namespace
 - EC2 tag-coverage review when an instance is missing any of the `Name`, `Owner`, or `Environment` tags
+- Target group orphan review when a target group has no attached load balancer and zero registered targets
+- Load balancer no-active-target-path review when a load balancer has no attached target groups or zero registered targets behind them
+- Load balancer incident review when registered targets exist but healthy targets total zero
 
 ## Future Direction
 

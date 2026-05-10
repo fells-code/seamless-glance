@@ -11,6 +11,35 @@ pub struct LoadBalancerInfo {
     pub scheme: String,  // internet-facing | internal
     pub state: String,
     pub az_count: usize,
+    pub attached_target_groups: usize,
+    pub total_targets: usize,
+    pub healthy_targets: usize,
+}
+
+impl LoadBalancerInfo {
+    pub fn has_no_active_targets(&self) -> bool {
+        self.attached_target_groups == 0 || self.total_targets == 0
+    }
+
+    pub fn has_zero_healthy_targets(&self) -> bool {
+        self.total_targets > 0 && self.healthy_targets == 0
+    }
+
+    pub fn review_signals(&self) -> Vec<&'static str> {
+        let mut signals = Vec::new();
+
+        if self.attached_target_groups == 0 {
+            signals.push("no-target-groups");
+        } else if self.total_targets == 0 {
+            signals.push("no-targets");
+        }
+
+        if self.has_zero_healthy_targets() {
+            signals.push("zero-healthy");
+        }
+
+        signals
+    }
 }
 
 #[async_trait]

@@ -10,6 +10,7 @@ pub struct TargetGroupInfo {
     pub protocol: String,
     pub port: i32,
     pub target_type: String,
+    pub attached_load_balancer_arns: Vec<String>,
     pub total_targets: usize,
     pub unhealthy_targets: usize,
 }
@@ -21,6 +22,34 @@ impl TargetGroupInfo {
 
     pub fn has_zero_healthy_targets(&self) -> bool {
         self.total_targets > 0 && self.healthy_targets() == 0
+    }
+
+    pub fn attached_load_balancer_count(&self) -> usize {
+        self.attached_load_balancer_arns.len()
+    }
+
+    pub fn has_load_balancer_attachment(&self) -> bool {
+        !self.attached_load_balancer_arns.is_empty()
+    }
+
+    pub fn is_orphan_candidate(&self) -> bool {
+        !self.has_load_balancer_attachment() && self.total_targets == 0
+    }
+
+    pub fn review_signals(&self) -> Vec<&'static str> {
+        let mut signals = Vec::new();
+
+        if self.is_orphan_candidate() {
+            signals.push("orphan");
+        }
+
+        if self.has_zero_healthy_targets() {
+            signals.push("zero-healthy");
+        } else if self.unhealthy_targets > 0 {
+            signals.push("unhealthy");
+        }
+
+        signals
     }
 }
 

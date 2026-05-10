@@ -528,6 +528,48 @@ impl App {
                 });
             }
 
+            let orphan_target_groups = self
+                .target_groups
+                .iter()
+                .filter(|tg| tg.is_orphan_candidate())
+                .collect::<Vec<_>>();
+
+            if !orphan_target_groups.is_empty() {
+                let sample_groups = orphan_target_groups
+                    .iter()
+                    .take(3)
+                    .map(|tg| tg.name.clone())
+                    .collect::<Vec<_>>();
+                let sample_count = sample_groups.len();
+                let remaining = orphan_target_groups.len().saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} target group(s) have no load balancer attachment and no registered targets: {} (+{} more)",
+                        orphan_target_groups.len(),
+                        sample_groups.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} target group(s) have no load balancer attachment and no registered targets: {}",
+                        orphan_target_groups.len(),
+                        sample_groups.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Waste,
+                    service: "Target Groups".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step:
+                        "Open target groups and review orphan groups for cleanup or reattachment"
+                            .into(),
+                    route: FindingRoute::TargetGroups,
+                });
+            }
+
             let production_like_rotation_disabled = self
                 .secrets
                 .iter()
@@ -1050,6 +1092,97 @@ impl App {
             });
         }
 
+        let load_balancers_with_zero_healthy_targets = self
+            .load_balancers
+            .iter()
+            .filter(|lb| lb.has_zero_healthy_targets())
+            .collect::<Vec<_>>();
+
+        if !load_balancers_with_zero_healthy_targets.is_empty() {
+            let sample_load_balancers = load_balancers_with_zero_healthy_targets
+                .iter()
+                .take(3)
+                .map(|lb| lb.name.clone())
+                .collect::<Vec<_>>();
+            let sample_count = sample_load_balancers.len();
+            let remaining = load_balancers_with_zero_healthy_targets
+                .len()
+                .saturating_sub(sample_count);
+            let summary = if remaining > 0 {
+                format!(
+                    "{} load balancer(s) have target groups but zero healthy targets: {} (+{} more)",
+                    load_balancers_with_zero_healthy_targets.len(),
+                    sample_load_balancers.join(", "),
+                    remaining
+                )
+            } else {
+                format!(
+                    "{} load balancer(s) have target groups but zero healthy targets: {}",
+                    load_balancers_with_zero_healthy_targets.len(),
+                    sample_load_balancers.join(", ")
+                )
+            };
+
+            findings.push(Finding {
+                severity: FindingSeverity::High,
+                category: FindingCategory::Incident,
+                service: "Load Balancers".into(),
+                region: self.current_region_label(),
+                summary,
+                next_step:
+                    "Open load balancers and restore healthy registered targets behind the listener"
+                        .into(),
+                route: FindingRoute::LoadBalancers,
+            });
+        }
+
+        let load_balancers_with_no_active_targets = self
+            .load_balancers
+            .iter()
+            .filter(|lb| lb.has_no_active_targets() && !lb.has_zero_healthy_targets())
+            .collect::<Vec<_>>();
+
+        if !load_balancers_with_no_active_targets.is_empty() {
+            let sample_load_balancers = load_balancers_with_no_active_targets
+                .iter()
+                .take(3)
+                .map(|lb| {
+                    let signals = lb.review_signals().join("/");
+                    format!("{} ({signals})", lb.name)
+                })
+                .collect::<Vec<_>>();
+            let sample_count = sample_load_balancers.len();
+            let remaining = load_balancers_with_no_active_targets
+                .len()
+                .saturating_sub(sample_count);
+            let summary = if remaining > 0 {
+                format!(
+                    "{} load balancer(s) have no active target path: {} (+{} more)",
+                    load_balancers_with_no_active_targets.len(),
+                    sample_load_balancers.join(", "),
+                    remaining
+                )
+            } else {
+                format!(
+                    "{} load balancer(s) have no active target path: {}",
+                    load_balancers_with_no_active_targets.len(),
+                    sample_load_balancers.join(", ")
+                )
+            };
+
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Waste,
+                service: "Load Balancers".into(),
+                region: self.current_region_label(),
+                summary,
+                next_step:
+                    "Open load balancers and review listeners with no target groups or no registered targets"
+                        .into(),
+                route: FindingRoute::LoadBalancers,
+            });
+        }
+
         let high_memory_functions = self
             .lambda_functions
             .iter()
@@ -1178,6 +1311,7 @@ impl App {
                     "Secrets",
                     "Security Groups",
                     "Target Groups",
+                    "Load Balancers",
                     "SQS",
                     "RDS",
                     "Lambda",
@@ -1194,6 +1328,8 @@ impl App {
                 self.secrets = secrets;
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
+                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+                aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
                 let (summary, instances) = aws::rds::fetch_rds(self).await;
                 self.rds_summary = summary;
@@ -1253,12 +1389,15 @@ impl App {
             }
 
             ActiveView::LoadBalancers => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Load Balancers"]);
-                let lbs = aws::elb::fetch_load_balancers(self).await;
-                self.load_balancers = lbs;
+                self.refresh_phase =
+                    RefreshPhase::Services(vec!["Load Balancers", "Target Groups"]);
+                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+                aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
             }
 
             ActiveView::TargetGroups => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Target Groups"]);
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
             }
 
@@ -1630,6 +1769,7 @@ impl App {
             FindingRoute::Secrets => ActiveView::Secrets,
             FindingRoute::Sqs => ActiveView::Sqs,
             FindingRoute::TargetGroups => ActiveView::TargetGroups,
+            FindingRoute::LoadBalancers => ActiveView::LoadBalancers,
             FindingRoute::SecurityGroups => ActiveView::SecurityGroups,
             FindingRoute::Vpc => ActiveView::Vpc,
         };
