@@ -269,10 +269,13 @@ impl App {
         match self.active_view {
             ActiveView::Findings => {
                 self.refresh_phase =
-                    RefreshPhase::Services(vec!["Security Groups", "Target Groups", "SQS"]);
+                    RefreshPhase::Services(vec!["Security Groups", "Target Groups", "SQS", "RDS"]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
+                let (summary, instances) = aws::rds::fetch_rds(self).await;
+                self.rds_summary = summary;
+                self.rds_instances = instances;
                 self.rebuild_findings();
                 self.refresh_phase = RefreshPhase::Idle;
             }
@@ -498,6 +501,24 @@ impl App {
             });
         }
 
+        let rds_not_available = self
+            .rds_instances
+            .iter()
+            .filter(|db| db.status != "available")
+            .count();
+
+        if rds_not_available > 0 {
+            findings.push(Finding {
+                severity: FindingSeverity::High,
+                category: FindingCategory::Incident,
+                service: "RDS".into(),
+                region: self.current_region_label(),
+                summary: format!("{rds_not_available} RDS instance(s) are not available"),
+                next_step: "Open RDS and investigate instance status and recovery path".into(),
+                route: FindingRoute::Rds,
+            });
+        }
+
         findings.sort_by(|a, b| {
             a.severity
                 .rank()
@@ -580,11 +601,15 @@ impl App {
                     "Security Groups",
                     "Target Groups",
                     "SQS",
+                    "RDS",
                     "Findings",
                 ]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
                 self.target_groups = aws::target_group::fetch_target_groups(self).await;
                 self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
+                let (summary, instances) = aws::rds::fetch_rds(self).await;
+                self.rds_summary = summary;
+                self.rds_instances = instances;
             }
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
@@ -1011,6 +1036,7 @@ impl App {
         self.active_view = match finding.route {
             FindingRoute::Ec2 => ActiveView::Ec2,
             FindingRoute::CloudWatch => ActiveView::CloudWatch,
+            FindingRoute::Rds => ActiveView::Rds,
             FindingRoute::Secrets => ActiveView::Secrets,
             FindingRoute::Sqs => ActiveView::Sqs,
             FindingRoute::TargetGroups => ActiveView::TargetGroups,

@@ -41,6 +41,7 @@ impl FindingCategory {
 pub enum FindingRoute {
     Ec2,
     CloudWatch,
+    Rds,
     Secrets,
     Sqs,
     TargetGroups,

@@ -43,6 +43,7 @@ The app currently implements an initial set of high-signal findings:
 - target groups with zero healthy targets
 - unhealthy target groups
 - SQS queues without DLQs
+- RDS instances not `available`
 - secrets without rotation
 - stopped EC2 instances
 - security groups open to the world
@@ -124,13 +125,6 @@ These are the best next additions because they fit the current architecture and 
 - Best pivots: SQS view, CLI, console
 
 ### RDS
-
-#### Instance not `available`
-
-- Category: `Incident`
-- Why it matters: database availability issues deserve first-class visibility
-- Needed data: existing status field
-- Best pivots: RDS view, CLI describe-db-instances, console
 
 #### Single-AZ database that appears production-like
 
@@ -253,10 +247,9 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. RDS instances not `available`
-2. Lambda functions with suspiciously high memory or very old deploy dates
-3. default VPC present
-4. CloudWatch findings expanded from counts to named failing alarms
+1. Lambda functions with suspiciously high memory or very old deploy dates
+2. default VPC present
+3. CloudWatch findings expanded from counts to named failing alarms
 
 ## Implementation Guidance
 

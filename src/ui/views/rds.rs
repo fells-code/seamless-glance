@@ -56,6 +56,8 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, db)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if db.status != "available" {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };
