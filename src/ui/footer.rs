@@ -29,6 +29,8 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
         "Esc Close   ↑ / ↓ Scroll"
     } else if app.show_help {
         "Help — Esc Close   ↑ / ↓ Scroll"
+    } else if app.active_view == ActiveView::Findings {
+        "[Enter] Open related view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
     } else if app.active_view == ActiveView::Ec2 {
         "[d] Describe   [c] CLI   [s] Shell into instance   [o] Open   [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
     } else {

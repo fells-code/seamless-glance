@@ -17,6 +17,7 @@ Near-term product direction:
 Today the app provides:
 
 - startup license enforcement with trial support
+- a triage-oriented Findings view
 - AWS account overview data
 - cost overview data with cache-backed loading
 - service inventory views for ECS, EC2, RDS, Lambda, API Gateway, SQS, VPC, CloudWatch, Secrets Manager, Load Balancers, Target Groups, and Security Groups
@@ -24,7 +25,7 @@ Today the app provides:
 
 Current gap to keep in mind:
 
-- the codebase has inventories and summaries, but not a first-class finding or triage model yet
+- the codebase now has an initial findings model, but the findings backlog is still much smaller than the eventual product direction
 
 ## Core Rules
 
@@ -110,13 +111,11 @@ Interpretation:
 
 Current preferred delivery order:
 
-1. Fix incorrect or imprecise pivots.
-2. Make region-aware actions correct, especially in global mode.
-3. Improve `describe()` quality so it targets the selected resource rather than broad list output.
-4. Add a reusable action layer for console links, CLI command generation, and command execution.
-5. Introduce a first-class finding model and a triage-focused landing view.
-6. Add waste-detection rules for high-value AWS resources.
-7. Expand profile support and multi-account operator workflows.
+1. Expand the findings backlog with high-signal incident, waste, and hygiene rules.
+2. Add new AWS services that directly unlock valuable findings.
+3. Improve navigation so Findings and the command palette scale better than fixed numeric service shortcuts.
+4. Expand profile support and multi-account operator workflows.
+5. Continue tightening action precision and region-aware pivots as service coverage expands.
 
 When in doubt, choose work that makes the app better at answering:
 
@@ -142,6 +141,12 @@ If the change is triage-related, also decide explicitly:
 2. What is the operator's next action?
 3. Should the app offer a console pivot, a CLI pivot, or both?
 
+If the change affects navigation, also decide explicitly:
+
+1. Is the behavior meant to be long-term or transitional?
+2. Does it scale as more services and findings are added?
+3. Does it reinforce Findings-first and command-palette-first workflows?
+
 ## Operator Experience Standards
 
 - Favor keyboard-first interactions.
@@ -152,6 +157,7 @@ If the change is triage-related, also decide explicitly:
 - Separate urgent attention from optimization opportunities.
 - Make pivots land on the exact resource whenever possible.
 - Prefer targeted descriptions over account-wide or list-wide dumps.
+- Treat fixed numeric service shortcuts as transitional unless there is a strong reason to extend them.
 
 ## Known Constraints
 

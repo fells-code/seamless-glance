@@ -21,6 +21,7 @@ use crate::ui::views::cloudwatch::render_cw;
 use crate::ui::views::cost_overview::render_cost_overview;
 use crate::ui::views::ec2::render_ec2;
 use crate::ui::views::ecs::render_ecs_clusters;
+use crate::ui::views::findings::render as render_findings;
 use crate::ui::views::lambda::render;
 use crate::ui::views::load_balancers::render_lbs;
 use crate::ui::views::rds::render_rds;
@@ -71,6 +72,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_header(frame, header_area, app);
 
     match app.active_view {
+        ActiveView::Findings => {
+            render_findings(frame, main_area, app);
+        }
         ActiveView::AccountOverview => {
             account_overview::render(frame, main_area, app);
         }

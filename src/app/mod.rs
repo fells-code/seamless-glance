@@ -9,6 +9,7 @@ use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::describable::DescribableResource;
 use crate::models::ec2::Ec2InstanceInfo;
 use crate::models::elb::LoadBalancerInfo;
+use crate::models::finding::{Finding, FindingCategory, FindingRoute, FindingSeverity};
 use crate::models::lambda::LambdaFunctionInfo;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::secrets::{SecretInfo, SecretsSummary};
@@ -36,6 +37,7 @@ pub enum RefreshPhase {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActiveView {
+    Findings,
     AccountOverview,
     CostOverview,
     Ecs,
@@ -74,6 +76,7 @@ pub struct App {
     pub footer_mode: FooterMode,
 
     pub theme: Theme,
+    pub findings: Vec<Finding>,
     // Account overview
     pub account_overview: Option<AccountOverview>,
     pub budget: BudgetInfo,
@@ -144,6 +147,7 @@ impl App {
             monthly_costs: vec![0.0; 6],
             service_costs: vec![],
             theme: Theme::seamless(),
+            findings: vec![],
             lambda_functions: vec![],
             apigateway_apis: vec![],
             sqs_queues_data: vec![],
@@ -262,6 +266,12 @@ impl App {
 
     pub async fn on_view_enter(&mut self) {
         match self.active_view {
+            ActiveView::Findings => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Security Groups"]);
+                self.security_groups = aws::security_group::fetch_security_groups(self).await;
+                self.rebuild_findings();
+                self.refresh_phase = RefreshPhase::Idle;
+            }
             ActiveView::Lambda => {
                 self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
             }
@@ -319,6 +329,97 @@ impl App {
 
             _ => {}
         }
+    }
+
+    pub fn rebuild_findings(&mut self) {
+        let mut findings = Vec::new();
+
+        if let Some(overview) = &self.account_overview {
+            if overview.alarms.alarms_in_alarm > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::High,
+                    category: FindingCategory::Incident,
+                    service: "CloudWatch".into(),
+                    region: overview.region.clone(),
+                    summary: format!(
+                        "{} alarm(s) are currently in ALARM",
+                        overview.alarms.alarms_in_alarm
+                    ),
+                    next_step: "Open CloudWatch and inspect failing alarms".into(),
+                    route: FindingRoute::CloudWatch,
+                });
+            }
+
+            if overview.target_groups_unhealthy > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::High,
+                    category: FindingCategory::Incident,
+                    service: "Target Groups".into(),
+                    region: overview.region.clone(),
+                    summary: format!(
+                        "{} target group(s) have unhealthy targets",
+                        overview.target_groups_unhealthy
+                    ),
+                    next_step: "Open target groups and inspect target health".into(),
+                    route: FindingRoute::TargetGroups,
+                });
+            }
+
+            if overview.secrets.rotation_disabled > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Hygiene,
+                    service: "Secrets Manager".into(),
+                    region: overview.region.clone(),
+                    summary: format!(
+                        "{} secret(s) do not have rotation enabled",
+                        overview.secrets.rotation_disabled
+                    ),
+                    next_step: "Review secrets that should rotate automatically".into(),
+                    route: FindingRoute::Secrets,
+                });
+            }
+
+            if overview.ec2_stopped > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Waste,
+                    service: "EC2".into(),
+                    region: overview.region.clone(),
+                    summary: format!("{} stopped instance(s) may be unused", overview.ec2_stopped),
+                    next_step: "Review stopped instances for cleanup or restart".into(),
+                    route: FindingRoute::Ec2,
+                });
+            }
+        }
+
+        let open_to_world = self
+            .security_groups
+            .iter()
+            .filter(|sg| sg.open_to_world)
+            .count();
+
+        if open_to_world > 0 {
+            findings.push(Finding {
+                severity: FindingSeverity::High,
+                category: FindingCategory::Hygiene,
+                service: "Security Groups".into(),
+                region: self.current_region_label(),
+                summary: format!("{open_to_world} security group(s) are open to the world"),
+                next_step: "Review public ingress rules and narrow access".into(),
+                route: FindingRoute::SecurityGroups,
+            });
+        }
+
+        findings.sort_by(|a, b| {
+            a.severity
+                .rank()
+                .cmp(&b.severity.rank())
+                .then_with(|| a.category.as_str().cmp(b.category.as_str()))
+                .then_with(|| a.service.cmp(&b.service))
+        });
+
+        self.findings = findings;
     }
 
     pub fn trigger_refresh(&mut self) {
@@ -387,6 +488,10 @@ impl App {
         self.account_overview = Some(aws::account::fetch_account_overview(self).await);
 
         match self.active_view {
+            ActiveView::Findings => {
+                self.refresh_phase = RefreshPhase::Services(vec!["Security Groups", "Findings"]);
+                self.security_groups = aws::security_group::fetch_security_groups(self).await;
+            }
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
@@ -456,6 +561,7 @@ impl App {
             ActiveView::AccountOverview | ActiveView::CostOverview => {}
         }
 
+        self.rebuild_findings();
         self.refresh_phase = RefreshPhase::Idle;
         self.last_refresh = Some(Utc::now());
         self.is_refreshing = false;
@@ -495,6 +601,10 @@ impl App {
         items: &'a [T],
     ) -> Option<&'a T> {
         items.get(self.selected_row)
+    }
+
+    pub fn selected_finding(&self) -> Option<&Finding> {
+        self.findings.get(self.selected_row)
     }
 
     fn action_region_for_resource<T: DescribableResource + ?Sized>(&self, resource: &T) -> String {
@@ -797,6 +907,24 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    pub async fn open_selected_finding(&mut self) {
+        let Some(finding) = self.selected_finding().cloned() else {
+            return;
+        };
+
+        self.active_view = match finding.route {
+            FindingRoute::Ec2 => ActiveView::Ec2,
+            FindingRoute::CloudWatch => ActiveView::CloudWatch,
+            FindingRoute::Secrets => ActiveView::Secrets,
+            FindingRoute::TargetGroups => ActiveView::TargetGroups,
+            FindingRoute::SecurityGroups => ActiveView::SecurityGroups,
+        };
+
+        self.selected_row = 0;
+        self.scroll_offset = 0;
+        self.on_view_enter().await;
     }
 
     pub fn trigger_ssh(&mut self) {

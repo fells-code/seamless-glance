@@ -100,10 +100,17 @@ Use this mapping:
 This rule is especially important for:
 
 - adding a new AWS service
+- adding or reprioritizing findings
 - changing keyboard shortcuts
 - changing region or global aggregation behavior
 - changing license handling
 - changing release packaging
+
+Recommended roadmap docs for product planning:
+
+- `docs/findings-roadmap.md`
+- `docs/aws-service-roadmap.md`
+- `docs/navigation-strategy.md`
 
 ## Known Realities
 

@@ -20,8 +20,15 @@ The long-term emphasis is:
 - catalog waste and low-value resources
 - make next-step operator actions fast
 
+The navigation model is also expected to evolve over time:
+
+- Findings is the operator-centric home
+- the command palette is the scalable way to reach services
+- fixed numeric shortcuts are a transitional compatibility layer, not the long-term destination model
+
 Current first-class views:
 
+- Findings
 - Account Overview
 - Cost Overview
 - VPC
@@ -63,6 +70,7 @@ cargo run -- --license-status
 
 Primary navigation:
 
+- `f` Findings
 - `1` Account Overview
 - `2` Cost Overview
 - `3` VPC
@@ -94,6 +102,11 @@ Current resource-action model:
 - `d` describe the selected resource in-app
 - `c` show and optionally run the AWS CLI command for the selected resource
 - `o` open the selected resource in the AWS console
+
+Findings view behavior:
+
+- `Enter` opens the related service view for the selected finding
+- the initial finding set includes alarms in `ALARM`, stopped EC2 instances, secrets without rotation, unhealthy target groups, and security groups open to the world
 
 Command palette shortcuts currently include:
 
@@ -137,6 +150,9 @@ Longer-form references:
 
 - [Architecture](docs/architecture.md)
 - [Development Guide](docs/development.md)
+- [Findings Roadmap](docs/findings-roadmap.md)
+- [AWS Service Roadmap](docs/aws-service-roadmap.md)
+- [Navigation Strategy](docs/navigation-strategy.md)
 - [Release Process](RELEASE.md)
 - [Agent Guidance](AGENTS.md)
 

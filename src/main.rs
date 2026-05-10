@@ -223,11 +223,16 @@ async fn main() -> anyhow::Result<()> {
                     app.overlay = None;
                     app.footer_mode = FooterMode::Normal;
                     continue;
-                } else {
+                } else if app.command_mode {
                     handle_command(&mut app).await;
                     app.command_mode = false;
                     app.footer_mode = FooterMode::Normal;
                     app.command_input.clear();
+                } else if app.active_view == ActiveView::Findings
+                    && !app.show_help
+                    && app.overlay.is_none()
+                {
+                    app.open_selected_finding().await;
                 }
             }
             KeyCode::Esc if app.overlay.is_some() => {
@@ -285,6 +290,12 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Char('d') => {
                 if app.overlay.is_none() {
                     app.trigger_describe().await;
+                }
+            }
+            KeyCode::Char('f') => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    app.active_view = ActiveView::Findings;
+                    app.on_view_enter().await;
                 }
             }
             KeyCode::Char('c') => {

@@ -6,6 +6,7 @@ pub mod describable;
 pub mod ec2;
 pub mod ecs;
 pub mod elb;
+pub mod finding;
 pub mod lambda;
 pub mod rds;
 pub mod secrets;

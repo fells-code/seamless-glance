@@ -16,6 +16,8 @@ The codebase is intentionally organized around one central `App` state object an
 
 Today that architecture is better at inventory and summaries than triage. A likely next evolution is to add a dedicated findings layer that consumes the existing AWS fetchers and turns raw resource data into prioritized operator actions.
 
+That findings layer now exists in an initial form and is intentionally lightweight: it derives a small set of triage findings from already-fetched overview and security-group data, then routes operators into the relevant service views.
+
 ## Module Ownership
 
 ### `src/main.rs`
@@ -66,6 +68,7 @@ Owns app-facing types used by both fetchers and UI views:
 
 - resource rows
 - summary cards
+- finding rows and finding routing metadata
 - service status types
 - traits such as resource description and console linking behavior
 
@@ -143,6 +146,7 @@ User actions typically route through `App` helpers:
 - `trigger_cli`
 - `trigger_open`
 - `trigger_ssh`
+- `open_selected_finding`
 
 Those helpers pull the selected row, derive a description request, CLI command, or console URL, and open an overlay or external browser action as needed.
 
@@ -191,11 +195,19 @@ To add a future triage or waste feature cleanly:
 3. attach operator actions to each finding
 4. make severity, category, and next step obvious in the UI
 
+The initial findings implementation follows that pattern with:
+
+- a `Finding` model in `src/models/finding.rs`
+- derived findings stored in `App`
+- a dedicated `Findings` view that routes into related service screens
+
 ## Current Gaps
 
 - automated tests are minimal
 - some help text and navigation are hand-maintained, so they can drift
 - global aggregation support is incomplete across services
+- service coverage is still missing several high-value AWS domains like EBS, Elastic IPs, CloudWatch Logs, and S3
+- the findings backlog is still much smaller than the intended triage and waste catalog
 - refresh and error handling conventions are not fully uniform across all fetchers
 
 Those are good places to tighten over time, but any changes should preserve the current operator-friendly speed and simplicity.

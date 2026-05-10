@@ -15,6 +15,11 @@ pub struct Command {
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        name: "findings",
+        description: "Findings view",
+        view: ActiveView::Findings,
+    },
+    Command {
         name: "ecs",
         description: "ECS view",
         view: ActiveView::Ecs,

@@ -16,6 +16,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 Seamless Glance — Help
 
 Navigation
+  f            Findings
   1            Account Overview
   2            Cost Overview
   3            VPC
@@ -56,6 +57,7 @@ General
   c            Show AWS CLI command
   g            Switch to a Global view of resource
   o            Open in console
+  Enter        Open related view from Findings
   s            Shell into instance
   Esc          Close overlays
 "#;
