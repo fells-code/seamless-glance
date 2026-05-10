@@ -18,6 +18,7 @@ use crate::ui::overlay::select_ssh_key::render_select_ssh_key_overlay;
 use crate::ui::views::account_overview;
 use crate::ui::views::apigateway::render_apigatway;
 use crate::ui::views::cloudwatch::render_cw;
+use crate::ui::views::command::command_for_view;
 use crate::ui::views::cost_overview::render_cost_overview;
 use crate::ui::views::ec2::render_ec2;
 use crate::ui::views::ecs::render_ecs_clusters;
@@ -32,6 +33,8 @@ use crate::ui::views::target_groups::render_tg;
 use crate::ui::views::vpc::render_vpc;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
+    style::Style,
+    widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
 
@@ -119,6 +122,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
     }
 
+    if app.is_refreshing {
+        render_loading_overlay(frame, main_area, app);
+    }
+
     if app.show_help {
         help::render(frame, app);
     }
@@ -138,4 +145,37 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     draw_footer(frame, footer_area, app);
+}
+
+fn render_loading_overlay(frame: &mut Frame, area: Rect, app: &App) {
+    let popup = centered_rect(46, 22, area);
+    let view_label = command_for_view(app.active_view)
+        .map(|command| command.description)
+        .unwrap_or("Current view");
+
+    let detail = match &app.refresh_phase {
+        crate::app::RefreshPhase::Idle | crate::app::RefreshPhase::Overview => {
+            format!("Refreshing account overview and {view_label}…")
+        }
+        crate::app::RefreshPhase::Services(services) => {
+            if services.is_empty() {
+                format!("Refreshing {view_label}…")
+            } else {
+                format!("Loading {}…", services.join(", "))
+            }
+        }
+    };
+
+    let text = format!("Loading {view_label}\n\n{detail}");
+    let block = Paragraph::new(text)
+        .style(Style::default().fg(app.theme.text))
+        .block(
+            Block::default()
+                .title("Loading")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.theme.primary)),
+        );
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
 }

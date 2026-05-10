@@ -78,6 +78,7 @@ Owns presentation concerns:
 
 - screen layout
 - headers and footers
+- shared navigation metadata and command palette rendering
 - individual views
 - help and overlay rendering
 - terminal suspend/resume helpers used for shell execution
@@ -133,10 +134,21 @@ At startup, `main`:
 5. reset selection and scroll state
 
 This design keeps the header accurate even when a service view is active.
+It also allows the TUI to render a loading state between view transitions instead of blocking silently on inline fetches.
 
 ### View Entry Flow
 
-`App::on_view_enter` can eagerly fetch view data when the user changes screens. Some views fetch every time, while others avoid refetching if their local state is already populated.
+`App::on_view_enter` now schedules a refresh and resets selection state when the user changes screens, rather than fetching inline. The actual AWS work happens in `refresh_active`, which keeps the event loop free to draw an intermediate loading overlay.
+
+### Navigation Flow
+
+Navigation is currently shared across three layers:
+
+1. direct key shortcuts such as `f` and the transitional `1` through `9`
+2. a slash command palette with grouped service metadata and aliases
+3. `Tab` / `Shift+Tab` cycling through major views
+
+The command palette, help overlay, and header/footer cues should prefer shared navigation metadata rather than hand-maintained duplicated strings.
 
 ### Action Flow
 
@@ -204,7 +216,6 @@ The initial findings implementation follows that pattern with:
 ## Current Gaps
 
 - automated tests are minimal
-- some help text and navigation are hand-maintained, so they can drift
 - global aggregation support is incomplete across services
 - service coverage is still missing several high-value AWS domains like EBS, Elastic IPs, CloudWatch Logs, and S3
 - the findings backlog is still much smaller than the intended triage and waste catalog

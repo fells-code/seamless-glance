@@ -71,6 +71,8 @@ cargo run -- --license-status
 Primary navigation:
 
 - `f` Findings
+- `Tab` / `Shift+Tab` cycle through major views
+- `/` open the command palette with grouped view suggestions and aliases
 - `1` Account Overview
 - `2` Cost Overview
 - `3` VPC
@@ -85,7 +87,6 @@ General controls:
 
 - `←` / `→` change region
 - `↑` / `↓` move selection or scroll overlays
-- `/` open command palette
 - `?` open help
 - `r` refresh active view
 - `d` describe selected resource
@@ -94,6 +95,8 @@ General controls:
 - `g` jump to the global region slot
 - `s` prepare an SSH command for the selected EC2 instance
 - `q` quit
+
+View transitions now show a loading overlay while the next screen refreshes, instead of blocking silently during fetches.
 
 Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
 
@@ -110,6 +113,8 @@ Findings view behavior:
 
 Command palette shortcuts currently include:
 
+- `findings`
+- `account`
 - `ecs`
 - `ec2`
 - `rds`
@@ -123,6 +128,7 @@ Command palette shortcuts currently include:
 - `lb`
 - `tg`
 - `sg`
+- aliases such as `overview`, `billing`, `api`, `queues`, `secrets`, and `alarms`
 - `region <name>`
 - `rg <name>`
 

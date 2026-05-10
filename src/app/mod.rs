@@ -36,7 +36,7 @@ pub enum RefreshPhase {
     Services(Vec<&'static str>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveView {
     Findings,
     AccountOverview,
@@ -266,96 +266,9 @@ impl App {
     }
 
     pub async fn on_view_enter(&mut self) {
-        match self.active_view {
-            ActiveView::Findings => {
-                self.refresh_phase = RefreshPhase::Services(vec![
-                    "CloudWatch",
-                    "EC2",
-                    "API Gateway",
-                    "Secrets",
-                    "Security Groups",
-                    "Target Groups",
-                    "SQS",
-                    "RDS",
-                    "Lambda",
-                    "VPC",
-                ]);
-                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
-                self.cloudwatch_summary = summary;
-                self.cloudwatch_alarms = alarms;
-                self.ec2_instances = aws::ec2::fetch_instances(self).await;
-                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
-                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
-                self.secrets_summary = summary;
-                self.secrets = secrets;
-                self.security_groups = aws::security_group::fetch_security_groups(self).await;
-                self.target_groups = aws::target_group::fetch_target_groups(self).await;
-                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
-                let (summary, instances) = aws::rds::fetch_rds(self).await;
-                self.rds_summary = summary;
-                self.rds_instances = instances;
-                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
-                self.vpcs = aws::vpc::fetch_vpcs(self).await;
-                self.rebuild_findings();
-                self.refresh_phase = RefreshPhase::Idle;
-            }
-            ActiveView::Lambda => {
-                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
-            }
-
-            ActiveView::Ecs => {
-                if self.ecs_clusters.is_empty() {
-                    self.ecs_clusters = aws::ecs::fetch_ecs_clusters(self).await;
-                }
-            }
-
-            ActiveView::Apigateway => {
-                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
-            }
-
-            ActiveView::Sqs => {
-                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
-            }
-
-            ActiveView::Vpc => {
-                self.vpcs = aws::vpc::fetch_vpcs(self).await;
-            }
-
-            ActiveView::Ec2 => {
-                self.ec2_instances = aws::ec2::fetch_instances(self).await;
-            }
-            ActiveView::CloudWatch => {
-                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
-                self.cloudwatch_summary = summary;
-                self.cloudwatch_alarms = alarms;
-            }
-            ActiveView::Secrets => {
-                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
-                self.secrets_summary = summary;
-                self.secrets = secrets;
-            }
-
-            ActiveView::Rds => {
-                self.refresh_phase = RefreshPhase::Services(vec!["RDS"]);
-                let (summary, instances) = aws::rds::fetch_rds(self).await;
-                self.rds_summary = summary;
-                self.rds_instances = instances;
-            }
-
-            ActiveView::LoadBalancers => {
-                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
-            }
-
-            ActiveView::TargetGroups => {
-                self.target_groups = aws::target_group::fetch_target_groups(self).await;
-            }
-
-            ActiveView::SecurityGroups => {
-                self.security_groups = aws::security_group::fetch_security_groups(self).await;
-            }
-
-            _ => {}
-        }
+        self.selected_row = 0;
+        self.scroll_offset = 0;
+        self.trigger_refresh();
     }
 
     pub fn rebuild_findings(&mut self) {
@@ -954,6 +867,7 @@ impl App {
 
         self.is_refreshing = true;
         self.account_overview = None;
+        self.refresh_phase = RefreshPhase::Overview;
     }
 
     pub async fn next_region(&mut self) {

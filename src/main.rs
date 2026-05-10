@@ -30,7 +30,7 @@ use crate::{
     ui::{
         footer::FooterMode,
         overlay::overlays::{ConfirmCommandState, OverlayState},
-        views::command::{self, COMMANDS},
+        views::command::{self, next_command, previous_command},
     },
 };
 
@@ -62,6 +62,10 @@ async fn handle_command(app: &mut App) {
     let cmd = cmd.to_ascii_lowercase();
     let args = args.to_string();
 
+    if cmd.is_empty() {
+        return;
+    }
+
     match cmd.as_str() {
         "region" | "rg" => {
             if args.is_empty() {
@@ -76,12 +80,17 @@ async fn handle_command(app: &mut App) {
             }
         }
         _ => {
-            if let Some(command) = COMMANDS.iter().find(|c| c.name == cmd.as_str()) {
-                app.active_view = command.view.clone();
+            if let Some(command) = command::matching_commands(&cmd).first() {
+                app.active_view = command.view;
                 app.on_view_enter().await;
             }
         }
     }
+}
+
+async fn activate_view(app: &mut App, view: ActiveView) {
+    app.active_view = view;
+    app.on_view_enter().await;
 }
 
 #[tokio::main]
@@ -255,6 +264,18 @@ async fn main() -> anyhow::Result<()> {
             KeyCode::Backspace if app.command_mode => {
                 app.command_input.pop();
             }
+            KeyCode::Tab => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    let current_view = app.active_view;
+                    activate_view(&mut app, next_command(current_view).view).await;
+                }
+            }
+            KeyCode::BackTab => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    let current_view = app.active_view;
+                    activate_view(&mut app, previous_command(current_view).view).await;
+                }
+            }
             KeyCode::Left => {
                 app.previous_region().await;
             }
@@ -294,8 +315,7 @@ async fn main() -> anyhow::Result<()> {
             }
             KeyCode::Char('f') => {
                 if !app.command_mode && !app.show_help && app.overlay.is_none() {
-                    app.active_view = ActiveView::Findings;
-                    app.on_view_enter().await;
+                    activate_view(&mut app, ActiveView::Findings).await;
                 }
             }
             KeyCode::Char('c') => {
@@ -324,8 +344,7 @@ async fn main() -> anyhow::Result<()> {
                     }));
                     continue;
                 } else {
-                    app.active_view = ActiveView::AccountOverview;
-                    app.on_view_enter().await;
+                    activate_view(&mut app, ActiveView::AccountOverview).await;
                 }
             }
             KeyCode::Char('2') => {
@@ -344,38 +363,30 @@ async fn main() -> anyhow::Result<()> {
                     }));
                     continue;
                 } else {
-                    app.active_view = ActiveView::CostOverview;
-                    app.on_view_enter().await;
+                    activate_view(&mut app, ActiveView::CostOverview).await;
                 }
             }
             KeyCode::Char('3') => {
-                app.active_view = ActiveView::Vpc;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::Vpc).await;
             }
             KeyCode::Char('4') => {
-                app.active_view = ActiveView::Ec2;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::Ec2).await;
             }
             KeyCode::Char('5') => {
-                app.active_view = ActiveView::CloudWatch;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::CloudWatch).await;
             }
             KeyCode::Char('6') => {
-                app.active_view = ActiveView::Lambda;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::Lambda).await;
             }
             KeyCode::Char('7') => {
-                app.active_view = ActiveView::Secrets;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::Secrets).await;
             }
             KeyCode::Char('8') => {
-                app.active_view = ActiveView::Ecs;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::Ecs).await;
             }
 
             KeyCode::Char('9') => {
-                app.active_view = ActiveView::Apigateway;
-                app.on_view_enter().await;
+                activate_view(&mut app, ActiveView::Apigateway).await;
             }
             _ => {}
         }

@@ -1,6 +1,7 @@
 use crate::{
     app::{App, RefreshPhase},
     config::VERSION,
+    ui::views::command::command_for_view,
 };
 use ratatui::{
     layout::Rect,
@@ -55,6 +56,15 @@ fn refresh_text(app: &App) -> String {
 pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     let health = account_health_label(app);
     let status = refresh_text(app);
+    let view_name = command_for_view(app.active_view)
+        .map(|command| command.description)
+        .unwrap_or("Unknown view");
+    let region_label = app.current_region_label();
+    let region_mode = if app.is_global_region_selected() {
+        "Global slot"
+    } else {
+        "Regional"
+    };
 
     let account_label = match &app.license {
         Some(license) if license.is_paid() => "Pro Account".to_string(),
@@ -65,28 +75,31 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         None => "Free Trial".to_string(),
     };
 
-    let (account, region, _role) = if let Some(overview) = &app.account_overview {
-        (
-            overview.account_id.as_str(),
-            overview.region.as_str(),
-            overview.role_name.as_deref().unwrap_or("unknown-role"),
-        )
-    } else {
-        ("—", app.current_region().as_ref(), "—")
-    };
+    let account = app
+        .account_overview
+        .as_ref()
+        .map(|overview| overview.account_id.as_str())
+        .unwrap_or("—");
 
     let identity_line = if let Some(o) = &app.account_overview {
-        format!("Identity: {} ({})", o.identity_kind, o.identity_name)
+        match &o.role_name {
+            Some(role_name) => format!(
+                "Identity: {} ({})  |  Role: {}",
+                o.identity_kind, o.identity_name, role_name
+            ),
+            None => format!("Identity: {} ({})", o.identity_kind, o.identity_name),
+        }
     } else {
         "Identity: —".into()
     };
 
     let header_text = format!(
-        "Account {}  |  {}\n\
+        "View: {}  |  Region: {} ({})\n\
+        Account: {}\n\
         {}\n\
-         Account Health: {}\n\
-         {}",
-        account, region, identity_line, health.0, status
+        Account Health: {}\n\
+        {}",
+        view_name, region_label, region_mode, account, identity_line, health.0, status
     );
 
     let header = Paragraph::new(header_text)

@@ -12,6 +12,7 @@ Today the app uses a mix of:
 
 - one-key view shortcuts such as `f`, `1` through `9`
 - a slash command palette
+- `Tab` / `Shift+Tab` cycling across major views
 - in-view actions such as `d`, `c`, and `o`
 
 This is effective for a small number of screens, but it will not scale well as the app adds more AWS services and more triage-specific views.
@@ -47,11 +48,16 @@ Long-term expectation:
 
 The slash command palette should become the primary way to jump directly to a service or feature.
 
-Desired palette evolution:
+Current palette behavior now includes:
 
-- fuzzy matching
-- service aliases
-- grouped results
+- prefix and alias matching
+- grouped results by service domain
+- current-view highlighting
+- region jump hints
+
+Desired future evolution:
+
+- substring and richer fuzzy matching
 - recent destinations
 - future action commands, not just view jumps
 
@@ -88,6 +94,7 @@ Always available:
 
 - `f` Findings
 - `/` command palette
+- `Tab` / `Shift+Tab` view cycling
 - `?` help
 - `r` refresh
 - `q` quit
@@ -147,10 +154,11 @@ This reduces the need for direct raw-service navigation in many workflows.
 
 1. Keep `f` as the Findings shortcut.
 2. Keep existing numeric shortcuts as transitional compatibility.
-3. Add new services primarily to the command palette rather than to numeric slots.
-4. Avoid growing the one-key destination map aggressively.
-5. Evolve the help text and README to emphasize Findings and the command palette over numeric memorization.
-6. Consider a future grouped service launcher once service count grows meaningfully.
+3. Keep `Tab` / `Shift+Tab` as a low-friction way to browse major views.
+4. Add new services primarily to the command palette rather than to numeric slots.
+5. Avoid growing the one-key destination map aggressively.
+6. Keep help text and README generated from shared navigation metadata where practical.
+7. Consider a future grouped service launcher once service count grows meaningfully.
 
 ## UX Principle
 

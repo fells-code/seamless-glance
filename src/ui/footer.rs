@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{
     app::{ActiveView, App},
-    ui::views::command::draw_command_palette,
+    ui::views::command::{command_for_view, draw_command_palette},
 };
 
 pub enum FooterMode {
@@ -23,18 +23,29 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
+    let view_hint = command_for_view(app.active_view)
+        .map(|command| format!("View: {}", command.name))
+        .unwrap_or_else(|| "View: unknown".into());
+
     let footer_text = if app.command_mode {
-        "Command mode — type a view name and press Enter (Esc to cancel)"
+        "Command palette — type a view name or alias and press Enter (Esc to cancel)".to_string()
     } else if app.overlay.is_some() {
-        "Esc Close   ↑ / ↓ Scroll"
+        "Esc Close   ↑ / ↓ Scroll".to_string()
     } else if app.show_help {
-        "Help — Esc Close   ↑ / ↓ Scroll"
+        "Help — Esc Close   ↑ / ↓ Scroll".to_string()
     } else if app.active_view == ActiveView::Findings {
-        "[Enter] Open related view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
+        "[Enter] Open related view   [Tab] Next view   [/] Jump   [r] Refresh   [?] Help   [q] Quit"
+            .to_string()
     } else if app.active_view == ActiveView::Ec2 {
-        "[d] Describe   [c] CLI   [s] Shell into instance   [o] Open   [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
+        format!(
+            "{}   [Tab/Shift+Tab] Cycle views   [/] Jump   [d] Describe   [c] CLI   [o] Console   [s] SSH   [g] Global   [r] Refresh   [?] Help   [q] Quit",
+            view_hint
+        )
     } else {
-        "[d] Describe   [c] CLI   [o] Open   [g] Jump to Global region view   [r] Refresh   [/] Navigate to service   [?] Help   [q] Quit"
+        format!(
+            "{}   [Tab/Shift+Tab] Cycle views   [/] Jump   [d] Describe   [c] CLI   [o] Console   [g] Global   [r] Refresh   [?] Help   [q] Quit",
+            view_hint
+        )
     };
 
     let footer = Paragraph::new(footer_text)

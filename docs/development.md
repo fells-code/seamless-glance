@@ -63,6 +63,7 @@ The app is intentionally keyboard-driven. New behavior should:
 - avoid unnecessary modal friction
 - surface access errors clearly
 - support fast scanability in narrow terminals
+- keep navigation metadata centralized so help, command palette, and footer cues do not drift
 
 For roadmap work, also ask:
 

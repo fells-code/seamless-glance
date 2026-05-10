@@ -5,65 +5,22 @@ use ratatui::{
     Frame,
 };
 
-use crate::{app::App, ui::centered_rect};
+use crate::{
+    app::App,
+    ui::{
+        centered_rect,
+        views::command::{CommandGroup, COMMANDS},
+    },
+};
 
 pub fn render(frame: &mut Frame, app: &mut App) {
-    let area = centered_rect(70, 70, frame.size());
+    let area = centered_rect(76, 76, frame.size());
 
-    frame.render_widget(Clear, area); // clear beneath
+    frame.render_widget(Clear, area);
 
-    let text = r#"
-Seamless Glance — Help
-
-Navigation
-  f            Findings
-  1            Account Overview
-  2            Cost Overview
-  3            VPC
-  4            EC2
-  5            CloudWatch
-  6            Lambda
-  7            Secrets Manager
-  8            ECS
-  9            ApiGateway
-
-Regions
-  ← / →        Switch region
-  ↑ / ↓        Move up and down
-
-Commands
-  /                   Open command palette
-  region <region>     Change to region
-  rg <region>         Change to region
-  ecs                 Go to ECS
-  ec2                 Go to EC2
-  lambda              Go to Lambda
-  apigw               Go to ApiGateway
-  rds                 Go to RDS
-  sqs                 Go to SQS
-  cost                Go to Cost
-  sm                  Go to Secrets Manager
-  vpc                 Go to VPC
-  cw                  Go to CloudWatch
-  sm                  Go to Secrets Manager
-  tg                  Go to Target Groups
-  sg                  Go to Security Groups
-  
-
-General
-  q            Quit
-  r            Refresh current view
-  d            Describe resource
-  c            Show AWS CLI command
-  g            Switch to a Global view of resource
-  o            Open in console
-  Enter        Open related view from Findings
-  s            Shell into instance
-  Esc          Close overlays
-"#;
-
+    let text = build_help_text();
     let help_lines = text.lines().count();
-    let visible_height = area.height.saturating_sub(2) as usize; // borders
+    let visible_height = area.height.saturating_sub(2) as usize;
 
     let max_scroll = help_lines.saturating_sub(visible_height);
     app.scroll_offset = app.scroll_offset.min(max_scroll as u16);
@@ -80,4 +37,74 @@ General
         );
 
     frame.render_widget(block, area);
+}
+
+fn build_help_text() -> String {
+    let mut lines = vec![
+        "Seamless Glance — Help".into(),
+        "".into(),
+        "Global Navigation".into(),
+        "  f                    Findings home".into(),
+        "  /                    Open command palette".into(),
+        "  Tab / Shift+Tab      Cycle through major views".into(),
+        "  ?                    Open help".into(),
+        "  r                    Refresh active view".into(),
+        "  q                    Quit".into(),
+        "".into(),
+        "Movement And Regions".into(),
+        "  ↑ / ↓                Move selection or scroll overlays".into(),
+        "  ← / →                Change AWS region".into(),
+        "  g                    Jump to the synthetic global slot".into(),
+        "".into(),
+        "Resource Actions".into(),
+        "  Enter                Open related service from Findings".into(),
+        "  d                    Describe selected resource".into(),
+        "  c                    Show AWS CLI command for selected resource".into(),
+        "  o                    Open selected resource in the AWS console".into(),
+        "  s                    Prepare an SSH command for the selected EC2 instance".into(),
+        "  Esc                  Close overlays or exit help / command palette".into(),
+        "".into(),
+        "Command Palette".into(),
+        "  findings             Jump to findings".into(),
+        "  region <name>        Jump to a specific AWS region".into(),
+        "  region global        Jump to the synthetic global slot".into(),
+        "  rg <name>            Short alias for region".into(),
+    ];
+
+    for group in [
+        CommandGroup::Triage,
+        CommandGroup::Overview,
+        CommandGroup::Compute,
+        CommandGroup::Data,
+        CommandGroup::Messaging,
+        CommandGroup::Networking,
+        CommandGroup::Security,
+        CommandGroup::Observability,
+    ] {
+        let commands = COMMANDS
+            .iter()
+            .filter(|command| command.group == group)
+            .collect::<Vec<_>>();
+
+        if commands.is_empty() {
+            continue;
+        }
+
+        lines.push("".into());
+        lines.push(group.label().to_string());
+
+        for command in commands {
+            let shortcut = command
+                .shortcut
+                .map(|shortcut| shortcut.to_string())
+                .unwrap_or_else(|| "—".into());
+
+            lines.push(format!(
+                "  {:<18} [{}] {}",
+                command.name, shortcut, command.description
+            ));
+        }
+    }
+
+    lines.join("\n")
 }
