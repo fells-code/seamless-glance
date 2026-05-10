@@ -26,6 +26,47 @@ pub struct RdsInstanceInfo {
     pub multi_az: bool,
 }
 
+impl RdsInstanceInfo {
+    pub const PRODUCTION_NAME_HINTS: [&str; 7] = [
+        "prod",
+        "production",
+        "live",
+        "critical",
+        "primary",
+        "main",
+        "customer",
+    ];
+
+    pub fn is_available(&self) -> bool {
+        self.status == "available"
+    }
+
+    pub fn has_production_like_identifier(&self) -> bool {
+        let normalized = self.identifier.to_ascii_lowercase();
+        Self::PRODUCTION_NAME_HINTS
+            .iter()
+            .any(|hint| normalized.contains(hint))
+    }
+
+    pub fn needs_single_az_review(&self) -> bool {
+        self.is_available() && !self.multi_az && self.has_production_like_identifier()
+    }
+
+    pub fn review_signals(&self) -> Vec<&'static str> {
+        let mut signals = Vec::new();
+
+        if !self.multi_az {
+            signals.push("single-az");
+        }
+
+        if self.has_production_like_identifier() {
+            signals.push("prod-name");
+        }
+
+        signals
+    }
+}
+
 #[async_trait]
 impl DescribableResource for RdsInstanceInfo {
     fn resource_name(&self) -> String {

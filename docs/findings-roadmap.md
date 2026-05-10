@@ -46,6 +46,7 @@ The app currently implements an initial set of high-signal findings:
 - SQS queues with high visible or in-flight message counts
 - SQS queues without DLQs
 - RDS instances not `available`
+- production-like single-AZ RDS instances
 - Lambda functions with suspiciously high memory
 - Lambda functions with very old last-modified dates
 - default VPC still present
@@ -103,15 +104,6 @@ These are the best next additions because they fit the current architecture and 
 - Why it matters: the same problem matters more when the secret appears production-scoped
 - Needed data: naming or tag heuristics
 - Best pivots: Secrets view, CLI, console
-
-### RDS
-
-#### Single-AZ database that appears production-like
-
-- Category: `Hygiene`
-- Why it matters: resilience posture may be weaker than the workload suggests
-- Needed data: existing `multi_az` plus tag or naming heuristics
-- Best pivots: RDS view, CLI, console
 
 ### API Gateway
 
@@ -202,7 +194,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. RDS single-AZ database that appears production-like
+1. API Gateway generic or stale APIs
 
 ## Implementation Guidance
 
@@ -218,6 +210,10 @@ Current implemented thresholds that should stay explainable:
 
 - SQS backlog incident when a queue has `>= 100` visible messages
 - SQS backlog incident when a queue has `>= 50` in-flight messages
+
+Current implemented heuristics that should stay explainable:
+
+- RDS resilience review when an instance is available, single-AZ, and its identifier contains a production-like hint such as `prod`, `production`, `live`, `critical`, `primary`, `main`, or `customer`
 
 ## Future Direction
 

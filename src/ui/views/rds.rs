@@ -58,6 +58,8 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(app.theme.highlight)
             } else if db.status != "available" {
                 Style::default().fg(app.theme.primary)
+            } else if db.needs_single_az_review() {
+                Style::default().fg(app.theme.accent)
             } else {
                 Style::default().fg(app.theme.text)
             };
@@ -70,6 +72,14 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(db.status.clone()),
                 Cell::from(db.az.clone()),
                 Cell::from(if db.multi_az { "Yes" } else { "No" }),
+                Cell::from({
+                    let signals = db.review_signals();
+                    if signals.is_empty() {
+                        "-".into()
+                    } else {
+                        signals.join(",")
+                    }
+                }),
             ])
             .style(style)
         })
@@ -83,6 +93,7 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
         Constraint::Percentage(10),
         Constraint::Percentage(14),
         Constraint::Percentage(10),
+        Constraint::Percentage(14),
     ];
 
     let table = Table::new(rows, widths)
@@ -95,6 +106,7 @@ pub fn render_rds(frame: &mut Frame, area: Rect, app: &mut App) {
                 "Status",
                 "AZ",
                 "Multi-AZ",
+                "Signals",
             ])
             .style(Style::default().fg(app.theme.accent)),
         )

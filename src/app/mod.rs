@@ -679,6 +679,50 @@ impl App {
             });
         }
 
+        let single_az_review_instances = self
+            .rds_instances
+            .iter()
+            .filter(|db| db.needs_single_az_review())
+            .collect::<Vec<_>>();
+
+        if !single_az_review_instances.is_empty() {
+            let sample_instances = single_az_review_instances
+                .iter()
+                .take(3)
+                .map(|db| db.identifier.clone())
+                .collect::<Vec<_>>();
+            let sample_count = sample_instances.len();
+            let remaining = single_az_review_instances
+                .len()
+                .saturating_sub(sample_count);
+            let summary = if remaining > 0 {
+                format!(
+                    "{} single-AZ RDS instance(s) look production-like: {} (+{} more)",
+                    single_az_review_instances.len(),
+                    sample_instances.join(", "),
+                    remaining
+                )
+            } else {
+                format!(
+                    "{} single-AZ RDS instance(s) look production-like: {}",
+                    single_az_review_instances.len(),
+                    sample_instances.join(", ")
+                )
+            };
+
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Hygiene,
+                service: "RDS".into(),
+                region: self.current_region_label(),
+                summary,
+                next_step:
+                    "Open RDS and review production-like single-AZ databases for Multi-AZ coverage"
+                        .into(),
+                route: FindingRoute::Rds,
+            });
+        }
+
         let default_vpcs = self.vpcs.iter().filter(|vpc| vpc.is_default).count();
 
         if default_vpcs > 0 {
