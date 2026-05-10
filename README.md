@@ -106,7 +106,7 @@ Current resource-action model:
 Findings view behavior:
 
 - `Enter` opens the related service view for the selected finding
-- the initial finding set includes alarms in `ALARM`, stopped EC2 instances, secrets without rotation, unhealthy target groups, and security groups open to the world
+- the initial finding set includes alarms in `ALARM`, stopped EC2 instances, secrets without rotation, unhealthy target groups, security groups open to the world, and security groups exposing sensitive ports publicly
 
 Command palette shortcuts currently include:
 

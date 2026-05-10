@@ -1,5 +1,6 @@
 use aws_config::Region;
 use chrono::Utc;
+use std::collections::BTreeSet;
 
 use crate::aws::clients::AwsClients;
 use crate::cache::cost::{load_if_fresh, save, CostCache};
@@ -393,15 +394,45 @@ impl App {
             }
         }
 
+        let sensitive_port_groups = self
+            .security_groups
+            .iter()
+            .filter(|sg| !sg.sensitive_public_ports.is_empty())
+            .count();
+
+        if sensitive_port_groups > 0 {
+            let sensitive_ports = self
+                .security_groups
+                .iter()
+                .flat_map(|sg| sg.sensitive_public_ports.iter().copied())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .map(|port| port.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            findings.push(Finding {
+                severity: FindingSeverity::High,
+                category: FindingCategory::Hygiene,
+                service: "Security Groups".into(),
+                region: self.current_region_label(),
+                summary: format!(
+                    "{sensitive_port_groups} security group(s) expose sensitive ports publicly ({sensitive_ports})"
+                ),
+                next_step: "Review public access on sensitive ports and narrow ingress".into(),
+                route: FindingRoute::SecurityGroups,
+            });
+        }
+
         let open_to_world = self
             .security_groups
             .iter()
-            .filter(|sg| sg.open_to_world)
+            .filter(|sg| sg.open_to_world && sg.sensitive_public_ports.is_empty())
             .count();
 
         if open_to_world > 0 {
             findings.push(Finding {
-                severity: FindingSeverity::High,
+                severity: FindingSeverity::Medium,
                 category: FindingCategory::Hygiene,
                 service: "Security Groups".into(),
                 region: self.current_region_label(),

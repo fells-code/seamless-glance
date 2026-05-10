@@ -11,6 +11,21 @@ pub struct SecurityGroupInfo {
     pub inbound_rules: usize,
     pub outbound_rules: usize,
     pub open_to_world: bool,
+    pub sensitive_public_ports: Vec<i32>,
+}
+
+impl SecurityGroupInfo {
+    pub fn sensitive_ports_label(&self) -> String {
+        if self.sensitive_public_ports.is_empty() {
+            "-".into()
+        } else {
+            self.sensitive_public_ports
+                .iter()
+                .map(|port| port.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        }
+    }
 }
 
 #[async_trait]

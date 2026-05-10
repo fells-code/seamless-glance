@@ -44,6 +44,7 @@ The app currently implements an initial set of high-signal findings:
 - secrets without rotation
 - stopped EC2 instances
 - security groups open to the world
+- security groups exposing sensitive ports publicly
 
 These are a foundation, not the target end state.
 
@@ -84,14 +85,6 @@ These are the best next additions because they fit the current architecture and 
 - Why it matters: broad inbound access is a common root cause for accidental exposure
 - Needed data: existing ingress inspection
 - Best pivots: Security Groups view, CLI describe-security-groups, console
-
-#### Open to world on sensitive ports
-
-- Category: `Hygiene`
-- Suggested severity: `High`
-- Why it matters: public exposure on ports like `22`, `3389`, `5432`, and `3306` is materially riskier than broad but low-impact ingress
-- Needed data: protocol/port inspection per rule
-- Best pivots: Security Groups view, CLI, console
 
 ### Target Groups
 
@@ -272,13 +265,12 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. security groups open to world on sensitive ports
-2. target groups with zero healthy targets
-3. SQS queues without DLQs
-4. RDS instances not `available`
-5. Lambda functions with suspiciously high memory or very old deploy dates
-6. default VPC present
-7. CloudWatch findings expanded from counts to named failing alarms
+1. target groups with zero healthy targets
+2. SQS queues without DLQs
+3. RDS instances not `available`
+4. Lambda functions with suspiciously high memory or very old deploy dates
+5. default VPC present
+6. CloudWatch findings expanded from counts to named failing alarms
 
 ## Implementation Guidance
 
