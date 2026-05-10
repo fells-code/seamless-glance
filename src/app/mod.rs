@@ -140,7 +140,7 @@ impl App {
             should_quit: false,
             command_mode: false,
             command_input: String::new(),
-            active_view: ActiveView::AccountOverview,
+            active_view: ActiveView::Findings,
             budget: BudgetInfo {
                 monthly_budget: 0.0,
                 month_to_date_cost: 0.0,

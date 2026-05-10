@@ -39,10 +39,11 @@ Reasoning:
 - findings provide a natural bridge into service detail
 - this reduces the need to memorize a growing list of service shortcuts
 
-Long-term expectation:
+Current expectation:
 
-- Findings becomes the default mental hub
-- service views become drill-down destinations
+- Findings is the default startup screen and mental hub
+- service views are drill-down destinations
+- Account Overview is the inventory snapshot for account-wide context, not the default inbox
 
 ### Command Palette First
 

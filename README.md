@@ -98,6 +98,8 @@ General controls:
 - `q` quit
 
 View transitions now show a loading overlay while the next screen refreshes, instead of blocking silently during fetches.
+The app now opens on Findings by default so triage is the first thing you see.
+Account Overview now serves as an inventory snapshot for the current AWS profile, with account context, footprint summaries, and service inventory cards rather than findings-style callouts.
 
 Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
 
