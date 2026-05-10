@@ -7,7 +7,10 @@ use ratatui::{
 
 use crate::{
     app::{ActiveView, App},
-    ui::views::command::{command_for_view, draw_command_palette},
+    ui::{
+        overlay::overlays::OverlayState,
+        views::command::{command_for_view, draw_command_palette},
+    },
 };
 
 pub enum FooterMode {
@@ -29,10 +32,18 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
 
     let footer_text = if app.command_mode {
         "Command palette — type a view name or alias and press Enter (Esc to cancel)".to_string()
-    } else if app.overlay.is_some() {
-        "Esc Close   ↑ / ↓ Scroll".to_string()
+    } else if let Some(overlay) = &app.overlay {
+        match overlay {
+            OverlayState::Describe(_) => {
+                "Esc Close   [v] Toggle structured / JSON   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
+            }
+            OverlayState::ConfirmCommand(_) => {
+                "Esc Close   Enter Run   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
+            }
+            OverlayState::SelectSshKey(_) => "Esc Close   [1] Agent   [2] Private key path".to_string(),
+        }
     } else if app.show_help {
-        "Help — Esc Close   ↑ / ↓ Scroll".to_string()
+        "Help — Esc Close   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
     } else if app.active_view == ActiveView::Findings {
         "[Enter] Open related view   [Tab] Next view   [/] Jump   [t] Theme   [r] Refresh   [?] Help   [q] Quit"
             .to_string()

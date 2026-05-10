@@ -32,7 +32,7 @@ fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(chart, area);
 }
 
-fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &App) {
+fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
     let total: f64 = app.service_costs.iter().map(|(_, amt)| amt).sum();
 
     // Sort descending by cost
@@ -48,8 +48,14 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &App) {
     let bar_col_width =
         (area.width as usize).saturating_sub(name_col_width + cost_col_width + pct_col_width + 6);
 
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = sorted.len().saturating_sub(visible_height);
+    app.scroll_offset = app.scroll_offset.min(max_scroll as u16);
+
     let items: Vec<ListItem> = sorted
         .iter()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
         .map(|(name, cost)| {
             let pct = if total > 0.0 { cost / total } else { 0.0 };
 
@@ -86,7 +92,7 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(list, area);
 }
 
-pub fn render_cost_overview(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render_cost_overview(frame: &mut Frame, area: Rect, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])

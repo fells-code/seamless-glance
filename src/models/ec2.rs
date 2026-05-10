@@ -11,6 +11,7 @@ pub struct Ec2InstanceInfo {
     pub name: Option<String>,
     pub owner: Option<String>,
     pub environment: Option<String>,
+    pub avg_cpu_utilization: Option<f64>,
     pub instance_type: String,
     pub state: String,
     pub region: String,
@@ -30,9 +31,16 @@ impl Ec2InstanceInfo {
         "main",
         "customer",
     ];
+    pub const LOW_CPU_THRESHOLD_PERCENT: f64 = 5.0;
+    pub const LOW_CPU_LOOKBACK_DAYS: i64 = 7;
+    pub const LOW_CPU_PERIOD_SECONDS: i32 = 3600;
 
     pub fn is_stopped(&self) -> bool {
         self.state == "stopped"
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.state == "running"
     }
 
     pub fn has_public_ip(&self) -> bool {
@@ -91,6 +99,19 @@ impl Ec2InstanceInfo {
         !self.missing_required_tags().is_empty()
     }
 
+    pub fn has_sustained_low_cpu(&self) -> bool {
+        self.is_running()
+            && self
+                .avg_cpu_utilization
+                .is_some_and(|cpu| cpu < Self::LOW_CPU_THRESHOLD_PERCENT)
+    }
+
+    pub fn formatted_avg_cpu(&self) -> String {
+        self.avg_cpu_utilization
+            .map(|cpu| format!("{cpu:.1}%"))
+            .unwrap_or_else(|| "-".to_string())
+    }
+
     pub fn review_signals(&self) -> Vec<&'static str> {
         let mut signals = Vec::new();
 
@@ -104,6 +125,10 @@ impl Ec2InstanceInfo {
 
         if self.has_tag_coverage_gap() {
             signals.push("missing-tags");
+        }
+
+        if self.has_sustained_low_cpu() {
+            signals.push("low-cpu");
         }
 
         signals

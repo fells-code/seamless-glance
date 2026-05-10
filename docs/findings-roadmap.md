@@ -43,6 +43,7 @@ The app currently implements an initial set of high-signal findings:
 - CloudWatch coverage gaps for deployed services without matching alarm namespaces
 - target groups with zero healthy targets
 - unhealthy target groups
+- running EC2 instances averaging below 5 percent CPU over the last 7 days
 - stopped instances with public IP or production-like naming
 - EC2 instances missing `Name`, `Owner`, or `Environment` tags
 - API Gateway APIs with generic names or age over one year
@@ -108,7 +109,6 @@ These are strong candidates once the team adds a little more fetch depth.
 
 ### EC2
 
-- low CPU for sustained periods
 - long-running dev or staging instances
 
 ### ELB / Target Groups
@@ -172,7 +172,7 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. EC2 low CPU for sustained periods
+1. EC2 long-running dev or staging instances
 
 ## Implementation Guidance
 
@@ -186,6 +186,7 @@ When adding a new finding:
 
 Current implemented thresholds that should stay explainable:
 
+- EC2 low-CPU waste review when a running instance averages below `5%` CPU utilization over the last `7` days
 - SQS backlog incident when a queue has `>= 100` visible messages
 - SQS backlog incident when a queue has `>= 50` in-flight messages
 - Secrets stale-rotation review when a secret has rotation enabled but `last_rotated` is at least `180` days old

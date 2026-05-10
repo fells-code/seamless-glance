@@ -88,9 +88,12 @@ General controls:
 
 - `←` / `→` change region
 - `↑` / `↓` move selection or scroll overlays
+- `PgUp` / `PgDn` jump-scroll lists, overlays, and help
+- `Home` / `End` jump to the top or bottom of long views
 - `?` open help
 - `r` refresh active view
 - `d` describe selected resource
+- `v` toggle Describe between structured and JSON views
 - `c` show the AWS CLI command for the selected resource
 - `o` open selected resource in the AWS console
 - `g` jump to the global region slot
@@ -106,13 +109,14 @@ Resource actions are expected to target the selected resource directly. In globa
 Current resource-action model:
 
 - `d` describe the selected resource in-app
+- `v` toggle a describe overlay between a structured readable view and a JSON-oriented view
 - `c` show and optionally run the AWS CLI command for the selected resource
 - `o` open the selected resource in the AWS console
 
 Findings view behavior:
 
 - `Enter` opens the related service view for the selected finding
-- the initial finding set includes named CloudWatch alarms in `ALARM`, CloudWatch coverage gaps for deployed services without matching alarm namespaces, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, EC2 instances missing `Name`, `Owner`, or `Environment` tags, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
+- the initial finding set includes named CloudWatch alarms in `ALARM`, CloudWatch coverage gaps for deployed services without matching alarm namespaces, running EC2 instances averaging below 5 percent CPU over the last 7 days, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, EC2 instances missing `Name`, `Owner`, or `Environment` tags, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
 
 Command palette shortcuts currently include:
 

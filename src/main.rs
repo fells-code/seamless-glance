@@ -192,6 +192,8 @@ async fn main() -> anyhow::Result<()> {
     app.load_cost_data().await;
     app.trigger_refresh();
 
+    const PAGE_SCROLL_LINES: usize = 10;
+
     loop {
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
@@ -224,6 +226,14 @@ async fn main() -> anyhow::Result<()> {
                 app.show_help = true;
                 app.footer_mode = FooterMode::Help;
                 app.scroll_offset = 0;
+            }
+            KeyCode::Char('v') if !app.command_mode => {
+                if let Some(overlay) = &mut app.overlay {
+                    if overlay.toggle_describe_mode() {
+                        app.footer_mode = FooterMode::Overlay;
+                        continue;
+                    }
+                }
             }
             KeyCode::Char(c) if app.command_mode => {
                 app.command_input.push(c);
@@ -304,7 +314,7 @@ async fn main() -> anyhow::Result<()> {
                 } else if let Some(overlay) = &mut app.overlay {
                     overlay.scroll_down();
                 } else {
-                    app.selected_row = app.selected_row.saturating_add(1);
+                    app.scroll_active_view_down(1);
                 }
             }
 
@@ -314,7 +324,43 @@ async fn main() -> anyhow::Result<()> {
                 } else if let Some(overlay) = &mut app.overlay {
                     overlay.scroll_up();
                 } else {
-                    app.selected_row = app.selected_row.saturating_sub(1);
+                    app.scroll_active_view_up(1);
+                }
+            }
+            KeyCode::PageDown => {
+                if app.show_help {
+                    app.scroll_offset = app.scroll_offset.saturating_add(PAGE_SCROLL_LINES as u16);
+                } else if let Some(overlay) = &mut app.overlay {
+                    overlay.page_down(PAGE_SCROLL_LINES as u16);
+                } else {
+                    app.scroll_active_view_down(PAGE_SCROLL_LINES);
+                }
+            }
+            KeyCode::PageUp => {
+                if app.show_help {
+                    app.scroll_offset = app.scroll_offset.saturating_sub(PAGE_SCROLL_LINES as u16);
+                } else if let Some(overlay) = &mut app.overlay {
+                    overlay.page_up(PAGE_SCROLL_LINES as u16);
+                } else {
+                    app.scroll_active_view_up(PAGE_SCROLL_LINES);
+                }
+            }
+            KeyCode::Home => {
+                if app.show_help {
+                    app.scroll_offset = 0;
+                } else if let Some(overlay) = &mut app.overlay {
+                    overlay.scroll_to_top();
+                } else {
+                    app.scroll_active_view_to_top();
+                }
+            }
+            KeyCode::End => {
+                if app.show_help {
+                    app.scroll_offset = u16::MAX;
+                } else if let Some(overlay) = &mut app.overlay {
+                    overlay.scroll_to_bottom();
+                } else {
+                    app.scroll_active_view_to_bottom();
                 }
             }
             KeyCode::Char('o') => {

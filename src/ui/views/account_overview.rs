@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     let Some(overview) = &app.account_overview else {
         let loading_text = format!("Fetching AWS inventory for {}…", app.current_region_label());
 
@@ -133,8 +133,17 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ),
     ];
 
+    let visible_height = layout[1].height.saturating_sub(3) as usize;
+    let max_scroll = rows.len().saturating_sub(visible_height);
+    app.scroll_offset = app.scroll_offset.min(max_scroll as u16);
+    let visible_rows = rows
+        .into_iter()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
+        .collect::<Vec<_>>();
+
     let table = Table::new(
-        rows,
+        visible_rows,
         [
             Constraint::Length(16),
             Constraint::Length(22),

@@ -287,6 +287,71 @@ impl App {
         self.trigger_refresh();
     }
 
+    fn view_uses_free_scroll(&self) -> bool {
+        matches!(
+            self.active_view,
+            ActiveView::AccountOverview | ActiveView::CostOverview
+        )
+    }
+
+    fn active_view_item_count(&self) -> usize {
+        match self.active_view {
+            ActiveView::Findings => self.findings.len(),
+            ActiveView::Ecs => self.ecs_clusters.len(),
+            ActiveView::Ec2 => self.ec2_instances.len(),
+            ActiveView::Rds => self.rds_instances.len(),
+            ActiveView::Lambda => self.lambda_functions.len(),
+            ActiveView::Apigateway => self.apigateway_apis.len(),
+            ActiveView::Sqs => self.sqs_queues_data.len(),
+            ActiveView::Vpc => self.vpcs.len(),
+            ActiveView::Secrets => self.secrets.len(),
+            ActiveView::CloudWatch => self.cloudwatch_alarms.len(),
+            ActiveView::LoadBalancers => self.load_balancers.len(),
+            ActiveView::TargetGroups => self.target_groups.len(),
+            ActiveView::SecurityGroups => self.security_groups.len(),
+            ActiveView::AccountOverview => 10,
+            ActiveView::CostOverview => self.service_costs.len(),
+        }
+    }
+
+    pub fn scroll_active_view_up(&mut self, lines: usize) {
+        if self.view_uses_free_scroll() {
+            self.scroll_offset = self.scroll_offset.saturating_sub(lines as u16);
+        } else {
+            self.selected_row = self.selected_row.saturating_sub(lines);
+        }
+    }
+
+    pub fn scroll_active_view_down(&mut self, lines: usize) {
+        if self.view_uses_free_scroll() {
+            self.scroll_offset = self.scroll_offset.saturating_add(lines as u16);
+            return;
+        }
+
+        let total = self.active_view_item_count();
+        if total == 0 {
+            self.selected_row = 0;
+            return;
+        }
+
+        self.selected_row = self.selected_row.saturating_add(lines).min(total - 1);
+    }
+
+    pub fn scroll_active_view_to_top(&mut self) {
+        self.scroll_offset = 0;
+        self.selected_row = 0;
+    }
+
+    pub fn scroll_active_view_to_bottom(&mut self) {
+        if self.view_uses_free_scroll() {
+            self.scroll_offset = u16::MAX;
+            return;
+        }
+
+        let total = self.active_view_item_count();
+        self.selected_row = total.saturating_sub(1);
+    }
+
     pub fn rebuild_findings(&mut self) {
         let mut findings = Vec::new();
 
@@ -669,6 +734,57 @@ impl App {
                     next_step:
                         "Open EC2 and add Name, Owner, or Environment tags to unmanaged instances"
                             .into(),
+                    route: FindingRoute::Ec2,
+                });
+            }
+
+            let low_cpu_instances = self
+                .ec2_instances
+                .iter()
+                .filter(|instance| instance.has_sustained_low_cpu())
+                .collect::<Vec<_>>();
+
+            if !low_cpu_instances.is_empty() {
+                let sample_instances = low_cpu_instances
+                    .iter()
+                    .take(3)
+                    .map(|instance| {
+                        let label = instance.name.clone().unwrap_or_else(|| instance.id.clone());
+                        format!("{label} ({})", instance.formatted_avg_cpu())
+                    })
+                    .collect::<Vec<_>>();
+                let sample_count = sample_instances.len();
+                let remaining = low_cpu_instances.len().saturating_sub(sample_count);
+                let summary = if remaining > 0 {
+                    format!(
+                        "{} running EC2 instance(s) averaged below {:.1}% CPU over the last {} days: {} (+{} more)",
+                        low_cpu_instances.len(),
+                        Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
+                        Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS,
+                        sample_instances.join(", "),
+                        remaining
+                    )
+                } else {
+                    format!(
+                        "{} running EC2 instance(s) averaged below {:.1}% CPU over the last {} days: {}",
+                        low_cpu_instances.len(),
+                        Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
+                        Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS,
+                        sample_instances.join(", ")
+                    )
+                };
+
+                findings.push(Finding {
+                    severity: FindingSeverity::Medium,
+                    category: FindingCategory::Waste,
+                    service: "EC2".into(),
+                    region: self.current_region_label(),
+                    summary,
+                    next_step: format!(
+                        "Open EC2 and review running instances averaging below {:.1}% CPU over the last {} days",
+                        Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
+                        Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS
+                    ),
                     route: FindingRoute::Ec2,
                 });
             }
@@ -1224,18 +1340,16 @@ impl App {
 
         match result {
             Ok(text) => {
-                self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
-                    title: resource.resource_name(),
-                    content: text,
-                    scroll: 0,
-                }));
+                self.overlay = Some(OverlayState::Describe(DescribeOverlayState::new(
+                    resource.resource_name(),
+                    text,
+                )));
             }
             Err(err) => {
-                self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
-                    title: "Error".into(),
-                    content: err.to_string(),
-                    scroll: 0,
-                }));
+                self.overlay = Some(OverlayState::Describe(DescribeOverlayState::new(
+                    "Error".into(),
+                    err.to_string(),
+                )));
             }
         }
     }
@@ -1535,22 +1649,19 @@ impl App {
         };
 
         if instance.state != "running" {
-            self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
-                title: "SSH unavailable".into(),
-                content: "Instance is not running.".into(),
-                scroll: 0,
-            }));
+            self.overlay = Some(OverlayState::Describe(DescribeOverlayState::new(
+                "SSH unavailable".into(),
+                "Instance is not running.".into(),
+            )));
             return;
         }
 
         let Some(ctx) = ssh::ssh_command(&instance) else {
-            self.overlay = Some(OverlayState::Describe(DescribeOverlayState {
-            title: "Private instance".into(),
-            content:
+            self.overlay = Some(OverlayState::Describe(DescribeOverlayState::new(
+                "Private instance".into(),
                 "This instance has no public IP.\nSSH requires a bastion or SSM Session Manager."
                     .into(),
-            scroll: 0,
-        }));
+            )));
             return;
         };
 

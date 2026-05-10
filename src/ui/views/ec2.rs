@@ -37,7 +37,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(app.theme.highlight)
             } else if inst.has_tag_coverage_gap() {
                 Style::default().fg(app.theme.accent)
-            } else if inst.needs_stopped_review() {
+            } else if inst.has_sustained_low_cpu() || inst.needs_stopped_review() {
                 Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
@@ -49,6 +49,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(inst.region.clone()),
                 Cell::from(inst.state.clone()),
                 Cell::from(inst.instance_type.clone()),
+                Cell::from(inst.formatted_avg_cpu()),
                 Cell::from(inst.owner.clone().unwrap_or("-".into())),
                 Cell::from(inst.environment.clone().unwrap_or("-".into())),
                 Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
@@ -72,6 +73,7 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         "Region",
         "State",
         "Type",
+        "Avg CPU",
         "Owner",
         "Env",
         "Public IP",
@@ -83,15 +85,16 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let widths = [
         ratatui::layout::Constraint::Percentage(30),
-        ratatui::layout::Constraint::Percentage(18),
+        ratatui::layout::Constraint::Percentage(16),
         ratatui::layout::Constraint::Percentage(10),
         ratatui::layout::Constraint::Percentage(10),
         ratatui::layout::Constraint::Percentage(10),
-        ratatui::layout::Constraint::Percentage(12),
+        ratatui::layout::Constraint::Percentage(9),
         ratatui::layout::Constraint::Percentage(10),
-        ratatui::layout::Constraint::Percentage(12),
-        ratatui::layout::Constraint::Percentage(12),
-        ratatui::layout::Constraint::Percentage(10),
+        ratatui::layout::Constraint::Percentage(9),
+        ratatui::layout::Constraint::Percentage(11),
+        ratatui::layout::Constraint::Percentage(11),
+        ratatui::layout::Constraint::Percentage(8),
         ratatui::layout::Constraint::Percentage(12),
     ];
 
@@ -105,15 +108,16 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
         )
         .widths([
             ratatui::layout::Constraint::Percentage(30),
-            ratatui::layout::Constraint::Percentage(18),
+            ratatui::layout::Constraint::Percentage(16),
             ratatui::layout::Constraint::Percentage(10),
             ratatui::layout::Constraint::Percentage(10),
             ratatui::layout::Constraint::Percentage(10),
-            ratatui::layout::Constraint::Percentage(12),
+            ratatui::layout::Constraint::Percentage(9),
             ratatui::layout::Constraint::Percentage(10),
-            ratatui::layout::Constraint::Percentage(12),
-            ratatui::layout::Constraint::Percentage(12),
-            ratatui::layout::Constraint::Percentage(10),
+            ratatui::layout::Constraint::Percentage(9),
+            ratatui::layout::Constraint::Percentage(11),
+            ratatui::layout::Constraint::Percentage(11),
+            ratatui::layout::Constraint::Percentage(8),
             ratatui::layout::Constraint::Percentage(12),
         ]);
 
