@@ -24,10 +24,15 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &App) {
 
     let rows = app.target_groups.iter().enumerate().map(|(i, tg)| {
         let unhealthy = tg.unhealthy_targets > 0;
+        let zero_healthy = tg.has_zero_healthy_targets();
 
         let style = if i == app.selected_row {
             Style::default()
                 .fg(app.theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else if zero_healthy {
+            Style::default()
+                .fg(app.theme.primary)
                 .add_modifier(Modifier::BOLD)
         } else if unhealthy {
             Style::default().fg(app.theme.primary)
@@ -40,6 +45,7 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &App) {
             tg.target_type.clone(),
             tg.port.to_string(),
             tg.total_targets.to_string(),
+            tg.healthy_targets().to_string(),
             tg.unhealthy_targets.to_string(),
         ])
         .style(style)
@@ -52,11 +58,12 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &App) {
             ratatui::layout::Constraint::Length(10),
             ratatui::layout::Constraint::Length(6),
             ratatui::layout::Constraint::Length(8),
+            ratatui::layout::Constraint::Length(8),
             ratatui::layout::Constraint::Length(10),
         ],
     )
     .header(
-        Row::new(["NAME", "TYPE", "PORT", "TARGETS", "UNHEALTHY"])
+        Row::new(["NAME", "TYPE", "PORT", "TARGETS", "HEALTHY", "UNHEALTHY"])
             .style(Style::default().add_modifier(Modifier::BOLD)),
     )
     .block(

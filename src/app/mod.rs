@@ -268,8 +268,11 @@ impl App {
     pub async fn on_view_enter(&mut self) {
         match self.active_view {
             ActiveView::Findings => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Security Groups"]);
+                self.refresh_phase =
+                    RefreshPhase::Services(vec!["Security Groups", "Target Groups", "SQS"]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
+                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
                 self.rebuild_findings();
                 self.refresh_phase = RefreshPhase::Idle;
             }
@@ -351,7 +354,45 @@ impl App {
                 });
             }
 
-            if overview.target_groups_unhealthy > 0 {
+            let zero_healthy_target_groups = self
+                .target_groups
+                .iter()
+                .filter(|tg| tg.has_zero_healthy_targets())
+                .count();
+
+            if zero_healthy_target_groups > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::High,
+                    category: FindingCategory::Incident,
+                    service: "Target Groups".into(),
+                    region: self.current_region_label(),
+                    summary: format!(
+                        "{zero_healthy_target_groups} target group(s) have zero healthy targets"
+                    ),
+                    next_step: "Open target groups and restore at least one healthy target".into(),
+                    route: FindingRoute::TargetGroups,
+                });
+            }
+
+            let partially_unhealthy_target_groups = self
+                .target_groups
+                .iter()
+                .filter(|tg| tg.unhealthy_targets > 0 && !tg.has_zero_healthy_targets())
+                .count();
+
+            if partially_unhealthy_target_groups > 0 {
+                findings.push(Finding {
+                    severity: FindingSeverity::High,
+                    category: FindingCategory::Incident,
+                    service: "Target Groups".into(),
+                    region: self.current_region_label(),
+                    summary: format!(
+                        "{partially_unhealthy_target_groups} target group(s) have unhealthy targets"
+                    ),
+                    next_step: "Open target groups and inspect unhealthy target health".into(),
+                    route: FindingRoute::TargetGroups,
+                });
+            } else if overview.target_groups_unhealthy > 0 && self.target_groups.is_empty() {
                 findings.push(Finding {
                     severity: FindingSeverity::High,
                     category: FindingCategory::Incident,
@@ -442,6 +483,21 @@ impl App {
             });
         }
 
+        let queues_without_dlq = self.sqs_queues_data.iter().filter(|q| !q.has_dlq).count();
+
+        if queues_without_dlq > 0 {
+            findings.push(Finding {
+                severity: FindingSeverity::Medium,
+                category: FindingCategory::Hygiene,
+                service: "SQS".into(),
+                region: self.current_region_label(),
+                summary: format!("{queues_without_dlq} queue(s) do not have a DLQ configured"),
+                next_step: "Review queues without DLQs and add redrive policies where needed"
+                    .into(),
+                route: FindingRoute::Sqs,
+            });
+        }
+
         findings.sort_by(|a, b| {
             a.severity
                 .rank()
@@ -520,8 +576,15 @@ impl App {
 
         match self.active_view {
             ActiveView::Findings => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Security Groups", "Findings"]);
+                self.refresh_phase = RefreshPhase::Services(vec![
+                    "Security Groups",
+                    "Target Groups",
+                    "SQS",
+                    "Findings",
+                ]);
                 self.security_groups = aws::security_group::fetch_security_groups(self).await;
+                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
             }
             ActiveView::Ec2 => {
                 self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
@@ -949,6 +1012,7 @@ impl App {
             FindingRoute::Ec2 => ActiveView::Ec2,
             FindingRoute::CloudWatch => ActiveView::CloudWatch,
             FindingRoute::Secrets => ActiveView::Secrets,
+            FindingRoute::Sqs => ActiveView::Sqs,
             FindingRoute::TargetGroups => ActiveView::TargetGroups,
             FindingRoute::SecurityGroups => ActiveView::SecurityGroups,
         };

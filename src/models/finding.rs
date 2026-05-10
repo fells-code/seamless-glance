@@ -42,6 +42,7 @@ pub enum FindingRoute {
     Ec2,
     CloudWatch,
     Secrets,
+    Sqs,
     TargetGroups,
     SecurityGroups,
 }

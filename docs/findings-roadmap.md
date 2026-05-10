@@ -40,7 +40,9 @@ Each finding should also carry:
 The app currently implements an initial set of high-signal findings:
 
 - CloudWatch alarms in `ALARM`
+- target groups with zero healthy targets
 - unhealthy target groups
+- SQS queues without DLQs
 - secrets without rotation
 - stopped EC2 instances
 - security groups open to the world
@@ -88,13 +90,6 @@ These are the best next additions because they fit the current architecture and 
 
 ### Target Groups
 
-#### Zero healthy targets
-
-- Category: `Incident`
-- Why it matters: often means traffic cannot be served correctly
-- Needed data: existing target health data
-- Best pivots: Target Groups view, CLI describe-target-health, console
-
 #### Unhealthy targets present
 
 - Category: `Incident`
@@ -120,13 +115,6 @@ These are the best next additions because they fit the current architecture and 
 - Best pivots: Secrets view, CLI, console
 
 ### SQS
-
-#### Queue without DLQ
-
-- Category: `Hygiene`
-- Why it matters: no DLQ means failure handling is weaker and debugging is harder
-- Needed data: existing queue and redrive policy inspection
-- Best pivots: SQS view, CLI get-queue-attributes, console
 
 #### High visible or in-flight messages
 
@@ -265,12 +253,10 @@ These are especially valuable for the waste-catalog direction and probably deser
 
 If the team wants the highest signal with the least new plumbing, implement these next:
 
-1. target groups with zero healthy targets
-2. SQS queues without DLQs
-3. RDS instances not `available`
-4. Lambda functions with suspiciously high memory or very old deploy dates
-5. default VPC present
-6. CloudWatch findings expanded from counts to named failing alarms
+1. RDS instances not `available`
+2. Lambda functions with suspiciously high memory or very old deploy dates
+3. default VPC present
+4. CloudWatch findings expanded from counts to named failing alarms
 
 ## Implementation Guidance
 

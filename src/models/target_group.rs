@@ -14,6 +14,16 @@ pub struct TargetGroupInfo {
     pub unhealthy_targets: usize,
 }
 
+impl TargetGroupInfo {
+    pub fn healthy_targets(&self) -> usize {
+        self.total_targets.saturating_sub(self.unhealthy_targets)
+    }
+
+    pub fn has_zero_healthy_targets(&self) -> bool {
+        self.total_targets > 0 && self.healthy_targets() == 0
+    }
+}
+
 #[async_trait]
 impl DescribableResource for TargetGroupInfo {
     fn resource_name(&self) -> String {

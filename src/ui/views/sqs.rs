@@ -8,7 +8,7 @@ use ratatui::{
 use crate::app::App;
 
 pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
-    let total_rows = app.rds_instances.len();
+    let total_rows = app.sqs_queues_data.len();
     if total_rows == 0 {
         app.selected_row = 0;
         app.scroll_offset = 0;
@@ -36,6 +36,8 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
         .map(|(i, q)| {
             let style = if i == app.selected_row {
                 Style::default().fg(app.theme.highlight)
+            } else if !q.has_dlq {
+                Style::default().fg(app.theme.primary)
             } else {
                 Style::default().fg(app.theme.text)
             };
