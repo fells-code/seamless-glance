@@ -148,8 +148,10 @@ update_install_script() {
     return 0
   fi
 
-  perl -0pi -e 's/^VERSION=".*?"$/VERSION="'"$VERSION"'"/m' "$file"
-  perl -0pi -e 's/^REPO=".*?"$/REPO="'"$RELEASE_REPO"'"/m' "$file"
+  VERSION="$VERSION" RELEASE_REPO="$RELEASE_REPO" perl -0pi -e '
+    s/^VERSION=".*?"$/qq{VERSION="$ENV{VERSION}"}/me;
+    s/^REPO=".*?"$/qq{REPO="$ENV{RELEASE_REPO}"}/me;
+  ' "$file"
 }
 
 update_homebrew_formula() {
@@ -164,11 +166,18 @@ update_homebrew_formula() {
     return 0
   fi
 
-  perl -0pi -e 's/version ".*?"/version "'"$VERSION"'"/' "$formula"
-  perl -0pi -e 's#(if OS\.mac\? && Hardware::CPU\.arm\?\s+url ")[^"]+(")#${1}'"$arm_url"'$2#s' "$formula"
-  perl -0pi -e 's#(if OS\.mac\? && Hardware::CPU\.arm\?\s+url "[^"]+"\s+sha256 ")[0-9a-f]+(")#${1}'"$MAC_ARM_SHA"'$2#s' "$formula"
-  perl -0pi -e 's#(elsif OS\.mac\?\s+url ")[^"]+(")#${1}'"$x86_url"'$2#s' "$formula"
-  perl -0pi -e 's#(elsif OS\.mac\?\s+url "[^"]+"\s+sha256 ")[0-9a-f]+(")#${1}'"$MAC_X86_SHA"'$2#s' "$formula"
+  VERSION="$VERSION" \
+  ARM_URL="$arm_url" \
+  ARM_SHA="$MAC_ARM_SHA" \
+  X86_URL="$x86_url" \
+  X86_SHA="$MAC_X86_SHA" \
+  perl -0pi -e '
+    s/version ".*?"/qq{version "$ENV{VERSION}"}/e;
+    s#(if OS\.mac\? && Hardware::CPU\.arm\?\s+url ")[^"]+(")#$1 . $ENV{ARM_URL} . $2#se;
+    s#(if OS\.mac\? && Hardware::CPU\.arm\?\s+url "[^"]+"\s+sha256 ")[0-9a-f]+(")#$1 . $ENV{ARM_SHA} . $2#se;
+    s#(elsif OS\.mac\?\s+url ")[^"]+(")#$1 . $ENV{X86_URL} . $2#se;
+    s#(elsif OS\.mac\?\s+url "[^"]+"\s+sha256 ")[0-9a-f]+(")#$1 . $ENV{X86_SHA} . $2#se;
+  ' "$formula"
 }
 
 write_release_manifest() {
