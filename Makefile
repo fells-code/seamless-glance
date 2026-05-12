@@ -9,7 +9,7 @@ MAC_ARM := aarch64-apple-darwin
 MAC_X86 := x86_64-apple-darwin
 LINUX_X86 := x86_64-unknown-linux-gnu
 
-.PHONY: help clean version build build-macos build-linux dist checksums release-local fmt lint test
+.PHONY: help clean version build build-macos build-linux dist checksums release-local release-helper fmt lint test
 
 help:
 	@echo "Seamless Glance – Make targets"
@@ -20,6 +20,7 @@ help:
 	@echo "make dist             Build and prepare dist/"
 	@echo "make checksums        Generate SHA256 checksums"
 	@echo "make release-local    Build + checksums (local release)"
+	@echo "make release-helper   Build + sync support repos for current version"
 	@echo "make clean            Remove build artifacts"
 	@echo ""
 
@@ -81,6 +82,9 @@ release-local: dist checksums
 	@echo "  - Upload binaries to distro repo release"
 	@echo "  - Update Homebrew formula with checksums"
 	@echo ""
+
+release-helper:
+	./scripts/release-helper.sh
 
 test:
 	cargo test --all

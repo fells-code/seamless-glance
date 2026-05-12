@@ -33,6 +33,7 @@ make build
 make dist
 make checksums
 make release-local
+make release-helper
 ```
 
 ## Credentials And Local State
@@ -93,6 +94,7 @@ Run the strongest checks that fit the change. Minimum expectations:
 - docs-only changes: read for consistency and accuracy
 - Rust changes: `cargo fmt`, `cargo clippy`, and `cargo test` when feasible
 - packaging changes: relevant `make` targets
+- multi-repo release sync changes: `./scripts/release-helper.sh --dry-run` plus a careful diff review
 
 If you skip a validation step, note why.
 

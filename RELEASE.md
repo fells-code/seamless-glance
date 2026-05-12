@@ -24,13 +24,12 @@ Do not infer versions from commits or CI variables.
 ## Release Checklist (High Level)
 
 1. Bump version in `Cargo.toml`
-2. Commit the version bump
-3. Build release binaries
-4. Publish binaries to the distro repo
-5. Update Homebrew formula
-6. Update `install.sh`
-7. Verify installation via Homebrew and curl
-8. Publish release notes
+2. Run the local release helper
+3. Review the changed support repos
+4. Commit the version bump and synced release files
+5. Publish binaries to the distro repo
+6. Verify installation via Homebrew and curl
+7. Publish release notes
 
 ---
 
@@ -54,19 +53,61 @@ Rules:
 
 ---
 
-### 2. Commit the Version Bump
+### 2. Run The Local Release Helper
 
-Commit _only_ the version change:
+After you manually bump the version, run:
 
 ```bash
-git add Cargo.toml
-git commit -m "chore: bump version to 0.1.0-beta.X"
-git push origin main
+./scripts/release-helper.sh
+```
+
+Or, if you prefer:
+
+```bash
+make release-helper
+```
+
+What the helper does:
+
+- reads the current version from `Cargo.toml`
+- builds release artifacts into `dist/`
+- generates `SHA256SUMS.txt`
+- writes `dist/release-manifest.json`
+- updates:
+  - `../seamless-glance-distro/install.sh`
+  - `../homebrew-seamless/Formula/seamless-glance.rb`
+  - `../seamless-glance-website/public/install.sh`
+
+What it intentionally does **not** do:
+
+- bump the version for you
+- create Git tags
+- make Git commits
+- push to GitHub
+- publish GitHub releases
+
+Safety behavior:
+
+- refuses to edit dirty support repos unless you pass `--allow-dirty`
+- supports `--dry-run`
+- supports path overrides if your sibling checkouts live elsewhere
+
+---
+
+### 3. Review And Commit The Synced Files
+
+Review the source repo and support repo diffs, then commit them manually in the repos you want:
+
+```bash
+git status --short
+git -C ../seamless-glance-distro status --short
+git -C ../homebrew-seamless status --short
+git -C ../seamless-glance-website status --short
 ```
 
 ---
 
-### 3. Create a Git Tag (Recommended)
+### 4. Create A Git Tag (Recommended)
 
 Create a tag that matches the Cargo version exactly:
 
@@ -79,25 +120,7 @@ Do not reuse or retag existing versions.
 
 ---
 
-### 4. Build Release Binaries
-
-Build binaries for supported platforms:
-
-```bash
-make release-local
-```
-
-Ensure binaries report the correct version:
-
-```bash
-./target/release/seamless-glance --version
-```
-
-Output must match the version in `Cargo.toml`.
-
----
-
-### 5. Publish Binaries to `seamless-glance-distro`
+### 5. Publish Binaries To `seamless-glance-distro`
 
 In the **distro repository**:
 
@@ -120,47 +143,7 @@ Do not overwrite existing assets.
 
 ---
 
-### 6. Update Homebrew Formula
-
-In the Homebrew tap:
-
-- Update:
-  - `version`
-  - `url`
-  - `sha256` for each platform
-
-Example:
-
-```ruby
-version "0.1.0-beta.X"
-```
-
-Ensure URLs point to the **new release assets**.
-
-Commit and push the formula update.
-
----
-
-### 7. Update `install.sh`
-
-Update these fields:
-
-```bash
-VERSION="0.1.0-beta.X"
-REPO="fells-code/seamless-glance-distro"
-```
-
-Ensure:
-
-- URLs reference the correct release tag
-- Filenames match the uploaded binaries
-- Script still installs successfully
-
-Commit and push the updated script.
-
----
-
-### 8. Verify Installation (Required)
+### 6. Verify Installation (Required)
 
 Before announcing the release, verify **both install paths**:
 
@@ -183,7 +166,7 @@ Both must report the **new version**.
 
 ---
 
-### 9. Publish Release Notes
+### 7. Publish Release Notes
 
 Use the following sections in GitHub Releases:
 
@@ -213,6 +196,7 @@ Ensure notes reflect actual changes since the last release.
 - Verify build artifact
 - Verify Homebrew symlink
 - Check for local `make install` overrides
+- Re-run `./scripts/release-helper.sh --skip-build` if the support repos drifted after the artifact build
 
 ### Homebrew installs wrong version
 
