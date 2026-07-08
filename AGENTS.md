@@ -2,6 +2,43 @@
 
 This file is the operating guide for engineers and coding agents working in this repository.
 
+## Working Standards (fells-code baseline)
+
+These rules apply to every repository in the fells-code org. Repo-specific
+guidance may extend them but must not contradict them.
+
+### Attribution
+- Commit and open PRs solely under the repository owner's identity. Never
+  commit under an agent or assistant identity.
+- Never attribute work to an AI assistant: no `Co-Authored-By: Claude` (or any
+  assistant) trailers, no "Generated with" / "Created with Claude" notes, and no
+  assistant branding or emoji anywhere in commit messages, PR or issue titles
+  and descriptions, changesets, code comments, or docs.
+
+### Comments
+- Comment only when the code genuinely needs explaining: a non-obvious reason, a
+  gotcha, or an invariant. Never narrate what the code plainly does.
+
+### TODOs
+- Every `TODO`/`FIXME` must reference a ticket, e.g. `// TODO(#123): ...`.
+  Do not leave a bare TODO. If no ticket exists, create one first.
+
+### Commits & branches
+- Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `ci:`, `test:`).
+- Descriptive branch names (`feat/...`, `fix/...`); never a `claude/` or other
+  tool-generated prefix.
+
+### Public-facing text
+- No em dashes in commit messages, code comments, PR or issue text, changesets,
+  or docs. Use a comma, parentheses, or a separate sentence.
+
+### Before declaring work done
+- Run the checks that apply to the change (see Validation Expectations below:
+  `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`) and report the real
+  output. Do not open a PR while a relevant check is failing. If a step cannot
+  be run, say so clearly.
+- Match the surrounding code's style, naming, and comment density.
+
 ## Mission
 
 Build and maintain Seamless Glance as a fast, terminal-native AWS operations dashboard with a polished TUI, clear operator workflows, and accurate service visibility.
