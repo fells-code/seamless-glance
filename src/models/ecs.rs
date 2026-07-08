@@ -1,4 +1,10 @@
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    aws::clients::AwsClients,
+    models::describable::{shell_quote, DescribableResource},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EcsClusterInfo {
@@ -12,32 +18,36 @@ pub struct EcsClusterInfo {
     pub memory: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EcsServiceInfo {
-    pub arn: String,
-    pub name: String,
-    pub desired_count: i32,
-    pub running_count: i32,
-    pub pending_count: i32,
-    pub deployments: Vec<EcsDeploymentInfo>,
-}
+#[async_trait]
+impl DescribableResource for EcsClusterInfo {
+    fn resource_name(&self) -> String {
+        self.name.clone()
+    }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EcsDeploymentInfo {
-    pub id: String,
-    pub status: String,
-    pub rollout_state: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
+    async fn describe(&self, clients: &AwsClients) -> anyhow::Result<String> {
+        let resp = clients
+            .ecs
+            .describe_clusters()
+            .clusters(&self.arn)
+            .include(aws_sdk_ecs::types::ClusterField::Tags)
+            .send()
+            .await?;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EcsTaskInfo {
-    pub arn: String,
-    pub task_definition: String,
-    pub last_status: String,
-    pub desired_status: String,
-    pub cpu: Option<String>,
-    pub memory: Option<String>,
-    pub container_instance_arn: Option<String>,
+        Ok(format!("{:#?}", resp))
+    }
+
+    fn console_url(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "https://console.aws.amazon.com/ecs/v2/clusters/{}/services?region={}",
+            self.name, region
+        ))
+    }
+
+    fn cli_command(&self, region: &str) -> Option<String> {
+        Some(format!(
+            "aws ecs describe-clusters --clusters {} --include TAGS --region {}",
+            shell_quote(&self.arn),
+            shell_quote(region)
+        ))
+    }
 }

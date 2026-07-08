@@ -5,12 +5,19 @@ use ratatui::{
     Frame,
 };
 
-use crate::{app::App, ui::views::command::draw_command_palette};
+use crate::{
+    app::{ActiveView, App},
+    ui::{
+        overlay::overlays::OverlayState,
+        views::command::{command_for_view, draw_command_palette},
+    },
+};
 
 pub enum FooterMode {
     Normal,
     Command,
     Help,
+    Overlay,
 }
 
 pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
@@ -19,33 +26,62 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let status = if app.is_refreshing {
-        "Refreshing…"
-    } else {
-        "Live"
-    };
-
-    let refresh = app
-        .last_refresh
-        .map(|t| t.format("%H:%M:%S").to_string())
-        .unwrap_or_else(|| "—".into());
-
-    let footer_text = match app.footer_mode {
-        FooterMode::Normal => {
-            "[q] Quit   [1] Overview   [2] Cost   [3] ECS   [4] Lambda  [5] ApiGateway  [6] SQS   [← →] Region   [/] Command   [?] Help"
+    let view_hint = command_for_view(app.active_view)
+        .map(|command| format!("View: {}", command.name))
+        .unwrap_or_else(|| "View: unknown".into());
+    let wrap_hint = if app.active_view_supports_wrap() {
+        if app.wrap_mode_active() {
+            "   [w] Compact view   PgUp / PgDn Detail scroll"
+        } else {
+            "   [w] Wrapped detail"
         }
-        FooterMode::Command => "Command mode — type and press Enter (Esc to cancel)",
-        FooterMode::Help => "Help — Esc to close",
+    } else {
+        ""
     };
 
-    // let footer_text = format!(
-    //     "[q] Quit   [1] Overview   [2] Cost   [3] ECS   [← →] Region   [/] Command   [?] Help  Status: {}   Last refresh: {}",
-    //     status, refresh
-    // );
+    let footer_text = if app.command_mode {
+        "Command palette — type a view name or alias and press Enter (Esc to cancel)".to_string()
+    } else if let Some(overlay) = &app.overlay {
+        match overlay {
+            OverlayState::Describe(_) => {
+                "Esc Close   [v] Toggle structured / JSON   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
+            }
+            OverlayState::ConfirmCommand(_) => {
+                "Esc Close   Enter Run   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
+            }
+            OverlayState::SelectSshKey(_) => "Esc Close   [1] Agent   [2] Private key path".to_string(),
+        }
+    } else if app.show_help {
+        "Help — Esc Close   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
+    } else if app.active_view == ActiveView::Findings {
+        format!(
+            "[Enter] Open related view{}   [Tab] Next view   [/] Jump   [t] Theme   [r] Refresh   [?] Help   [q] Quit",
+            wrap_hint
+        )
+    } else if app.active_view == ActiveView::CostSavings {
+        format!(
+            "{}   [Enter] Open related view{}   [Tab/Shift+Tab] Cycle views   [/] Jump   [t] Theme   [r] Refresh   [?] Help   [q] Quit",
+            view_hint, wrap_hint
+        )
+    } else if app.active_view == ActiveView::Ec2 {
+        format!(
+            "{}{}   [Tab/Shift+Tab] Cycle views   [/] Jump   [t] Theme   [d] Describe   [c] CLI   [o] Console   [s] SSH   [g] Global   [r] Refresh   [?] Help   [q] Quit",
+            view_hint, wrap_hint
+        )
+    } else {
+        format!(
+            "{}{}   [Tab/Shift+Tab] Cycle views   [/] Jump   [t] Theme   [d] Describe   [c] CLI   [o] Console   [g] Global   [r] Refresh   [?] Help   [q] Quit",
+            view_hint, wrap_hint
+        )
+    };
 
     let footer = Paragraph::new(footer_text)
         .style(Style::default().fg(app.theme.text))
-        .block(Block::default().borders(Borders::TOP));
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(app.theme.primary)),
+        );
 
     frame.render_widget(footer, area);
 }

@@ -7,34 +7,67 @@ use ratatui::{
 
 use crate::app::App;
 
-pub fn render(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
+    let total_rows = app.lambda_functions.len();
+    if total_rows == 0 {
+        app.selected_row = 0;
+        app.scroll_offset = 0;
+    }
+
+    if total_rows > 0 {
+        app.selected_row = app.selected_row.min(total_rows - 1);
+    }
+
+    let visible_height = area.height.saturating_sub(3) as usize;
+
+    if app.selected_row < app.scroll_offset as usize {
+        app.scroll_offset = app.selected_row as u16;
+    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
+        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
+    }
+
     let rows: Vec<Row> = app
         .lambda_functions
         .iter()
-        .map(|f| {
+        .enumerate()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
+        .map(|(i, f)| {
+            let style = if i == app.selected_row {
+                Style::default().fg(app.theme.highlight)
+            } else if f.has_high_memory() || f.is_stale() {
+                Style::default().fg(app.theme.primary)
+            } else {
+                Style::default().fg(app.theme.text)
+            };
+
             Row::new(vec![
                 Cell::from(f.name.clone()),
+                Cell::from(f.region.clone()),
                 Cell::from(f.runtime.clone()),
                 Cell::from(f.memory_mb.to_string()),
                 Cell::from(f.timeout_sec.to_string()),
                 Cell::from(f.last_modified.clone()),
             ])
+            .style(style)
         })
         .collect();
 
     let table = Table::new(
         rows,
-        &[
-            Constraint::Percentage(30),
-            Constraint::Percentage(15),
+        [
+            Constraint::Percentage(24),
+            Constraint::Percentage(14),
+            Constraint::Percentage(14),
             Constraint::Percentage(10),
             Constraint::Percentage(10),
-            Constraint::Percentage(35),
+            Constraint::Percentage(28),
         ],
     )
     .header(
         Row::new(vec![
             "Name",
+            "Region",
             "Runtime",
             "Memory (MB)",
             "Timeout (s)",

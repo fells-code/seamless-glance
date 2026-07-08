@@ -1,28 +1,13 @@
-use crate::models::service_status::ServiceStatus;
-use aws_sdk_ec2::Client;
+use crate::{
+    app::App,
+    models::{
+        service_status::ServiceStatus,
+        vpc::{VpcInfo, VpcSummary},
+    },
+};
 
-#[derive(Debug, Clone)]
-pub struct VpcSummary {
-    pub vpc_count: u32,
-    pub subnet_count: u32,
-    pub status: ServiceStatus,
-}
-
-#[derive(Debug, Clone)]
-pub struct VpcInfo {
-    pub vpc_id: String,
-    pub cidr: String,
-    pub state: String,
-    pub is_default: bool,
-    pub subnet_count: u32,
-}
-
-pub async fn fetch_vpc_summary() -> VpcSummary {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
-    let ec2 = Client::new(&config);
-
-    // VPCs
-    let vpcs_resp = match ec2.describe_vpcs().send().await {
+pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
+    let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
         Ok(r) => r,
         Err(err) => {
             let msg = err.to_string();
@@ -45,7 +30,7 @@ pub async fn fetch_vpc_summary() -> VpcSummary {
     let vpc_count = vpcs_resp.vpcs().len() as u32;
 
     // Subnets (count only)
-    let subnets_resp = match ec2.describe_subnets().send().await {
+    let subnets_resp = match app.aws.ec2.describe_subnets().send().await {
         Ok(r) => r,
         Err(_) => {
             // If subnets are denied but VPCs are allowed, keep status Ok and show 0.
@@ -67,17 +52,14 @@ pub async fn fetch_vpc_summary() -> VpcSummary {
     }
 }
 
-pub async fn fetch_vpcs() -> Vec<VpcInfo> {
-    let config = aws_config::load_defaults(aws_config::BehaviorVersion::v2025_08_07()).await;
-    let ec2 = Client::new(&config);
-
-    let vpcs_resp = match ec2.describe_vpcs().send().await {
+pub async fn fetch_vpcs(app: &App) -> Vec<VpcInfo> {
+    let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
         Ok(r) => r,
         Err(_) => return vec![],
     };
 
     // Pull all subnets once, then count per VPC (fast + simple for MVP)
-    let subnets_resp = ec2.describe_subnets().send().await.ok();
+    let subnets_resp = app.aws.ec2.describe_subnets().send().await.ok();
     let subnets = subnets_resp.as_ref().map(|r| r.subnets()).unwrap_or(&[]);
 
     let mut out = Vec::new();

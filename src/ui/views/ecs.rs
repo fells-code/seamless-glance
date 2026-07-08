@@ -2,18 +2,44 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
-    widgets::{Block, Borders, Cell, List, ListItem, Row, Table},
+    widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
 
-pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = &app.theme;
 
-    // Build table rows
+    let total_rows = app.ecs_clusters.len();
+    if total_rows == 0 {
+        app.selected_row = 0;
+        app.scroll_offset = 0;
+    }
+
+    if total_rows > 0 {
+        app.selected_row = app.selected_row.min(total_rows - 1);
+    }
+
+    let visible_height = area.height.saturating_sub(3) as usize; // header + borders
+
+    // Keep selected row in view
+    if app.selected_row < app.scroll_offset as usize {
+        app.scroll_offset = app.selected_row as u16;
+    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
+        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
+    }
+
     let rows: Vec<Row> = app
         .ecs_clusters
         .iter()
-        .map(|c| {
+        .enumerate()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
+        .map(|(i, c)| {
+            let style = if i == app.selected_row {
+                Style::default().fg(app.theme.highlight)
+            } else {
+                Style::default().fg(app.theme.text)
+            };
             Row::new(vec![
                 Cell::from(c.name.clone()),
                 Cell::from(c.active_services.to_string()),
@@ -21,8 +47,9 @@ pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &App) {
                 Cell::from(c.registered_container_instances.to_string()),
                 Cell::from(c.cpu.to_string()),
                 Cell::from(c.memory.to_string()),
-                Cell::from("OK"), // placeholder health
+                Cell::from("OK"),
             ])
+            .style(style)
         })
         .collect();
 
@@ -50,7 +77,7 @@ pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &App) {
         ],
     )
     .header(header)
-    .widths(&[
+    .widths([
         Constraint::Percentage(30),
         Constraint::Length(10),
         Constraint::Length(12),
@@ -68,41 +95,4 @@ pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &App) {
     .column_spacing(1);
 
     frame.render_widget(table, area);
-}
-
-pub fn render_ecs_services(frame: &mut Frame, area: Rect, app: &App) {
-    let items: Vec<ListItem> = app
-        .ecs_services
-        .iter()
-        .map(|s| {
-            ListItem::new(format!(
-                "{} | {}/{} running | deployments: {}",
-                s.name,
-                s.running_count,
-                s.desired_count,
-                s.deployments.len(),
-            ))
-        })
-        .collect();
-
-    let list = List::new(items).block(Block::default().title("ECS Services").borders(Borders::ALL));
-
-    frame.render_widget(list, area);
-}
-
-pub fn render_ecs_tasks(frame: &mut Frame, area: Rect, app: &App) {
-    let items: Vec<ListItem> = app
-        .ecs_tasks
-        .iter()
-        .map(|t| {
-            ListItem::new(format!(
-                "{} | {} -> {} | CPU: {:?} | Mem: {:?}",
-                t.task_definition, t.desired_status, t.last_status, t.cpu, t.memory
-            ))
-        })
-        .collect();
-
-    let list = List::new(items).block(Block::default().title("ECS Tasks").borders(Borders::ALL));
-
-    frame.render_widget(list, area);
 }

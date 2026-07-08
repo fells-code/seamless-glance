@@ -1,149 +1,200 @@
 use crate::{app::App, models::service_status::ServiceStatus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
-    widgets::{Block, Borders, Paragraph},
+    style::{Modifier, Style},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
     Frame,
 };
 
-pub fn render(frame: &mut Frame, area: Rect, app: &App) {
+pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     let Some(overview) = &app.account_overview else {
-        let loading_text = format!("Fetching AWS data for {}…", app.current_region().as_ref());
+        let loading_text = format!("Fetching AWS inventory for {}…", app.current_region_label());
 
         let loading = Paragraph::new(loading_text)
             .style(Style::default().fg(app.theme.accent))
             .block(
                 Block::default()
-                    .title("Seamless Glance")
+                    .title("Account Overview")
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(app.theme.primary)),
             );
 
-        frame.render_widget(loading, frame.size());
+        frame.render_widget(loading, area);
         return;
     };
 
-    let chunks = Layout::default()
+    let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(10)])
+        .constraints([Constraint::Length(8), Constraint::Min(0)])
         .split(area);
 
-    // ---- HEADER ----
-    let role = overview.role_name.as_deref().unwrap_or("unknown-role");
-
-    let header_chunks = Layout::default()
+    let top = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(70), // left
-            Constraint::Percentage(30), // right
-        ])
-        .split(chunks[0]);
+        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
+        .split(layout[0]);
 
-    // LEFT: identity + context
-    let header_text = format!(
-        "Account {}\nRegion {}   Role {}",
-        overview.account_id, overview.region, role
+    let profile_text = format!(
+        "Account {}\nIdentity: {} ({})\nScope: {}  |  Enabled regions: {} + global",
+        overview.account_id,
+        overview.identity_kind,
+        overview.identity_name,
+        app.current_region_label(),
+        app.regions.len()
     );
 
-    let header_left = Paragraph::new(header_text)
-        .style(Style::default().fg(app.theme.text))
-        .block(
-            Block::default()
-                .title("Seamless Glance")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
+    let compute_total = overview.ec2_running
+        + overview.ec2_stopped
+        + overview.lambda_functions
+        + overview.ecs_services;
+    let network_total = overview.vpc_count
+        + overview.subnet_count
+        + overview.target_groups_total as u32
+        + overview.apigw_rest_apis
+        + overview.apigw_http_apis;
+    let data_total = overview.rds_status.total as u32 + overview.secrets.total as u32;
+    let ops_total = overview.sqs_queues + overview.alarms.total_alarms as u32;
 
-    frame.render_widget(header_left, header_chunks[0]);
+    let rollup_text = format!(
+        "Compute: {} tracked resources  |  Data: {}\n\
+         Network: {} tracked resources  |  Messaging + Ops: {}\n\
+         This screen is a neutral inventory snapshot. Use Findings for prioritized issues.",
+        compute_total, data_total, network_total, ops_total
+    );
 
-    // RIGHT: cost (right-aligned)
-    let cost_text = format!("${:.2}", overview.month_to_date_cost);
+    render_panel(frame, top[0], app, "AWS Profile", &profile_text);
+    render_panel(frame, top[1], app, "Inventory Snapshot", &rollup_text);
 
-    let header_right = Paragraph::new(cost_text)
-        .alignment(ratatui::layout::Alignment::Right)
-        .style(Style::default().fg(app.theme.accent))
-        .block(
-            Block::default()
-                .title("MTD Cost")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
-
-    frame.render_widget(header_right, header_chunks[1]);
-
-    let rds_line = match &overview.rds_status {
-        ServiceStatus::Ok => format!("RDS: {} instances", overview.rds_instances),
-        ServiceStatus::AccessDenied => "RDS: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "RDS: ⚠️ Unavailable".into(),
-    };
-
-    let elb_line = match &overview.elb_status {
-        ServiceStatus::Ok => format!("Load Balancers: {}", overview.load_balancers),
-        ServiceStatus::AccessDenied => "Load Balancers: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "Load Balancers: ⚠️ Unavailable".into(),
-    };
-
-    let lambda_line = match &overview.lambda_status {
-        ServiceStatus::Ok => format!("Lambda: {} functions", overview.lambda_functions),
-        ServiceStatus::AccessDenied => "Lambda: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "Lambda: ⚠️ Unavailable".into(),
-    };
-
-    let apigw_line = match &overview.apigw_status {
-        ServiceStatus::Ok => format!(
-            "API Gateway: {} REST / {} HTTP",
-            overview.apigw_rest_apis, overview.apigw_http_apis
+    let rows = vec![
+        inventory_row(
+            "CloudWatch",
+            format!("{} alarms", overview.alarms.total_alarms),
+            format!("{} in ALARM", overview.alarms.alarms_in_alarm),
+            access_label(&overview.alarms.status),
         ),
-        ServiceStatus::AccessDenied => "API Gateway: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "API Gateway: ⚠️ Unavailable".into(),
-    };
-
-    let sqs_line = match &overview.sqs_status {
-        ServiceStatus::Ok => format!(
-            "SQS: {} queues ({} DLQs)",
-            overview.sqs_queues, overview.sqs_dlqs
+        inventory_row(
+            "EC2",
+            format!("{} instances", overview.ec2_running + overview.ec2_stopped),
+            format!(
+                "{} running / {} stopped",
+                overview.ec2_running, overview.ec2_stopped
+            ),
+            "Accessible".into(),
         ),
-        ServiceStatus::AccessDenied => "SQS: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "SQS: ⚠️ Unavailable".into(),
-    };
-
-    let vpc_line = match &overview.vpc_status {
-        ServiceStatus::Ok => format!(
-            "VPC: {} VPCs / {} subnets",
-            overview.vpc_count, overview.subnet_count
+        inventory_row(
+            "ECS",
+            format!("{} clusters", overview.ecs_clusters),
+            format!("{} services", overview.ecs_services),
+            "Accessible".into(),
         ),
-        ServiceStatus::AccessDenied => "VPC: ⚠️ Access denied".into(),
-        ServiceStatus::Unavailable(_) => "VPC: ⚠️ Unavailable".into(),
-    };
+        inventory_row(
+            "Lambda",
+            format!("{} functions", overview.lambda_functions),
+            "Function inventory".into(),
+            access_label(&overview.lambda_status),
+        ),
+        inventory_row(
+            "API Gateway",
+            format!("{} REST APIs", overview.apigw_rest_apis),
+            format!("{} HTTP APIs", overview.apigw_http_apis),
+            access_label(&overview.apigw_status),
+        ),
+        inventory_row(
+            "SQS",
+            format!("{} queues", overview.sqs_queues),
+            format!("{} queues with DLQs", overview.sqs_dlqs),
+            access_label(&overview.sqs_status),
+        ),
+        inventory_row(
+            "VPC",
+            format!("{} VPCs", overview.vpc_count),
+            format!("{} subnets", overview.subnet_count),
+            access_label(&overview.vpc_status),
+        ),
+        inventory_row(
+            "Target Groups",
+            format!("{} groups", overview.target_groups_total),
+            format!("{} unhealthy tracked", overview.target_groups_unhealthy),
+            "Accessible".into(),
+        ),
+        inventory_row(
+            "Secrets",
+            format!("{} secrets", overview.secrets.total),
+            format!(
+                "{} with rotation disabled",
+                overview.secrets.rotation_disabled
+            ),
+            access_label(&overview.secrets.status),
+        ),
+        inventory_row(
+            "RDS",
+            format!("{} instances", overview.rds_status.total),
+            format!("{} available", overview.rds_status.available),
+            access_label(&overview.rds_status.status),
+        ),
+    ];
 
-    // ---- STATS ----
-    let stats = Paragraph::new(format!(
-        "{}\n\
-         EC2: {} running / {} stopped\n\
-         ECS: {} clusters / {} services\n\
-         {}\n\
-         {}\n\
-         {}\n\
-         {}\n\
-         {}",
-        vpc_line,
-        overview.ec2_running,
-        overview.ec2_stopped,
-        overview.ecs_clusters,
-        overview.ecs_services,
-        lambda_line,
-        apigw_line,
-        sqs_line,
-        rds_line,
-        elb_line
-    ))
-    .style(Style::default().fg(app.theme.text))
+    let visible_height = layout[1].height.saturating_sub(3) as usize;
+    let max_scroll = rows.len().saturating_sub(visible_height);
+    app.scroll_offset = app.scroll_offset.min(max_scroll as u16);
+    let visible_rows = rows
+        .into_iter()
+        .skip(app.scroll_offset as usize)
+        .take(visible_height)
+        .collect::<Vec<_>>();
+
+    let table = Table::new(
+        visible_rows,
+        [
+            Constraint::Length(16),
+            Constraint::Length(22),
+            Constraint::Percentage(50),
+            Constraint::Length(14),
+        ],
+    )
+    .header(
+        Row::new(["SERVICE", "INVENTORY", "DETAIL", "ACCESS"]).style(
+            Style::default()
+                .fg(app.theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+    )
     .block(
         Block::default()
-            .title("Key Stats")
+            .title("Service Inventory")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.accent)),
+            .border_style(Style::default().fg(app.theme.primary)),
     );
 
-    frame.render_widget(stats, chunks[1]);
+    frame.render_widget(table, layout[1]);
+}
+
+fn render_panel(frame: &mut Frame, area: Rect, app: &App, title: &str, text: &str) {
+    let panel = Paragraph::new(text)
+        .style(Style::default().fg(app.theme.text))
+        .wrap(Wrap { trim: true })
+        .block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.theme.primary)),
+        );
+
+    frame.render_widget(panel, area);
+}
+
+fn inventory_row(service: &str, inventory: String, detail: String, access: String) -> Row<'static> {
+    Row::new(vec![
+        Cell::from(service.to_string()),
+        Cell::from(inventory),
+        Cell::from(detail),
+        Cell::from(access),
+    ])
+}
+
+fn access_label(status: &ServiceStatus) -> String {
+    match status {
+        ServiceStatus::Ok => "Accessible".into(),
+        ServiceStatus::AccessDenied => "Access denied".into(),
+        ServiceStatus::Unavailable(_) => "Unavailable".into(),
+    }
 }
