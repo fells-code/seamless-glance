@@ -66,15 +66,6 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         "Regional"
     };
 
-    let account_label = match &app.license {
-        Some(license) if license.is_paid() => "Pro Account".to_string(),
-        Some(license) => license
-            .trial_days_remaining()
-            .map(|d| format!("Free Trial · {} days left", d))
-            .unwrap_or_else(|| "Free Trial".to_string()),
-        None => "Free Trial".to_string(),
-    };
-
     let account = app
         .account_overview
         .as_ref()
@@ -115,7 +106,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .style(Style::default().fg(app.theme.text))
         .block(
             Block::default()
-                .title(format!("Seamless Glance v{} · {}", VERSION, account_label))
+                .title(format!("Seamless Glance v{}", VERSION))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.theme.primary)),
         );

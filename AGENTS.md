@@ -53,7 +53,6 @@ Near-term product direction:
 
 Today the app provides:
 
-- startup license enforcement with trial support
 - a triage-oriented Findings view
 - AWS account overview data
 - cost overview data with cache-backed loading
@@ -70,7 +69,7 @@ Current gap to keep in mind:
 2. Do not overwrite or revert unrelated user changes.
 3. Prefer small, targeted edits that match the existing architecture.
 4. Preserve the terminal-first operator experience. New features should feel fast, keyboard-driven, and concise.
-5. Treat correctness in AWS account context, region handling, and license behavior as high-sensitivity areas.
+5. Treat correctness in AWS account context and region handling as high-sensitivity areas.
 6. Bias toward operator actionability over raw exhaust. The best screen is the one that helps someone decide what to do next.
 7. Prefer findings, pivots, and prioritization over adding another passive inventory table.
 
@@ -88,14 +87,13 @@ If none of these files changed, explicitly confirm the change truly had no docum
 
 ## Architecture Map
 
-- `src/main.rs`: CLI flags, license gate, terminal lifecycle, and key event loop
+- `src/main.rs`: CLI flags, terminal lifecycle, and key event loop
 - `src/app/mod.rs`: central app state and orchestration
 - `src/aws/`: AWS SDK clients and service-specific fetch logic
 - `src/models/`: UI-facing resource and summary models
 - `src/ui/`: ratatui views, overlays, footer/header, and presentation helpers
 - `src/resources/`: cross-cutting helpers such as multi-region aggregation and SSH context creation
 - `src/cache/`: local cache support
-- `src/license/`: license loading, trial generation, signature verification, and status reporting
 
 ## Change Workflow
 
@@ -200,7 +198,6 @@ If the change affects navigation, also decide explicitly:
 
 - Global aggregation is currently only implemented for selected services, not every view.
 - Cost data is cached separately from the main refresh loop.
-- License validation happens before entering the TUI.
 - The working tree may be dirty; assume other work can be in flight.
 - AWS profile support exists in config shape but is not fully wired into runtime behavior.
 - Several current resource actions are better described as prototypes than finished operator pivots.
