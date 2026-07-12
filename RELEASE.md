@@ -76,7 +76,6 @@ What the helper does:
 - updates:
   - `../seamless-glance-distro/install.sh`
   - `../homebrew-seamless/Formula/seamless-glance.rb`
-  - `../seamless-glance-website/public/install.sh`
 
 What it intentionally does **not** do:
 
@@ -102,7 +101,6 @@ Review the source repo and support repo diffs, then commit them manually in the 
 git status --short
 git -C ../seamless-glance-distro status --short
 git -C ../homebrew-seamless status --short
-git -C ../seamless-glance-website status --short
 ```
 
 ---
@@ -145,7 +143,7 @@ Do not overwrite existing assets.
 
 ### 6. Verify Installation (Required)
 
-Before announcing the release, verify **both install paths**:
+Before announcing the release, verify the install path:
 
 #### Homebrew
 
@@ -155,14 +153,7 @@ brew upgrade seamless-glance
 seamless-glance --version
 ```
 
-#### Curl Install
-
-```bash
-curl -fsSL https://seamlessglance.com/install.sh | bash
-seamless-glance --version
-```
-
-Both must report the **new version**.
+This must report the **new version**.
 
 ---
 

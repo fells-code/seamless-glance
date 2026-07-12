@@ -49,7 +49,6 @@ OPTIONS:
 
 INSTALL:
   brew install fells-code/seamless/seamless-glance
-  curl -fsSL https://seamlessglance.com/install.sh | bash
 
 LICENSE:
   Place your license at:

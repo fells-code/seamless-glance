@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DISTRO_REPO_PATH="$ROOT_DIR/../seamless-glance-distro"
 HOMEBREW_REPO_PATH="$ROOT_DIR/../homebrew-seamless"
-WEBSITE_REPO_PATH="$ROOT_DIR/../seamless-glance-website"
 RELEASE_REPO="fells-code/seamless-glance-distro"
 
 ALLOW_DIRTY=0
@@ -12,7 +11,6 @@ DRY_RUN=0
 SKIP_BUILD=0
 SKIP_DISTRO_INSTALL=0
 SKIP_HOMEBREW=0
-SKIP_WEBSITE=0
 
 usage() {
   cat <<'EOF'
@@ -27,10 +25,8 @@ Options:
   --skip-build              Reuse existing dist artifacts instead of rebuilding
   --skip-distro-install     Do not update seamless-glance-distro/install.sh
   --skip-homebrew           Do not update the Homebrew formula
-  --skip-website            Do not update seamless-glance-website/public/install.sh
   --distro-repo-path PATH   Override local seamless-glance-distro checkout path
   --homebrew-repo-path PATH Override local homebrew-seamless checkout path
-  --website-repo-path PATH  Override local seamless-glance-website checkout path
   --release-repo REPO       Override GitHub release repo slug used in URLs
   --help                    Show this help text
 EOF
@@ -53,19 +49,12 @@ while [[ $# -gt 0 ]]; do
     --skip-homebrew)
       SKIP_HOMEBREW=1
       ;;
-    --skip-website)
-      SKIP_WEBSITE=1
-      ;;
     --distro-repo-path)
       DISTRO_REPO_PATH="$2"
       shift
       ;;
     --homebrew-repo-path)
       HOMEBREW_REPO_PATH="$2"
-      shift
-      ;;
-    --website-repo-path)
-      WEBSITE_REPO_PATH="$2"
       shift
       ;;
     --release-repo)
@@ -237,11 +226,6 @@ if [[ "$SKIP_HOMEBREW" -eq 0 ]]; then
   require_clean_repo "$HOMEBREW_REPO_PATH" "Homebrew repo"
 fi
 
-if [[ "$SKIP_WEBSITE" -eq 0 ]]; then
-  require_dir "$WEBSITE_REPO_PATH" "website repo"
-  require_clean_repo "$WEBSITE_REPO_PATH" "Website repo"
-fi
-
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   echo "Building release artifacts for version $VERSION..."
   run make -C "$ROOT_DIR" release-local
@@ -279,10 +263,6 @@ if [[ "$SKIP_HOMEBREW" -eq 0 ]]; then
   update_homebrew_formula
 fi
 
-if [[ "$SKIP_WEBSITE" -eq 0 ]]; then
-  update_install_script "$WEBSITE_REPO_PATH/public/install.sh"
-fi
-
 echo
 echo "Release helper complete for version $VERSION"
 echo
@@ -299,7 +279,4 @@ if [[ "$SKIP_DISTRO_INSTALL" -eq 0 ]]; then
 fi
 if [[ "$SKIP_HOMEBREW" -eq 0 ]]; then
   echo "  $HOMEBREW_REPO_PATH/Formula/seamless-glance.rb"
-fi
-if [[ "$SKIP_WEBSITE" -eq 0 ]]; then
-  echo "  $WEBSITE_REPO_PATH/public/install.sh"
 fi
