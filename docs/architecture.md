@@ -5,12 +5,11 @@
 Seamless Glance is a single-binary Rust TUI application. Its control flow is straightforward:
 
 1. parse CLI flags
-2. ensure a license exists and validate it
-3. initialize terminal state and AWS clients
-4. load cached cost data
-5. enter the event loop
-6. refresh overview and active-view data on demand
-7. render the current screen with ratatui
+2. initialize terminal state and AWS clients
+3. load cached cost data
+4. enter the event loop
+5. refresh overview and active-view data on demand
+6. render the current screen with ratatui
 
 The codebase is intentionally organized around one central `App` state object and a set of service-specific fetch modules.
 
@@ -26,7 +25,6 @@ Owns:
 
 - CLI entrypoint
 - help and version output
-- license gating before TUI startup
 - crossterm alternate-screen lifecycle
 - keyboard event handling
 
@@ -97,26 +95,13 @@ This area is a good home for future shared action helpers such as CLI command ge
 
 Currently used for cost caching. The cache now stores budget, forecast, trailing spend, and usage-aware service cost insight so cost-oriented views can open quickly without re-querying Cost Explorer every time.
 
-### `src/license/`
-
-Owns:
-
-- license path resolution
-- trial license creation
-- paid license verification
-- status output
-
-License validation happens before the TUI is allowed to start.
-
 ## Runtime Data Flow
 
 ### Startup
 
 At startup, `main`:
 
-- handles `--help`, `--version`, and `--license-status`
-- ensures a license file exists
-- validates the license
+- handles `--help` and `--version`
 - loads config from `~/.seamless-glance/config.json`
 - loads persisted theme preference from `~/.seamless-glance/config.json`
 - fetches enabled AWS regions
