@@ -43,9 +43,8 @@ The app relies on:
 - AWS credentials resolved by the AWS Rust SDK
 - `~/.seamless-glance/config.json` for persisted region selection
 - `~/.seamless-glance/config.json` for persisted theme selection
-- `~/.seamless-glance/license.json` for trial or paid license state
 
-Be careful when changing startup behavior because licensing, config, and AWS region selection all happen very early in process startup.
+Be careful when changing startup behavior because config and AWS region selection all happen very early in process startup.
 
 ## Coding Patterns
 
@@ -115,7 +114,6 @@ This rule is especially important for:
 - adding or reprioritizing findings
 - changing keyboard shortcuts
 - changing region or global aggregation behavior
-- changing license handling
 - changing release packaging
 
 Recommended roadmap docs for product planning:

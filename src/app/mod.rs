@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use crate::aws::clients::AwsClients;
 use crate::cache::cost::{load_if_fresh, save, CostCache};
-use crate::license::License;
 use crate::models::apigatway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::describable::DescribableResource;
@@ -60,7 +59,6 @@ pub enum ActiveView {
 }
 pub struct App {
     pub aws: AwsClients,
-    pub license: Option<License>,
     pub overlay: Option<OverlayState>,
 
     // Global App properties
@@ -137,7 +135,6 @@ impl App {
     pub fn new(aws: AwsClients) -> Self {
         Self {
             aws,
-            license: None,
             overlay: None,
             scroll_offset: 0,
             selected_row: 0,

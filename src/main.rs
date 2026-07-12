@@ -2,7 +2,6 @@ mod app;
 mod aws;
 mod cache;
 mod config;
-mod license;
 mod models;
 mod resources;
 mod ui;
@@ -23,10 +22,6 @@ use crate::{
     app::ActiveView,
     aws::clients::AwsClients,
     config::VERSION,
-    license::{
-        ensure_license::ensure_license_present, status::print_license_status,
-        verify::validate_license,
-    },
     ui::{
         footer::FooterMode,
         overlay::overlays::{ConfirmCommandState, OverlayState},
@@ -49,10 +44,6 @@ OPTIONS:
 
 INSTALL:
   brew install fells-code/seamless/seamless-glance
-
-LICENSE:
-  Place your license at:
-    ~/.seamless-glance/license.json
 "
     );
 }
@@ -118,10 +109,6 @@ async fn main() -> anyhow::Result<()> {
                 println!("Seamless Glance v{}", VERSION);
                 return Ok(());
             }
-            "--license-status" => {
-                print_license_status();
-                return Ok(());
-            }
             _ => {
                 eprintln!("Unknown option: {}", args[1]);
                 eprintln!("Run `seamless-glance --help` for usage.");
@@ -130,22 +117,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let license = ensure_license_present().map_err(anyhow::Error::msg)?;
-
-    if let Err(e) = validate_license(&license) {
-        eprintln!();
-        eprintln!("Seamless Glance — License");
-        eprintln!("-------------------------");
-        eprintln!("{}", e);
-        eprintln!();
-        eprintln!("To continue, purchase a license at:");
-        eprintln!("  https://seamlessglance.com");
-        eprintln!();
-        eprintln!("Then place the license file at:");
-        eprintln!("  ~/.seamless-glance/license.json");
-        eprintln!();
-        std::process::exit(1);
-    }
     enable_raw_mode()?;
     let mut stdout = stdout();
 
@@ -180,7 +151,6 @@ async fn main() -> anyhow::Result<()> {
 
     let aws = AwsClients::new(&sdk_config);
     let mut app = App::new(aws);
-    app.license = Some(license);
     app.regions = regions;
     app.current_region_index = current_region_index;
     if let Some(theme_name) = cfg.theme.as_deref().and_then(ThemeName::from_str) {

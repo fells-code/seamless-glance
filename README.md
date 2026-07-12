@@ -49,9 +49,6 @@ Current first-class views:
 
 - Rust toolchain for local development
 - valid AWS credentials available to the AWS SDK
-- a Seamless Glance license file at `~/.seamless-glance/license.json`, or a first run that can create a trial license there
-
-On first run, the app can create a local trial license automatically. Paid licenses are validated at startup.
 
 ## Run Locally
 
@@ -64,7 +61,6 @@ Useful CLI options:
 ```bash
 cargo run -- --help
 cargo run -- --version
-cargo run -- --license-status
 ```
 
 ## Controls
@@ -159,12 +155,11 @@ Other views remain region-scoped today.
 
 ## Project Structure
 
-- [`src/main.rs`](/Users/brandoncorbett/git/seamless-glance/src/main.rs) owns process startup, license gating, terminal setup, and key handling.
+- [`src/main.rs`](/Users/brandoncorbett/git/seamless-glance/src/main.rs) owns process startup, terminal setup, and key handling.
 - [`src/app/mod.rs`](/Users/brandoncorbett/git/seamless-glance/src/app/mod.rs) owns application state, refresh orchestration, view transitions, overlays, and resource actions.
 - [`src/aws/`](/Users/brandoncorbett/git/seamless-glance/src/aws) contains AWS service fetchers and SDK client wiring.
 - [`src/models/`](/Users/brandoncorbett/git/seamless-glance/src/models) defines data models rendered by the UI.
 - [`src/ui/`](/Users/brandoncorbett/git/seamless-glance/src/ui) contains rendering, overlays, command palette, and terminal helpers.
-- [`src/license/`](/Users/brandoncorbett/git/seamless-glance/src/license) handles trial creation, paid license loading, and signature validation.
 - [`src/cache/`](/Users/brandoncorbett/git/seamless-glance/src/cache) currently caches cost data.
 
 Longer-form references:
@@ -199,3 +194,11 @@ This repository treats documentation as part of the product:
 - update `AGENTS.md` whenever feature scope, team goals, or maintenance rules change
 
 If a feature ships without its docs, the change is incomplete.
+
+## License
+
+Seamless Glance is free and open-source software, licensed under the
+[GNU General Public License v3.0](LICENSE). You are free to use, study, share,
+and modify it under the terms of that license.
+
+Copyright (C) 2026 Fells Code, LLC.
