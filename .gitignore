@@ -14,5 +14,8 @@ dist
 # Contains mutation testing data
 **/mutants.out*/
 
+# Node tooling (Changesets release automation only)
+node_modules
+
 .vscode
 .DS_Store

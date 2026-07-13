@@ -26,15 +26,21 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all
 ```
 
-Packaging and release-oriented commands:
+Release and packaging commands:
 
 ```bash
-make build
+npm run changeset      # record a version bump for user-facing changes
+make build             # local cross-build (macOS + Linux x86_64)
 make dist
 make checksums
 make release-local
 make release-helper
 ```
+
+Releases are automated: a changeset drives the version bump, and merging the
+generated version PR builds binaries, publishes the GitHub Release, updates the
+Homebrew tap, and publishes to crates.io. The `make` targets are the local
+fallback. See `RELEASE.md`.
 
 ## Credentials And Local State
 
@@ -93,7 +99,7 @@ Run the strongest checks that fit the change. Minimum expectations:
 - docs-only changes: read for consistency and accuracy
 - Rust changes: `cargo fmt`, `cargo clippy`, and `cargo test` when feasible
 - packaging changes: relevant `make` targets
-- multi-repo release sync changes: `./scripts/release-helper.sh --dry-run` plus a careful diff review
+- release automation changes: `actionlint` on the workflows, plus `./scripts/release-helper.sh --skip-build --dry-run` and a careful diff review of the generated formula
 
 If you skip a validation step, note why.
 

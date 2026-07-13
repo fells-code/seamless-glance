@@ -101,8 +101,9 @@ If none of these files changed, explicitly confirm the change truly had no docum
 2. Check `git status --short` and avoid trampling in-progress local work.
 3. Make the smallest reasonable change that fits the current design.
 4. Update docs alongside code when behavior or goals change.
-5. Run the strongest relevant validation available.
-6. Summarize any residual risk, especially around AWS permissions, global region handling, and UI state transitions.
+5. Add a changeset (`npm run changeset`) for any user-facing change; the release is driven from it (see `RELEASE.md`).
+6. Run the strongest relevant validation available.
+7. Summarize any residual risk, especially around AWS permissions, global region handling, and UI state transitions.
 
 ## Validation Expectations
 

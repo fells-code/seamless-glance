@@ -2,6 +2,20 @@
 name = "seamless-glance"
 version = "1.0.0"
 edition = "2021"
+description = "Fast, read-only AWS TUI for cloud infrastructure visibility and triage"
+license = "GPL-3.0-only"
+repository = "https://github.com/fells-code/seamless-glance"
+homepage = "https://github.com/fells-code/seamless-glance"
+readme = "README.md"
+keywords = ["aws", "tui", "devops", "cloud", "sre"]
+categories = ["command-line-utilities"]
+
+# Lets `cargo binstall seamless-glance` fetch the prebuilt release binary
+# instead of compiling from source. Binaries are published as raw files named
+# seamless-glance-<version>-<target>(.exe) on the GitHub Release.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }{ binary-ext }"
+pkg-fmt = "bin"
 
 [profile.release]
 opt-level = "z"

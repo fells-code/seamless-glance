@@ -1,0 +1,167 @@
+name: Release
+
+# Builds cross-platform binaries for a tagged version, publishes them to this
+# repo's GitHub Release, updates the Homebrew tap, and publishes to crates.io.
+#
+# Triggered by scripts/tag-release.sh (workflow_dispatch) at the end of the
+# Changesets flow, or by manually pushing a v* tag.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to build, e.g. v1.2.3"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          TAG="${{ github.event.inputs.version || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin,       os: macos-14,        profile: release }
+          - { target: x86_64-apple-darwin,        os: macos-13,        profile: release }
+          - { target: x86_64-unknown-linux-gnu,   os: ubuntu-latest,   profile: release-linux }
+          - { target: aarch64-unknown-linux-gnu,  os: ubuntu-24.04-arm, profile: release-linux }
+          - { target: x86_64-unknown-linux-musl,  os: ubuntu-latest,   profile: release-linux, musl: true }
+          - { target: x86_64-pc-windows-msvc,     os: windows-latest,  profile: release, ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.musl == true
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --locked --profile ${{ matrix.profile }} --target ${{ matrix.target }}
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          SRC="target/${{ matrix.target }}/${{ matrix.profile }}/seamless-glance${{ matrix.ext }}"
+          OUT="seamless-glance-${VERSION}-${{ matrix.target }}${{ matrix.ext }}"
+          mkdir -p dist
+          cp "$SRC" "dist/$OUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  release:
+    name: Publish GitHub Release + Homebrew
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.tag }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect binaries + checksums
+        run: |
+          mkdir -p dist
+          find artifacts -type f -exec cp {} dist/ \;
+          (cd dist && sha256sum seamless-glance-* > SHA256SUMS.txt)
+          ls -l dist
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.setup.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "Seamless Glance $TAG" --generate-notes
+          fi
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: fells-code/homebrew-seamless
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-seamless
+
+      - name: Update Homebrew formula
+        run: |
+          bash scripts/release-helper.sh \
+            --skip-build \
+            --homebrew-repo-path "$GITHUB_WORKSPACE/homebrew-seamless" \
+            --allow-dirty
+
+      - name: Commit & push formula
+        run: |
+          cd homebrew-seamless
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "seamless-glance ${{ needs.setup.outputs.version }}"
+            git push
+          else
+            echo "Formula already up to date."
+          fi
+
+  crates:
+    name: Publish to crates.io
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    # A missing token, taken crate name, or already-published version should not
+    # fail the binary release.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked
