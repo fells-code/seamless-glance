@@ -1,0 +1,27 @@
+{
+  "name": "seamless-glance",
+  "version": "1.0.0",
+  "description": "Release tooling (Changesets) for Seamless Glance, a terminal-native AWS visibility TUI. The application itself is written in Rust; this package only drives versioning and changelog generation.",
+  "private": true,
+  "homepage": "https://github.com/fells-code/seamless-glance#readme",
+  "bugs": {
+    "url": "https://github.com/fells-code/seamless-glance/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fells-code/seamless-glance.git"
+  },
+  "license": "GPL-3.0-only",
+  "author": "Fells Code, LLC",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "changeset": "changeset",
+    "version-packages": "changeset version && bash scripts/sync-cargo-version.sh",
+    "release": "bash scripts/tag-release.sh"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
+  }
+}

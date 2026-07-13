@@ -1,0 +1,57 @@
+name: Version
+
+# Changesets flow, mirroring the other seamless repos but adapted for a Rust
+# binary. On every push to main:
+#   - if there are pending changesets, open/update the "Version packages" PR
+#     (bumps package.json + Cargo.toml + CHANGELOG.md, consumes changesets);
+#   - once that PR is merged (no changesets remain), the `publish` command runs
+#     scripts/tag-release.sh, which tags the release and dispatches release.yml.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: version-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.repository == 'fells-code/seamless-glance'
+    name: Version or tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Version or tag
+        uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          publish: npm run release
+          title: "chore: version packages"
+          commit: "chore: version packages"
+          createGithubReleases: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -45,6 +45,41 @@ Current first-class views:
 - Target Groups
 - Security Groups
 
+## Installation
+
+### Homebrew (macOS, Linux)
+
+```bash
+brew install fells-code/seamless/seamless-glance
+```
+
+### curl (macOS, Linux)
+
+Auto-detects your platform (Intel/ARM, glibc/musl) and installs the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fells-code/seamless-glance/main/install.sh | bash
+```
+
+Pin a version with `SEAMLESS_GLANCE_VERSION=1.2.3`.
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/fells-code/seamless-glance/main/install.ps1 | iex
+```
+
+### Cargo
+
+```bash
+cargo install seamless-glance          # build from source
+cargo binstall seamless-glance         # fetch the prebuilt release binary
+```
+
+Prebuilt binaries are published for macOS (arm64/x86_64), Linux
+(x86_64/aarch64, glibc + static musl), and Windows (x86_64). Both
+`seamless-glance` and the `glance` alias are installed.
+
 ## Requirements
 
 - Rust toolchain for local development
@@ -183,6 +218,20 @@ make release-local
 ```
 
 There is currently no meaningful committed test suite under `tests/`, so `cargo test` is mostly a safety net for future additions.
+
+## Contributing And Releases
+
+User-facing changes should ship with a **changeset**:
+
+```bash
+npm install          # one-time, installs @changesets/cli
+npm run changeset    # pick patch/minor/major and describe the change
+```
+
+Commit the generated `.changeset/*.md` file with your PR. On merge to `main`, a
+"version packages" PR is opened automatically; merging that PR builds binaries
+for every platform, publishes the GitHub Release, updates the Homebrew tap, and
+publishes to crates.io. See [Release Process](RELEASE.md) for the full flow.
 
 ## Documentation Policy
 
