@@ -48,6 +48,7 @@ fn build_help_text() -> String {
         "  /                    Open command palette".into(),
         "  Tab / Shift+Tab      Cycle through major views".into(),
         "  t                    Cycle through Seamless themes".into(),
+        "  p                    Switch AWS profile".into(),
         "  w                    Toggle wrapped detail mode on supported views".into(),
         "  ?                    Open help".into(),
         "  r                    Refresh active view".into(),
@@ -75,6 +76,8 @@ fn build_help_text() -> String {
         "  region <name>        Jump to a specific AWS region".into(),
         "  region global        Jump to the synthetic global slot".into(),
         "  rg <name>            Short alias for region".into(),
+        "  profile <name>       Switch to a named AWS profile".into(),
+        "  profile              Open the AWS profile picker".into(),
         "  themes               autumn, winter, summer, spring, developer".into(),
     ];
 

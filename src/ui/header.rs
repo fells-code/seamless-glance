@@ -65,6 +65,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         "Regional"
     };
+    let profile_label = app.current_profile.as_deref().unwrap_or("default");
 
     let account = app
         .account_overview
@@ -85,7 +86,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let header_text = format!(
-        "View: {}  |  Region: {} ({})\n\
+        "View: {}  |  Region: {} ({})  |  Profile: {}\n\
         Theme: {}  |  {}\n\
         Account: {}\n\
         {}\n\
@@ -94,6 +95,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         view_name,
         region_label,
         region_mode,
+        profile_label,
         app.theme_name.label(),
         app.theme_name.description(),
         account,

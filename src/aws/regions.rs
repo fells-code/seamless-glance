@@ -1,8 +1,9 @@
-use aws_config::BehaviorVersion;
 use aws_sdk_ec2::Client;
 
-pub async fn fetch_enabled_regions() -> Vec<String> {
-    let config = aws_config::load_defaults(BehaviorVersion::v2026_01_12()).await;
+use crate::aws::clients::build_sdk_config;
+
+pub async fn fetch_enabled_regions(profile: Option<&str>) -> Vec<String> {
+    let config = build_sdk_config(aws_config::Region::new("us-east-1"), profile).await;
     let ec2 = Client::new(&config);
 
     match ec2.describe_regions().send().await {

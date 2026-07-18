@@ -35,10 +35,15 @@ Owns:
 - `App` state
 - active view selection
 - region selection and persistence
+- profile selection and persistence
 - refresh orchestration
 - cached cost loading
 - resource describe/open/SSH actions
 - overlay state
+
+Region and profile switching share one path: `rebuild_aws_clients` rebuilds the
+SDK client bundle for the current region and current profile, so a selected
+profile is preserved across region changes.
 
 This is the highest-leverage file in the app. Many user-visible workflows converge here.
 
@@ -56,7 +61,8 @@ This layer should remain primarily factual. As the product shifts toward triage,
 Representative files:
 
 - [`src/aws/account.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/account.rs): account overview fan-out
-- [`src/aws/clients.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/clients.rs): shared SDK client bundle
+- [`src/aws/clients.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/clients.rs): shared SDK client bundle and `build_sdk_config`, the single region/profile-aware config builder
+- [`src/aws/profiles.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
 - [`src/aws/cost.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
 - [`src/aws/ec2.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/ec2.rs): EC2 inventory and global aggregation
 
@@ -101,11 +107,13 @@ Currently used for cost caching. The cache now stores budget, forecast, trailing
 
 At startup, `main`:
 
-- handles `--help` and `--version`
+- handles `--help`, `--version`, and `--profile <name>`
 - loads config from `~/.seamless-glance/config.json`
 - loads persisted theme preference from `~/.seamless-glance/config.json`
-- fetches enabled AWS regions
-- creates `AwsClients` for the selected region
+- resolves the AWS profile from `--profile` or the persisted config value
+- discovers available AWS profiles for the in-app picker
+- fetches enabled AWS regions using the resolved profile
+- creates `AwsClients` for the selected region and profile
 - constructs `App`
 - preloads cost data and usage-aware service cost insight
 - triggers the first refresh

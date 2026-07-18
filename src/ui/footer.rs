@@ -50,6 +50,9 @@ pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
                 "Esc Close   Enter Run   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()
             }
             OverlayState::SelectSshKey(_) => "Esc Close   [1] Agent   [2] Private key path".to_string(),
+            OverlayState::SelectProfile(_) => {
+                "Esc Cancel   Enter Switch profile   ↑ / ↓ Move".to_string()
+            }
         }
     } else if app.show_help {
         "Help — Esc Close   ↑ / ↓ Scroll   PgUp / PgDn Jump   Home / End Top-Bottom".to_string()

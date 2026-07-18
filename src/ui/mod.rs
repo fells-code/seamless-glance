@@ -14,6 +14,7 @@ use crate::ui::overlay::confirm::render_confirm_command_overlay;
 use crate::ui::overlay::help;
 use crate::ui::overlay::overlays::OverlayState;
 use crate::ui::overlay::render::render_describe_overlay;
+use crate::ui::overlay::select_profile::render_select_profile_overlay;
 use crate::ui::overlay::select_ssh_key::render_select_ssh_key_overlay;
 use crate::ui::views::account_overview;
 use crate::ui::views::apigateway::render_apigatway;
@@ -144,6 +145,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             }
             OverlayState::SelectSshKey(state) => {
                 render_select_ssh_key_overlay(frame, frame.size(), state, &app.theme)
+            }
+            OverlayState::SelectProfile(state) => {
+                render_select_profile_overlay(frame, frame.size(), state, &app.theme)
             }
         }
     }

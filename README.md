@@ -131,8 +131,22 @@ General controls:
 - `c` show the AWS CLI command for the selected resource
 - `o` open selected resource in the AWS console
 - `g` jump to the global region slot
+- `p` switch AWS profile
 - `s` prepare an SSH command for the selected EC2 instance
 - `q` quit
+
+### Switching AWS Profiles
+
+Press `p` (or run `profile` in the command palette) to open a picker listing the
+profiles found in `~/.aws/config` and `~/.aws/credentials`. Selecting one rebuilds
+the AWS clients for that profile, keeps the current region, refreshes the active
+view, and persists the choice for the next launch. You can also start on a profile
+directly with `seamless-glance --profile <name>`, or jump straight to one with
+`profile <name>` in the command palette.
+
+The profile you select determines which credentials and identity the app uses.
+How much a profile can see is governed entirely by that profile's IAM permissions
+and account, not by the app.
 
 View transitions now show a loading overlay while the next screen refreshes, instead of blocking silently during fetches.
 The app now opens on Findings by default so triage is the first thing you see.
@@ -177,6 +191,8 @@ Command palette shortcuts currently include:
 - `theme <name>` with `autumn`, `winter`, `summer`, `spring`, or `developer`
 - `region <name>`
 - `rg <name>`
+- `profile <name>` to switch profiles, or `profile` to open the picker
+- `pf <name>` short alias for profile
 
 ## Global View Notes
 
