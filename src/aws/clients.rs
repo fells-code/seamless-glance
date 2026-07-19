@@ -25,6 +25,7 @@ pub async fn build_sdk_config(region: Region, profile: Option<&str>) -> SdkConfi
     loader.load().await
 }
 
+#[derive(Clone)]
 pub struct AwsClients {
     pub ec2: Ec2Client,
     pub rds: RdsClient,
