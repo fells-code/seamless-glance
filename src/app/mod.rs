@@ -90,6 +90,7 @@ pub struct App {
     // Account overview
     pub account_overview: Option<AccountOverview>,
     pub budget: BudgetInfo,
+    pub cost_status: ServiceStatus,
     pub monthly_costs: Vec<f64>,
     pub service_costs: Vec<(String, f64)>,
     pub service_cost_insights: Vec<ServiceCostInsight>,
@@ -168,6 +169,7 @@ impl App {
                 forecast_low: None,
                 forecast_high: None,
             },
+            cost_status: ServiceStatus::Unavailable("Not loaded".into()),
             monthly_costs: vec![0.0; 6],
             service_costs: vec![],
             service_cost_insights: vec![],
@@ -1860,6 +1862,8 @@ impl App {
                     self.monthly_costs = cache.monthly_costs;
                     self.service_costs = cache.service_costs;
                     self.service_cost_insights = cache.service_cost_insights;
+                    // Only successful fetches are cached, so a cache hit is Ok data.
+                    self.cost_status = ServiceStatus::Ok;
                     self.cost_loaded = true;
                     self.rebuild_cost_savings();
                     return;
@@ -1867,9 +1871,14 @@ impl App {
             }
         }
 
-        let budget = aws::cost::fetch_budget(self).await;
-        let monthly_costs = aws::cost::fetch_last_6_month_costs(self).await;
-        let service_cost_insights = aws::cost::fetch_service_cost_insights(self).await;
+        let (budget, budget_status) = aws::cost::fetch_budget(self).await;
+        let (monthly_costs, monthly_status) = aws::cost::fetch_last_6_month_costs(self).await;
+        let (service_cost_insights, insights_status) =
+            aws::cost::fetch_service_cost_insights(self).await;
+        let cost_status = [budget_status, monthly_status, insights_status]
+            .into_iter()
+            .find(|status| !matches!(status, ServiceStatus::Ok))
+            .unwrap_or(ServiceStatus::Ok);
         let service_costs = service_cost_insights
             .iter()
             .map(|insight| (insight.service.clone(), insight.monthly_cost))
@@ -1879,16 +1888,22 @@ impl App {
         self.monthly_costs = monthly_costs.clone();
         self.service_costs = service_costs.clone();
         self.service_cost_insights = service_cost_insights.clone();
+        self.cost_status = cost_status.clone();
         self.cost_loaded = true;
         self.rebuild_cost_savings();
 
-        save(&CostCache {
-            fetched_at: Utc::now(),
-            budget,
-            monthly_costs,
-            service_costs,
-            service_cost_insights,
-        });
+        // Only persist a successful fetch. Caching a denied or throttled result
+        // would reintroduce the misleading $0 overview on the next launch for the
+        // cache TTL.
+        if matches!(cost_status, ServiceStatus::Ok) {
+            save(&CostCache {
+                fetched_at: Utc::now(),
+                budget,
+                monthly_costs,
+                service_costs,
+                service_cost_insights,
+            });
+        }
     }
 
     pub fn selected_cost_savings_opportunity(&self) -> Option<&CostSavingsOpportunity> {

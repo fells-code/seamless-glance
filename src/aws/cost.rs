@@ -5,7 +5,7 @@ use chrono::{Datelike, Months, NaiveDate, Utc};
 
 use crate::{
     app::App,
-    models::{BudgetInfo, ServiceCostInsight, UsageTypeCost},
+    models::{service_status::ServiceStatus, BudgetInfo, ServiceCostInsight, UsageTypeCost},
 };
 
 fn today_exclusive() -> NaiveDate {
@@ -90,7 +90,7 @@ fn metric_unit(metric_value: Option<&aws_sdk_costexplorer::types::MetricValue>) 
         .to_string()
 }
 
-pub async fn fetch_service_cost_insights(app: &App) -> Vec<ServiceCostInsight> {
+pub async fn fetch_service_cost_insights(app: &App) -> (Vec<ServiceCostInsight>, ServiceStatus) {
     let (start, end) = current_month_dates();
     let service_group = GroupDefinition::builder()
         .key("SERVICE")
@@ -115,10 +115,7 @@ pub async fn fetch_service_cost_insights(app: &App) -> Vec<ServiceCostInsight> {
         .await
     {
         Ok(response) => response,
-        Err(err) => {
-            eprintln!("Cost Explorer service usage error: {:?}", err);
-            return vec![];
-        }
+        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
     };
 
     let mut usage_by_service = BTreeMap::<String, Vec<UsageTypeCost>>::new();
@@ -159,7 +156,7 @@ pub async fn fetch_service_cost_insights(app: &App) -> Vec<ServiceCostInsight> {
         }
     }
 
-    usage_by_service
+    let insights = usage_by_service
         .into_iter()
         .filter_map(|(service, mut usage_lines)| {
             usage_lines.sort_by(|left, right| {
@@ -180,10 +177,12 @@ pub async fn fetch_service_cost_insights(app: &App) -> Vec<ServiceCostInsight> {
                 top_usage_types: usage_lines.into_iter().take(3).collect(),
             })
         })
-        .collect()
+        .collect();
+
+    (insights, ServiceStatus::Ok)
 }
 
-pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
+pub async fn fetch_last_6_month_costs(app: &App) -> (Vec<f64>, ServiceStatus) {
     let (start, end) = trailing_six_month_dates();
 
     let response = match app
@@ -198,8 +197,10 @@ pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
     {
         Ok(response) => response,
         Err(err) => {
-            eprintln!("Cost Explorer trailing monthly cost error: {:?}", err);
-            return vec![0.0; 6];
+            return (
+                vec![0.0; 6],
+                ServiceStatus::from_error_message(err.to_string()),
+            )
         }
     };
 
@@ -220,10 +221,10 @@ pub async fn fetch_last_6_month_costs(app: &App) -> Vec<f64> {
     }
 
     values.truncate(6);
-    values
+    (values, ServiceStatus::Ok)
 }
 
-pub async fn fetch_budget(app: &App) -> BudgetInfo {
+pub async fn fetch_budget(app: &App) -> (BudgetInfo, ServiceStatus) {
     let (month_start, today) = current_month_dates();
     let (forecast_start, forecast_end) = forecast_month_dates();
 
@@ -239,8 +240,10 @@ pub async fn fetch_budget(app: &App) -> BudgetInfo {
     {
         Ok(response) => response,
         Err(err) => {
-            eprintln!("Cost Explorer month-to-date error: {:?}", err);
-            return BudgetInfo::default();
+            return (
+                BudgetInfo::default(),
+                ServiceStatus::from_error_message(err.to_string()),
+            );
         }
     };
 
@@ -282,17 +285,19 @@ pub async fn fetch_budget(app: &App) -> BudgetInfo {
 
             (month_to_date_cost + remaining, low, high)
         }
-        Err(err) => {
-            eprintln!("Cost Explorer forecast error: {:?}", err);
-            (month_to_date_cost, None, None)
-        }
+        // Forecast is non-fatal: keep the real month-to-date actuals and let the
+        // view show the range as unavailable rather than failing the whole view.
+        Err(_) => (month_to_date_cost, None, None),
     };
 
-    BudgetInfo {
-        monthly_budget: 100.0,
-        month_to_date_cost,
-        forecast,
-        forecast_low,
-        forecast_high,
-    }
+    (
+        BudgetInfo {
+            monthly_budget: 100.0,
+            month_to_date_cost,
+            forecast,
+            forecast_low,
+            forecast_high,
+        },
+        ServiceStatus::Ok,
+    )
 }

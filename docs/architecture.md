@@ -182,6 +182,7 @@ This is especially important for a triage tool because incorrect region context 
 The codebase uses a mix of strategies:
 
 - list fetchers return `(Vec<_>, ServiceStatus)`; the app stores the status in a companion `*_status` field and the view guards on it via `ui::views::status::render_unavailable` before drawing the table, so an access denial or throttle reads as such rather than as an empty list
+- cost fetchers return `(data, ServiceStatus)` too; `refresh_cost_data` composes a single `cost_status`, the cost overview and cost savings views guard on it, and only a successful fetch is written to the on-disk cost cache so a denied fetch is not persisted as a misleading $0 overview
 - account overview fans out with concurrent calls and composes summary status
 - SDK error strings are classified centrally by `ServiceStatus::from_error_message`
 
