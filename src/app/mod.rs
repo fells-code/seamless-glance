@@ -80,6 +80,10 @@ pub struct App {
     pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
     pub is_refreshing: bool,
     pub refresh_phase: RefreshPhase,
+    // (profile, region label) the currently held per-service data was fetched
+    // under. When it changes, stale data is cleared so findings are never built
+    // from a prior region or profile and mislabeled with the new one.
+    data_context: Option<(Option<String>, String)>,
 
     pub footer_mode: FooterMode,
     pub notification: Option<Notification>,
@@ -214,6 +218,7 @@ impl App {
             last_refresh: None,
             is_refreshing: false,
             refresh_phase: RefreshPhase::Idle,
+            data_context: None,
             footer_mode: FooterMode::Normal,
             notification: None,
             show_help: false,
@@ -1704,7 +1709,46 @@ impl App {
         self.security_groups_status = status;
     }
 
+    /// Drop every per-service inventory so a region or profile switch cannot
+    /// leave a prior context's resources to be rebuilt into findings and stamped
+    /// with the new region. `refresh_active` refetches the fresh data.
+    fn clear_service_data(&mut self) {
+        self.ec2_instances.clear();
+        self.lambda_functions.clear();
+        self.apigateway_apis.clear();
+        self.sqs_queues_data.clear();
+        self.vpcs.clear();
+        self.load_balancers.clear();
+        self.target_groups.clear();
+        self.security_groups.clear();
+        self.ecs_clusters.clear();
+        self.secrets.clear();
+        self.rds_instances.clear();
+        self.cloudwatch_alarms.clear();
+        self.findings.clear();
+
+        let not_loaded = ServiceStatus::Unavailable("Not loaded".into());
+        self.lambda_status = not_loaded.clone();
+        self.apigateway_status = not_loaded.clone();
+        self.sqs_status = not_loaded.clone();
+        self.vpc_status = not_loaded.clone();
+        self.load_balancers_status = not_loaded.clone();
+        self.target_groups_status = not_loaded.clone();
+        self.security_groups_status = not_loaded.clone();
+        self.rds_summary.status = not_loaded.clone();
+        self.secrets_summary.status = not_loaded.clone();
+        self.cloudwatch_summary.status = not_loaded;
+    }
+
     pub async fn refresh_active(&mut self) {
+        // Clear stale inventory when the account context changes so findings are
+        // never rebuilt from a prior region or profile's data.
+        let context = (self.current_profile.clone(), self.current_region_label());
+        if self.data_context.as_ref() != Some(&context) {
+            self.clear_service_data();
+            self.data_context = Some(context);
+        }
+
         self.refresh_phase = RefreshPhase::Overview;
         self.account_overview = None;
 
