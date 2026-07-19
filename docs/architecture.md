@@ -113,7 +113,7 @@ At startup, `main`:
 - loads persisted theme preference from `~/.seamless-glance/config.json`
 - resolves the AWS profile from `--profile` or the persisted config value
 - discovers available AWS profiles for the in-app picker
-- fetches enabled AWS regions using the resolved profile
+- fetches enabled AWS regions using the resolved profile; if `ec2:DescribeRegions` fails or returns nothing, it falls back to the documented `regions::FALLBACK_REGIONS` list and raises a visible warning so the operator knows global views may be incomplete
 - creates `AwsClients` for the selected region and profile
 - constructs `App`
 - preloads cost data and usage-aware service cost insight
