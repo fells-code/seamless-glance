@@ -100,7 +100,7 @@ This area is a good home for future shared action helpers such as CLI command ge
 
 ### `src/cache/`
 
-Currently used for cost caching. The cache now stores budget, forecast, trailing spend, and usage-aware service cost insight so cost-oriented views can open quickly without re-querying Cost Explorer every time.
+Currently used for cost caching. The cache now stores budget, forecast, trailing spend, and usage-aware service cost insight so cost-oriented views can open quickly without re-querying Cost Explorer every time. The cache file is keyed by profile and region (`cost-<profile>-<region>.json`) and the stored scope is re-checked on load, so cached spend from one profile is never shown while another profile is active.
 
 ## Runtime Data Flow
 
