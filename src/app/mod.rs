@@ -262,6 +262,13 @@ impl App {
         !self.regions.is_empty() && self.current_region_index == self.regions.len()
     }
 
+    /// True when a modal surface (command palette, help, or an overlay) owns
+    /// input. Navigation and resource-action keys gate on this so they cannot
+    /// mutate view or region state while a modal is open.
+    pub fn modal_open(&self) -> bool {
+        self.command_mode || self.show_help || self.overlay.is_some()
+    }
+
     pub fn region_slot_count(&self) -> usize {
         if self.regions.is_empty() {
             0

@@ -24,7 +24,7 @@ The navigation model is also expected to evolve over time:
 
 - Findings is the operator-centric home
 - the command palette is the scalable way to reach services
-- fixed numeric shortcuts are a transitional compatibility layer, not the long-term destination model
+- fixed numeric view-switching has been removed in favor of the palette; `f` (Findings) and `Tab`/`Shift+Tab` remain as direct keys
 
 Current first-class views:
 
@@ -104,19 +104,11 @@ Primary navigation:
 
 - `f` Findings
 - `Tab` / `Shift+Tab` cycle through major views
-- `/` open the command palette with grouped view suggestions and aliases
+- `/` open the command palette to jump to any view by name or alias
 - `t` cycle through the Seamless theme set
 - `w` toggle wrapped detail mode on supported text-heavy views
-- `1` Account Overview
-- `2` Cost Overview
-- `0` Cost Savings
-- `3` VPC
-- `4` EC2
-- `5` CloudWatch
-- `6` Lambda
-- `7` Secrets Manager
-- `8` ECS
-- `9` API Gateway
+
+Every other view is reached through the command palette (`/`), for example `/ec2`, `/lambda`, or `/sm`. Numeric view-switching keys were removed; the palette is the way to jump directly to a service.
 
 General controls:
 

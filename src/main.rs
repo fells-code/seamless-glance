@@ -259,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             KeyCode::Char('w') => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     app.toggle_wrap_mode();
                 }
             }
@@ -327,22 +327,26 @@ async fn main() -> anyhow::Result<()> {
                 app.command_input.pop();
             }
             KeyCode::Tab => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     let current_view = app.active_view;
                     activate_view(&mut app, next_command(current_view).view).await;
                 }
             }
             KeyCode::BackTab => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     let current_view = app.active_view;
                     activate_view(&mut app, previous_command(current_view).view).await;
                 }
             }
             KeyCode::Left => {
-                app.previous_region().await;
+                if !app.modal_open() {
+                    app.previous_region().await;
+                }
             }
             KeyCode::Right => {
-                app.next_region().await;
+                if !app.modal_open() {
+                    app.next_region().await;
+                }
             }
             KeyCode::Down => {
                 if app.show_help {
@@ -408,47 +412,54 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             KeyCode::Char('o') => {
-                app.trigger_open();
+                if !app.modal_open() {
+                    app.trigger_open();
+                }
             }
             KeyCode::Char('q') => {
                 app.persist_region_selection();
                 app.should_quit = true;
             }
             KeyCode::Char('d') => {
-                if app.overlay.is_none() {
+                if !app.modal_open() {
                     app.trigger_describe().await;
                 }
             }
             KeyCode::Char('f') => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     activate_view(&mut app, ActiveView::Findings).await;
                 }
             }
             KeyCode::Char('c') => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     app.trigger_cli();
                 }
             }
             KeyCode::Char('g') => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     app.set_global_region();
                     app.persist_region_selection();
                     app.trigger_refresh();
                 }
             }
             KeyCode::Char('s') => {
-                app.trigger_ssh();
+                if !app.modal_open() {
+                    app.trigger_ssh();
+                }
             }
             KeyCode::Char('p') => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     app.open_profile_picker();
                 }
             }
             KeyCode::Char('t') => {
-                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                if !app.modal_open() {
                     app.cycle_theme();
                 }
             }
+            // Digits 1 and 2 pick an SSH command when the key-selection overlay is
+            // open. Numeric view-switching was removed in favor of the command
+            // palette; digits do nothing otherwise.
             KeyCode::Char('1') => {
                 if let Some(OverlayState::SelectSshKey(state)) = &app.overlay {
                     let cmd = format!("ssh {}@{}", state.context.user, state.context.host);
@@ -459,8 +470,6 @@ async fn main() -> anyhow::Result<()> {
                         scroll: 0,
                     }));
                     continue;
-                } else {
-                    activate_view(&mut app, ActiveView::AccountOverview).await;
                 }
             }
             KeyCode::Char('2') => {
@@ -478,34 +487,7 @@ async fn main() -> anyhow::Result<()> {
                         scroll: 0,
                     }));
                     continue;
-                } else {
-                    activate_view(&mut app, ActiveView::CostOverview).await;
                 }
-            }
-            KeyCode::Char('3') => {
-                activate_view(&mut app, ActiveView::Vpc).await;
-            }
-            KeyCode::Char('4') => {
-                activate_view(&mut app, ActiveView::Ec2).await;
-            }
-            KeyCode::Char('5') => {
-                activate_view(&mut app, ActiveView::CloudWatch).await;
-            }
-            KeyCode::Char('6') => {
-                activate_view(&mut app, ActiveView::Lambda).await;
-            }
-            KeyCode::Char('7') => {
-                activate_view(&mut app, ActiveView::Secrets).await;
-            }
-            KeyCode::Char('8') => {
-                activate_view(&mut app, ActiveView::Ecs).await;
-            }
-
-            KeyCode::Char('9') => {
-                activate_view(&mut app, ActiveView::Apigateway).await;
-            }
-            KeyCode::Char('0') => {
-                activate_view(&mut app, ActiveView::CostSavings).await;
             }
             _ => {}
         }
