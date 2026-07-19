@@ -32,6 +32,21 @@ guidance may extend them but must not contradict them.
 - No em dashes in commit messages, code comments, PR or issue text, changesets,
   or docs. Use a comma, parentheses, or a separate sentence.
 
+### Privacy (public repository)
+- This is a public repository. Everything committed or posted here is visible to
+  anyone: commits, PRs, issues, comments, changesets, code, and docs.
+- Never include the owner's or any individual's private or personal information.
+  That includes personal email addresses, real names used as identifying detail,
+  home or physical addresses, phone numbers, and any similar personal contact
+  detail.
+- Never include account-specific or credential-adjacent secrets: AWS account IDs,
+  ARNs tied to a real account, access keys or tokens, profile names that reveal a
+  client or person, internal hostnames, or private URLs and endpoints.
+- When an example needs a value, use a placeholder (`123456789012`,
+  `my-profile`, `example.com`) rather than a real one. When referencing repo
+  files or code, use relative paths, not absolute paths that leak a local
+  username or directory layout.
+
 ### Before declaring work done
 - Run the checks that apply to the change (see Validation Expectations below:
   `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`) and report the real
