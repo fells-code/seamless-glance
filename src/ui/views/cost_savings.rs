@@ -7,6 +7,16 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(
+        frame,
+        area,
+        "Cost Explorer",
+        &app.cost_status,
+        &app.theme,
+    ) {
+        return;
+    }
+
     let total_estimated_savings = app
         .cost_savings_opportunities
         .iter()

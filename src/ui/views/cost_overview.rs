@@ -187,6 +187,16 @@ fn render_service_cost_detail(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 pub fn render_cost_overview(frame: &mut Frame, area: Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(
+        frame,
+        area,
+        "Cost Explorer",
+        &app.cost_status,
+        &app.theme,
+    ) {
+        return;
+    }
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(6), Constraint::Min(0)])
