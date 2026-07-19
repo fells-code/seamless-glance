@@ -123,11 +123,14 @@ At startup, `main`:
 
 `App::trigger_refresh` marks refresh intent, and `App::refresh_active` performs the work:
 
-1. refresh account overview first
-2. refresh the active view's service data
-3. clear loading state
-4. update `last_refresh`
-5. reset selection and scroll state
+1. clear stale inventory if the account context (profile + region) changed since the held data was fetched
+2. refresh account overview first
+3. refresh the active view's service data
+4. rebuild findings and clear loading state
+5. update `last_refresh`
+6. reset selection and scroll state
+
+Step 1 matters because a single-service refresh only fetches its own service but `rebuild_findings` reads several service inventories. Tracking the context the data was fetched under (`data_context`) and clearing on change ensures findings are never built from a prior region or profile's data and mislabeled with the current region.
 
 This design keeps the header accurate even when a service view is active.
 It also allows the TUI to render a loading state between view transitions instead of blocking silently on inline fetches.
