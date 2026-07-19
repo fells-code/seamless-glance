@@ -1,7 +1,7 @@
 use crate::{
     app::App,
-    aws::clients::{build_sdk_config, AwsClients},
-    models::ec2::Ec2InstanceInfo,
+    aws::clients::{clients_for_region, AwsClients},
+    models::{ec2::Ec2InstanceInfo, service_status::ServiceStatus},
     resources::region_aggregate::fetch_all_regions,
 };
 use aws_sdk_cloudwatch::{
@@ -17,15 +17,12 @@ pub struct Ec2Counts {
     pub stopped: u32,
 }
 
-async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
-    let sdk_config = build_sdk_config(region.clone(), profile).await;
-    AwsClients::new(&sdk_config)
-}
+const UNAVAILABLE_EVERYWHERE: &str = "EC2 unavailable in all regions";
 
 async fn fetch_average_cpu_utilization(
     aws: &AwsClients,
     instances: &[Ec2InstanceInfo],
-) -> Result<HashMap<String, f64>, String> {
+) -> Result<HashMap<String, f64>, ServiceStatus> {
     let running_instances = instances
         .iter()
         .filter(|instance| instance.is_running())
@@ -82,9 +79,7 @@ async fn fetch_average_cpu_utilization(
             .end_time(DateTime::from_secs(end.timestamp()))
             .send()
             .await
-            .map_err(|err| {
-                format!("CloudWatch get_metric_data failed for EC2 CPU lookup: {err:?}")
-            })?;
+            .map_err(|err| ServiceStatus::from_sdk_error(&err))?;
 
         for result in response.metric_data_results() {
             let Some(query_id) = result.id() else {
@@ -112,7 +107,7 @@ async fn fetch_instances_for_region(
     region: Region,
     include_cpu_metrics: bool,
     profile: Option<String>,
-) -> Result<Vec<Ec2InstanceInfo>, String> {
+) -> Result<Vec<Ec2InstanceInfo>, ServiceStatus> {
     let aws = clients_for_region(&region, profile.as_deref()).await;
 
     let mut pages = aws.ec2.describe_instances().into_paginator().items().send();
@@ -120,13 +115,7 @@ async fn fetch_instances_for_region(
     let mut instances = vec![];
 
     while let Some(item) = pages.next().await {
-        let reservation = item.map_err(|err| {
-            format!(
-                "EC2 describe_instances failed for {}: {:?}",
-                region.as_ref(),
-                err
-            )
-        })?;
+        let reservation = item.map_err(|err| ServiceStatus::from_sdk_error(&err))?;
 
         for inst in reservation.instances() {
             let tag_value = |key: &str| {
@@ -183,10 +172,11 @@ async fn fetch_instances_for_region(
 async fn fetch_instances_with_metrics(
     app: &App,
     include_cpu_metrics: bool,
-) -> Vec<Ec2InstanceInfo> {
+) -> (Vec<Ec2InstanceInfo>, ServiceStatus) {
     let profile = app.current_profile.clone();
-    let mut instances = if app.is_global_region_selected() {
-        fetch_all_regions(&app.regions, move |region| {
+
+    let (mut instances, status) = if app.is_global_region_selected() {
+        fetch_all_regions(&app.regions, UNAVAILABLE_EVERYWHERE, move |region| {
             fetch_instances_for_region(region, include_cpu_metrics, profile.clone())
         })
         .await
@@ -194,11 +184,8 @@ async fn fetch_instances_with_metrics(
         match fetch_instances_for_region(app.current_region().clone(), include_cpu_metrics, profile)
             .await
         {
-            Ok(items) => items,
-            Err(err) => {
-                eprintln!("{}", err);
-                vec![]
-            }
+            Ok(instances) => (instances, ServiceStatus::Ok),
+            Err(status) => (vec![], status),
         }
     };
 
@@ -209,15 +196,15 @@ async fn fetch_instances_with_metrics(
             .then_with(|| a.id.cmp(&b.id))
     });
 
-    instances
+    (instances, status)
 }
 
-pub async fn fetch_instances(app: &App) -> Vec<Ec2InstanceInfo> {
+pub async fn fetch_instances(app: &App) -> (Vec<Ec2InstanceInfo>, ServiceStatus) {
     fetch_instances_with_metrics(app, true).await
 }
 
 pub async fn fetch_ec2_counts(app: &App) -> Ec2Counts {
-    let instances = fetch_instances_with_metrics(app, false).await;
+    let (instances, _status) = fetch_instances_with_metrics(app, false).await;
 
     let mut running = 0;
     let mut stopped = 0;

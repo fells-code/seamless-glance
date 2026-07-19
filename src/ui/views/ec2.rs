@@ -9,6 +9,11 @@ use crate::app::App;
 use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
 
 pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(frame, area, "EC2", &app.ec2_status, &app.theme)
+    {
+        return;
+    }
+
     let theme = app.theme;
 
     render_list_table(

@@ -1,18 +1,15 @@
 use crate::{
     app::App,
-    aws::clients::{build_sdk_config, AwsClients},
+    aws::clients::clients_for_region,
     models::{
         lambda::{LambdaFunctionInfo, LambdaSummary},
         service_status::ServiceStatus,
     },
+    resources::region_aggregate::fetch_all_regions,
 };
 use aws_types::region::Region;
-use futures::future::join_all;
 
-async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
-    let sdk_config = build_sdk_config(region.clone(), profile).await;
-    AwsClients::new(&sdk_config)
-}
+const UNAVAILABLE_EVERYWHERE: &str = "Lambda unavailable in all regions";
 
 async fn fetch_lambda_for_region(
     region: Region,
@@ -48,52 +45,15 @@ async fn fetch_lambda_for_region(
 
 pub async fn fetch_lambda_functions(app: &App) -> (Vec<LambdaFunctionInfo>, ServiceStatus) {
     let profile = app.current_profile.clone();
+
     let (mut functions, status) = if app.is_global_region_selected() {
-        let region_profile = profile.clone();
-        let futures = app
-            .regions
-            .iter()
-            .cloned()
-            .map(move |region| fetch_lambda_for_region(region, region_profile.clone()));
-
-        let results = join_all(futures).await;
-
-        let mut all = Vec::new();
-        let mut any_success = false;
-        let mut saw_access_denied = false;
-        let mut saw_unavailable_msg: Option<String> = None;
-
-        for result in results {
-            match result {
-                Ok(mut funcs) => {
-                    any_success = true;
-                    all.append(&mut funcs);
-                }
-                Err(ServiceStatus::AccessDenied) => saw_access_denied = true,
-                Err(ServiceStatus::Unavailable(msg)) => {
-                    if saw_unavailable_msg.is_none() {
-                        saw_unavailable_msg = Some(msg);
-                    }
-                }
-                Err(_) => {}
-            }
-        }
-
-        let status = if any_success {
-            ServiceStatus::Ok
-        } else if saw_access_denied {
-            ServiceStatus::AccessDenied
-        } else {
-            ServiceStatus::Unavailable(
-                saw_unavailable_msg
-                    .unwrap_or_else(|| "Lambda unavailable in all regions".to_string()),
-            )
-        };
-
-        (all, status)
+        fetch_all_regions(&app.regions, UNAVAILABLE_EVERYWHERE, move |region| {
+            fetch_lambda_for_region(region, profile.clone())
+        })
+        .await
     } else {
         match fetch_lambda_for_region(app.current_region().clone(), profile).await {
-            Ok(funcs) => (funcs, ServiceStatus::Ok),
+            Ok(functions) => (functions, ServiceStatus::Ok),
             Err(status) => (vec![], status),
         }
     };
@@ -104,68 +64,10 @@ pub async fn fetch_lambda_functions(app: &App) -> (Vec<LambdaFunctionInfo>, Serv
 }
 
 pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
-    if !app.is_global_region_selected() {
-        return match fetch_lambda_for_region(
-            app.current_region().clone(),
-            app.current_profile.clone(),
-        )
-        .await
-        {
-            Ok(functions) => LambdaSummary {
-                function_count: functions.len() as u32,
-                status: ServiceStatus::Ok,
-            },
-            Err(status) => LambdaSummary {
-                function_count: 0,
-                status,
-            },
-        };
-    }
-
-    let profile = app.current_profile.clone();
-    let futures = app
-        .regions
-        .iter()
-        .cloned()
-        .map(move |region| fetch_lambda_for_region(region, profile.clone()));
-
-    let results = join_all(futures).await;
-
-    let mut function_count = 0u32;
-    let mut any_success = false;
-    let mut saw_access_denied = false;
-    let mut saw_unavailable_msg: Option<String> = None;
-
-    for result in results {
-        match result {
-            Ok(functions) => {
-                any_success = true;
-                function_count += functions.len() as u32;
-            }
-            Err(ServiceStatus::AccessDenied) => {
-                saw_access_denied = true;
-            }
-            Err(ServiceStatus::Unavailable(msg)) => {
-                if saw_unavailable_msg.is_none() {
-                    saw_unavailable_msg = Some(msg);
-                }
-            }
-            Err(_) => {}
-        }
-    }
-
-    let status = if any_success {
-        ServiceStatus::Ok
-    } else if saw_access_denied {
-        ServiceStatus::AccessDenied
-    } else {
-        ServiceStatus::Unavailable(
-            saw_unavailable_msg.unwrap_or_else(|| "Lambda unavailable in all regions".to_string()),
-        )
-    };
+    let (functions, status) = fetch_lambda_functions(app).await;
 
     LambdaSummary {
-        function_count,
+        function_count: functions.len() as u32,
         status,
     }
 }
