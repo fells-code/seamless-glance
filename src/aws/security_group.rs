@@ -1,4 +1,7 @@
-use crate::{app::App, models::security_group::SecurityGroupInfo};
+use crate::{
+    app::App,
+    models::{security_group::SecurityGroupInfo, service_status::ServiceStatus},
+};
 
 const SENSITIVE_PORTS: [i32; 4] = [22, 3389, 5432, 3306];
 
@@ -27,13 +30,14 @@ fn permission_includes_port(perm: &aws_sdk_ec2::types::IpPermission, port: i32) 
     )
 }
 
-pub async fn fetch_security_groups(app: &App) -> Vec<SecurityGroupInfo> {
+pub async fn fetch_security_groups(app: &App) -> (Vec<SecurityGroupInfo>, ServiceStatus) {
     let resp = match app.aws.ec2.describe_security_groups().send().await {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
     };
 
-    resp.security_groups()
+    let security_groups = resp
+        .security_groups()
         .iter()
         .map(|sg| {
             let inbound = sg.ip_permissions().len();
@@ -64,5 +68,7 @@ pub async fn fetch_security_groups(app: &App) -> Vec<SecurityGroupInfo> {
                 sensitive_public_ports,
             }
         })
-        .collect()
+        .collect();
+
+    (security_groups, ServiceStatus::Ok)
 }

@@ -8,6 +8,16 @@ use ratatui::{
 use crate::app::App;
 
 pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(
+        frame,
+        area,
+        "API Gateway",
+        &app.apigateway_status,
+        &app.theme,
+    ) {
+        return;
+    }
+
     let total_rows = app.apigateway_apis.len();
     if total_rows == 0 {
         app.selected_row = 0;

@@ -13,5 +13,6 @@ pub mod rds;
 pub mod secrets;
 pub mod security_groups;
 pub mod sqs;
+pub mod status;
 pub mod target_groups;
 pub mod vpc;

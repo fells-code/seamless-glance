@@ -8,6 +8,11 @@ use ratatui::{
 use crate::app::App;
 
 pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(frame, area, "VPC", &app.vpc_status, &app.theme)
+    {
+        return;
+    }
+
     let total_rows = app.vpcs.len();
     if total_rows == 0 {
         app.selected_row = 0;

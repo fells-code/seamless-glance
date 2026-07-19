@@ -52,10 +52,10 @@ pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
     }
 }
 
-pub async fn fetch_vpcs(app: &App) -> Vec<VpcInfo> {
+pub async fn fetch_vpcs(app: &App) -> (Vec<VpcInfo>, ServiceStatus) {
     let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
     };
 
     // Pull all subnets once, then count per VPC (fast + simple for MVP)
@@ -96,5 +96,5 @@ pub async fn fetch_vpcs(app: &App) -> Vec<VpcInfo> {
             .cmp(&a.is_default)
             .then(a.vpc_id.cmp(&b.vpc_id))
     });
-    out
+    (out, ServiceStatus::Ok)
 }

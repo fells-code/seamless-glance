@@ -2,16 +2,17 @@ use std::collections::HashMap;
 
 use crate::{
     app::App,
-    models::{elb::LoadBalancerInfo, target_group::TargetGroupInfo},
+    models::{elb::LoadBalancerInfo, service_status::ServiceStatus, target_group::TargetGroupInfo},
 };
 
-pub async fn fetch_load_balancers(app: &App) -> Vec<LoadBalancerInfo> {
+pub async fn fetch_load_balancers(app: &App) -> (Vec<LoadBalancerInfo>, ServiceStatus) {
     let resp = match app.aws.elb.describe_load_balancers().send().await {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
     };
 
-    resp.load_balancers()
+    let load_balancers = resp
+        .load_balancers()
         .iter()
         .map(|lb| LoadBalancerInfo {
             arn: lb.load_balancer_arn().unwrap_or_default().to_string(),
@@ -34,7 +35,9 @@ pub async fn fetch_load_balancers(app: &App) -> Vec<LoadBalancerInfo> {
             total_targets: 0,
             healthy_targets: 0,
         })
-        .collect()
+        .collect();
+
+    (load_balancers, ServiceStatus::Ok)
 }
 
 pub fn apply_target_group_health(

@@ -7,6 +7,16 @@ use ratatui::{
 };
 
 pub fn render_sg(frame: &mut Frame, area: Rect, app: &App) {
+    if crate::ui::views::status::render_unavailable(
+        frame,
+        area,
+        "Security Groups",
+        &app.security_groups_status,
+        &app.theme,
+    ) {
+        return;
+    }
+
     if app.security_groups.is_empty() {
         let empty = ratatui::widgets::Paragraph::new(
             "No security groups found in this region.\n\

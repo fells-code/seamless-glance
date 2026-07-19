@@ -58,39 +58,64 @@ pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
     }
 }
 
-pub async fn fetch_apigateway_apis(app: &App) -> Vec<ApiGatewayInfo> {
+pub async fn fetch_apigateway_apis(app: &App) -> (Vec<ApiGatewayInfo>, ServiceStatus) {
     let mut apis = vec![];
 
-    if let Ok(resp) = app.aws.apigw.get_rest_apis().send().await {
-        for api in resp.items() {
-            apis.push(ApiGatewayInfo {
-                id: api.id().unwrap_or("-").to_string(),
-                name: api.name().unwrap_or("unnamed").to_string(),
-                api_type: "REST".into(),
-                created_at: api
-                    .created_date()
-                    .map(|d| d.to_string())
-                    .unwrap_or("-".into()),
-            });
+    let mut saw_access_denied = false;
+    let mut error_message: Option<String> = None;
+
+    match app.aws.apigw.get_rest_apis().send().await {
+        Ok(resp) => {
+            for api in resp.items() {
+                apis.push(ApiGatewayInfo {
+                    id: api.id().unwrap_or("-").to_string(),
+                    name: api.name().unwrap_or("unnamed").to_string(),
+                    api_type: "REST".into(),
+                    created_at: api
+                        .created_date()
+                        .map(|d| d.to_string())
+                        .unwrap_or("-".into()),
+                });
+            }
         }
+        Err(err) => match ServiceStatus::from_error_message(err.to_string()) {
+            ServiceStatus::AccessDenied => saw_access_denied = true,
+            ServiceStatus::Unavailable(msg) => error_message = Some(msg),
+            ServiceStatus::Ok => {}
+        },
     }
 
-    if let Ok(resp) = app.aws.apigwv2.get_apis().send().await {
-        for api in resp.items() {
-            apis.push(ApiGatewayInfo {
-                id: api.api_id().unwrap_or("-").to_string(),
-                name: api.name().unwrap_or("unnamed").to_string(),
-                api_type: api
-                    .protocol_type()
-                    .map(|p| format!("{:?}", p))
-                    .unwrap_or("HTTP".into()),
-                created_at: api
-                    .created_date()
-                    .map(|d| d.to_string())
-                    .unwrap_or("-".into()),
-            });
+    match app.aws.apigwv2.get_apis().send().await {
+        Ok(resp) => {
+            for api in resp.items() {
+                apis.push(ApiGatewayInfo {
+                    id: api.api_id().unwrap_or("-").to_string(),
+                    name: api.name().unwrap_or("unnamed").to_string(),
+                    api_type: api
+                        .protocol_type()
+                        .map(|p| format!("{:?}", p))
+                        .unwrap_or("HTTP".into()),
+                    created_at: api
+                        .created_date()
+                        .map(|d| d.to_string())
+                        .unwrap_or("-".into()),
+                });
+            }
         }
+        Err(err) => match ServiceStatus::from_error_message(err.to_string()) {
+            ServiceStatus::AccessDenied => saw_access_denied = true,
+            ServiceStatus::Unavailable(msg) => error_message = Some(msg),
+            ServiceStatus::Ok => {}
+        },
     }
 
-    apis
+    let status = if saw_access_denied {
+        ServiceStatus::AccessDenied
+    } else if let Some(msg) = error_message {
+        ServiceStatus::Unavailable(msg)
+    } else {
+        ServiceStatus::Ok
+    };
+
+    (apis, status)
 }

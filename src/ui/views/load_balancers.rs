@@ -7,6 +7,16 @@ use ratatui::{
 };
 
 pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(
+        frame,
+        area,
+        "Load Balancers",
+        &app.load_balancers_status,
+        &app.theme,
+    ) {
+        return;
+    }
+
     let total_rows = app.load_balancers.len();
     if total_rows == 0 {
         app.selected_row = 0;

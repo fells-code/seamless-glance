@@ -1,9 +1,12 @@
-use crate::{app::App, models::target_group::TargetGroupInfo};
+use crate::{
+    app::App,
+    models::{service_status::ServiceStatus, target_group::TargetGroupInfo},
+};
 
-pub async fn fetch_target_groups(app: &App) -> Vec<TargetGroupInfo> {
+pub async fn fetch_target_groups(app: &App) -> (Vec<TargetGroupInfo>, ServiceStatus) {
     let resp = match app.aws.elb.describe_target_groups().send().await {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
     };
 
     let mut groups = Vec::new();
@@ -60,5 +63,5 @@ pub async fn fetch_target_groups(app: &App) -> Vec<TargetGroupInfo> {
         });
     }
 
-    groups
+    (groups, ServiceStatus::Ok)
 }
