@@ -127,7 +127,7 @@ The AWS fetches run off the draw thread so the UI stays responsive and the per-s
 2. spawns a worker task on a throwaway clone of the account context (`AwsClients` is cheap to clone; the SDK clients are `Arc`-backed)
 3. stores the receiving end of an `mpsc` channel on the app
 
-The worker fetches account overview first, then the active view's service data, sending a `RefreshUpdate` per phase and per service, then `Done`. Each frame, `App::drain_refresh_updates` applies whatever has arrived (so `refresh_phase` advances and views populate) without ever blocking the loop. On `Done` it rebuilds findings and cost savings, updates `last_refresh`, and clears the refreshing flag.
+The worker fetches account overview first, then the active view's service data, sending a `RefreshUpdate` per service, then `Done`. For the multi-service views (Findings and Cost Savings) the independent fetches run concurrently via `tokio::join!`, so refresh latency is the slowest single fetch rather than the sum of ~11. Target groups and load balancers are fetched as one unit (health folding needs both) that joins the concurrent set. Each frame, `App::drain_refresh_updates` applies whatever has arrived (so `refresh_phase` advances and views populate) without ever blocking the loop. On `Done` it rebuilds findings and cost savings, updates `last_refresh`, and clears the refreshing flag.
 
 Step 1 matters because a single-service refresh only fetches its own service but `rebuild_findings` reads several service inventories. Tracking the context the data was fetched under (`data_context`) and clearing on change ensures findings are never built from a prior region or profile's data and mislabeled with the current region.
 

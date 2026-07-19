@@ -60,61 +60,89 @@ impl App {
 
         match self.active_view {
             ActiveView::Findings => {
-                phase(&tx, "CloudWatch");
-                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(&self).await;
-                let _ = tx.send(RefreshUpdate::CloudWatch(summary, alarms));
+                let _ = tx.send(RefreshUpdate::Phase(RefreshPhase::Services(vec![
+                    "CloudWatch",
+                    "EC2",
+                    "API Gateway",
+                    "Secrets",
+                    "Security Groups",
+                    "Target Groups",
+                    "Load Balancers",
+                    "SQS",
+                    "RDS",
+                    "Lambda",
+                    "VPC",
+                ])));
 
-                phase(&tx, "EC2");
-                let instances = aws::ec2::fetch_instances(&self).await;
-                let _ = tx.send(RefreshUpdate::Ec2(instances));
+                // These are all independent, so run them concurrently: refresh
+                // latency becomes the slowest single fetch, not their sum.
+                let (
+                    (cw_summary, cw_alarms),
+                    ec2,
+                    (apis, apigw_status),
+                    (secrets_summary, secrets),
+                    (sgs, sg_status),
+                    (target_groups, tg_status, load_balancers, lb_status),
+                    (queues, sqs_status),
+                    (rds_summary, rds_instances),
+                    (functions, lambda_status),
+                    (vpcs, vpc_status),
+                ) = tokio::join!(
+                    aws::cloudwatch::fetch_cloudwatch(&self),
+                    aws::ec2::fetch_instances(&self),
+                    aws::apigateway::fetch_apigateway_apis(&self),
+                    aws::secrets::fetch_secrets(&self),
+                    aws::security_group::fetch_security_groups(&self),
+                    self.fetch_target_groups_and_load_balancers(),
+                    aws::sqs::fetch_sqs_queues(&self),
+                    aws::rds::fetch_rds(&self),
+                    aws::lambda::fetch_lambda_functions(&self),
+                    aws::vpc::fetch_vpcs(&self),
+                );
 
-                phase(&tx, "API Gateway");
-                let (apis, status) = aws::apigateway::fetch_apigateway_apis(&self).await;
-                let _ = tx.send(RefreshUpdate::Apigateway(apis, status));
-
-                phase(&tx, "Secrets");
-                let (summary, secrets) = aws::secrets::fetch_secrets(&self).await;
-                let _ = tx.send(RefreshUpdate::Secrets(summary, secrets));
-
-                phase(&tx, "Security Groups");
-                let (groups, status) = aws::security_group::fetch_security_groups(&self).await;
-                let _ = tx.send(RefreshUpdate::SecurityGroups(groups, status));
-
-                self.stream_target_groups_and_load_balancers(&tx).await;
-
-                phase(&tx, "SQS");
-                let (queues, status) = aws::sqs::fetch_sqs_queues(&self).await;
-                let _ = tx.send(RefreshUpdate::Sqs(queues, status));
-
-                phase(&tx, "RDS");
-                let (summary, instances) = aws::rds::fetch_rds(&self).await;
-                let _ = tx.send(RefreshUpdate::Rds(summary, instances));
-
-                phase(&tx, "Lambda");
-                let (functions, status) = aws::lambda::fetch_lambda_functions(&self).await;
-                let _ = tx.send(RefreshUpdate::Lambda(functions, status));
-
-                phase(&tx, "VPC");
-                let (vpcs, status) = aws::vpc::fetch_vpcs(&self).await;
-                let _ = tx.send(RefreshUpdate::Vpc(vpcs, status));
+                let _ = tx.send(RefreshUpdate::CloudWatch(cw_summary, cw_alarms));
+                let _ = tx.send(RefreshUpdate::Ec2(ec2));
+                let _ = tx.send(RefreshUpdate::Apigateway(apis, apigw_status));
+                let _ = tx.send(RefreshUpdate::Secrets(secrets_summary, secrets));
+                let _ = tx.send(RefreshUpdate::SecurityGroups(sgs, sg_status));
+                let _ = tx.send(RefreshUpdate::TargetGroups(target_groups, tg_status));
+                let _ = tx.send(RefreshUpdate::LoadBalancers(load_balancers, lb_status));
+                let _ = tx.send(RefreshUpdate::Sqs(queues, sqs_status));
+                let _ = tx.send(RefreshUpdate::Rds(rds_summary, rds_instances));
+                let _ = tx.send(RefreshUpdate::Lambda(functions, lambda_status));
+                let _ = tx.send(RefreshUpdate::Vpc(vpcs, vpc_status));
             }
             ActiveView::CostSavings => {
+                // Cost data mutates the worker (cache + fields), so fetch it
+                // first; the resource inventories then run concurrently.
                 phase(&tx, "Cost Explorer");
                 self.send_cost(&tx).await;
 
-                phase(&tx, "EC2");
-                let instances = aws::ec2::fetch_instances(&self).await;
-                let _ = tx.send(RefreshUpdate::Ec2(instances));
+                let _ = tx.send(RefreshUpdate::Phase(RefreshPhase::Services(vec![
+                    "EC2",
+                    "API Gateway",
+                    "Lambda",
+                    "Target Groups",
+                    "Load Balancers",
+                ])));
 
-                phase(&tx, "API Gateway");
-                let (apis, status) = aws::apigateway::fetch_apigateway_apis(&self).await;
-                let _ = tx.send(RefreshUpdate::Apigateway(apis, status));
+                let (
+                    ec2,
+                    (apis, apigw_status),
+                    (functions, lambda_status),
+                    (target_groups, tg_status, load_balancers, lb_status),
+                ) = tokio::join!(
+                    aws::ec2::fetch_instances(&self),
+                    aws::apigateway::fetch_apigateway_apis(&self),
+                    aws::lambda::fetch_lambda_functions(&self),
+                    self.fetch_target_groups_and_load_balancers(),
+                );
 
-                phase(&tx, "Lambda");
-                let (functions, status) = aws::lambda::fetch_lambda_functions(&self).await;
-                let _ = tx.send(RefreshUpdate::Lambda(functions, status));
-
-                self.stream_target_groups_and_load_balancers(&tx).await;
+                let _ = tx.send(RefreshUpdate::Ec2(ec2));
+                let _ = tx.send(RefreshUpdate::Apigateway(apis, apigw_status));
+                let _ = tx.send(RefreshUpdate::Lambda(functions, lambda_status));
+                let _ = tx.send(RefreshUpdate::TargetGroups(target_groups, tg_status));
+                let _ = tx.send(RefreshUpdate::LoadBalancers(load_balancers, lb_status));
             }
             ActiveView::Ec2 => {
                 phase(&tx, "EC2");
@@ -162,7 +190,14 @@ impl App {
                 let _ = tx.send(RefreshUpdate::Rds(summary, instances));
             }
             ActiveView::LoadBalancers => {
-                self.stream_target_groups_and_load_balancers(&tx).await;
+                let _ = tx.send(RefreshUpdate::Phase(RefreshPhase::Services(vec![
+                    "Target Groups",
+                    "Load Balancers",
+                ])));
+                let (target_groups, tg_status, load_balancers, lb_status) =
+                    self.fetch_target_groups_and_load_balancers().await;
+                let _ = tx.send(RefreshUpdate::TargetGroups(target_groups, tg_status));
+                let _ = tx.send(RefreshUpdate::LoadBalancers(load_balancers, lb_status));
             }
             ActiveView::TargetGroups => {
                 phase(&tx, "Target Groups");
@@ -185,27 +220,20 @@ impl App {
     }
 
     /// Target groups must be fetched before load balancers so target-group
-    /// health can be folded in, so this pair is streamed together.
-    async fn stream_target_groups_and_load_balancers(
-        &mut self,
-        tx: &UnboundedSender<RefreshUpdate>,
+    /// health can be folded in, so this pair is fetched together and returned as
+    /// a unit. Borrows `&self` only, so it can join the concurrent fetch set.
+    async fn fetch_target_groups_and_load_balancers(
+        &self,
+    ) -> (
+        Vec<TargetGroupInfo>,
+        ServiceStatus,
+        Vec<LoadBalancerInfo>,
+        ServiceStatus,
     ) {
-        phase(tx, "Target Groups");
         let (target_groups, tg_status) = aws::target_group::fetch_target_groups(self).await;
-        self.target_groups = target_groups;
-        let _ = tx.send(RefreshUpdate::TargetGroups(
-            self.target_groups.clone(),
-            tg_status,
-        ));
-
-        phase(tx, "Load Balancers");
-        let (load_balancers, lb_status) = aws::elb::fetch_load_balancers(self).await;
-        self.load_balancers = load_balancers;
-        aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
-        let _ = tx.send(RefreshUpdate::LoadBalancers(
-            self.load_balancers.clone(),
-            lb_status,
-        ));
+        let (mut load_balancers, lb_status) = aws::elb::fetch_load_balancers(self).await;
+        aws::elb::apply_target_group_health(&mut load_balancers, &target_groups);
+        (target_groups, tg_status, load_balancers, lb_status)
     }
 
     async fn send_cost(&mut self, tx: &UnboundedSender<RefreshUpdate>) {
