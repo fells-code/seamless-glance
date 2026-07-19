@@ -24,6 +24,7 @@ use crate::models::{
 };
 use crate::resources::ssh;
 use crate::ui::footer::FooterMode;
+use crate::ui::notification::{Notification, NotificationLevel};
 use crate::ui::open::open_in_browser;
 use crate::ui::overlay::overlays::{
     ConfirmCommandState, DescribeOverlayState, OverlayState, SelectProfileState, SelectSshKeyState,
@@ -81,6 +82,7 @@ pub struct App {
     pub refresh_phase: RefreshPhase,
 
     pub footer_mode: FooterMode,
+    pub notification: Option<Notification>,
 
     pub theme: Theme,
     pub theme_name: ThemeName,
@@ -199,10 +201,31 @@ impl App {
             is_refreshing: false,
             refresh_phase: RefreshPhase::Idle,
             footer_mode: FooterMode::Normal,
+            notification: None,
             show_help: false,
 
             target_groups: vec![],
             security_groups: vec![],
+        }
+    }
+
+    pub fn notify_error(&mut self, message: impl Into<String>) {
+        self.notification = Some(Notification::new(message, NotificationLevel::Error));
+    }
+
+    pub fn notify_warning(&mut self, message: impl Into<String>) {
+        self.notification = Some(Notification::new(message, NotificationLevel::Warning));
+    }
+
+    /// Drop the active notification once it has outlived its display window.
+    /// Called from the event loop so a toast auto-dismisses on the next tick.
+    pub fn clear_expired_notification(&mut self) {
+        if self
+            .notification
+            .as_ref()
+            .is_some_and(Notification::is_expired)
+        {
+            self.notification = None;
         }
     }
 
@@ -1965,7 +1988,9 @@ impl App {
                 if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
                     let region = self.action_region_for_resource(&instance);
                     if let Some(url) = instance.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -1974,7 +1999,9 @@ impl App {
                 if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
                     let region = self.action_region_for_resource(&func);
                     if let Some(url) = func.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -1983,7 +2010,9 @@ impl App {
                 if let Some(item) = self.selected_resource(&self.cloudwatch_alarms).cloned() {
                     let region = self.action_region_for_resource(&item);
                     if let Some(url) = item.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -1992,7 +2021,9 @@ impl App {
                 if let Some(item) = self.selected_resource(&self.secrets).cloned() {
                     let region = self.action_region_for_resource(&item);
                     if let Some(url) = item.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2001,7 +2032,9 @@ impl App {
                 if let Some(item) = self.selected_resource(&self.vpcs).cloned() {
                     let region = self.action_region_for_resource(&item);
                     if let Some(url) = item.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2010,7 +2043,9 @@ impl App {
                 if let Some(item) = self.selected_resource(&self.ecs_clusters).cloned() {
                     let region = self.action_region_for_resource(&item);
                     if let Some(url) = item.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2019,7 +2054,9 @@ impl App {
                 if let Some(item) = self.selected_resource(&self.rds_instances).cloned() {
                     let region = self.action_region_for_resource(&item);
                     if let Some(url) = item.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2028,7 +2065,9 @@ impl App {
                 if let Some(item) = self.selected_resource(&self.apigateway_apis).cloned() {
                     let region = self.action_region_for_resource(&item);
                     if let Some(url) = item.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2037,7 +2076,9 @@ impl App {
                 if let Some(lb) = self.selected_resource(&self.load_balancers).cloned() {
                     let region = self.action_region_for_resource(&lb);
                     if let Some(url) = lb.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2046,7 +2087,9 @@ impl App {
                 if let Some(tg) = self.selected_resource(&self.target_groups).cloned() {
                     let region = self.action_region_for_resource(&tg);
                     if let Some(url) = tg.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }
@@ -2055,7 +2098,9 @@ impl App {
                 if let Some(sg) = self.selected_resource(&self.security_groups).cloned() {
                     let region = self.action_region_for_resource(&sg);
                     if let Some(url) = sg.console_url(&region) {
-                        let _ = open_in_browser(&url);
+                        if let Err(err) = open_in_browser(&url) {
+                            self.notify_error(err);
+                        }
                     }
                 }
             }

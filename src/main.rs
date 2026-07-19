@@ -68,14 +68,14 @@ async fn handle_command(app: &mut App) {
                 app.persist_region_selection();
                 app.trigger_refresh();
             } else {
-                eprintln!("Unknown region: {}", args);
+                app.notify_warning(format!("Unknown region: {}", args));
             }
         }
         "profile" | "pf" => {
             if args.is_empty() {
                 app.open_profile_picker();
             } else if !app.set_profile_by_name(&args).await {
-                eprintln!("Unknown profile: {}", args);
+                app.notify_warning(format!("Unknown profile: {}", args));
             }
         }
         "theme" => {
@@ -86,7 +86,7 @@ async fn handle_command(app: &mut App) {
             if let Some(theme_name) = ThemeName::from_str(&args) {
                 app.set_theme_name(theme_name);
             } else {
-                eprintln!("Unknown theme: {}", args);
+                app.notify_warning(format!("Unknown theme: {}", args));
             }
         }
         _ => {
@@ -191,6 +191,8 @@ async fn main() -> anyhow::Result<()> {
     const PAGE_SCROLL_LINES: usize = 10;
 
     loop {
+        app.clear_expired_notification();
+
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
         if app.should_quit {
