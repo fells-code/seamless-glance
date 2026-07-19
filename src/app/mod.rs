@@ -1857,10 +1857,11 @@ impl App {
         let result = if action_region == self.current_region().as_ref() {
             resource.describe(&self.aws).await
         } else {
-            let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-                .region(Region::new(action_region.clone()))
-                .load()
-                .await;
+            let sdk_config = aws::clients::build_sdk_config(
+                Region::new(action_region.clone()),
+                self.current_profile.as_deref(),
+            )
+            .await;
 
             let aws = AwsClients::new(&sdk_config);
             resource.describe(&aws).await

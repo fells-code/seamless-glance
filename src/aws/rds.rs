@@ -1,23 +1,20 @@
 use crate::app::App;
-use crate::aws::clients::AwsClients;
+use crate::aws::clients::{build_sdk_config, AwsClients};
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::service_status::ServiceStatus;
 use aws_types::region::Region;
 use futures::future::join_all;
 
-async fn clients_for_region(region: &Region) -> AwsClients {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-        .region(region.clone())
-        .load()
-        .await;
-
+async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
+    let sdk_config = build_sdk_config(region.clone(), profile).await;
     AwsClients::new(&sdk_config)
 }
 
 async fn fetch_rds_for_region(
     region: Region,
+    profile: Option<String>,
 ) -> Result<(Vec<RdsInstanceInfo>, usize), ServiceStatus> {
-    let aws = clients_for_region(&region).await;
+    let aws = clients_for_region(&region, profile.as_deref()).await;
 
     let resp = match aws.rds.describe_db_instances().send().await {
         Ok(r) => r,
@@ -58,7 +55,9 @@ async fn fetch_rds_for_region(
 
 pub async fn fetch_rds(app: &App) -> (RdsSummary, Vec<RdsInstanceInfo>) {
     if !app.is_global_region_selected() {
-        return match fetch_rds_for_region(app.current_region().clone()).await {
+        return match fetch_rds_for_region(app.current_region().clone(), app.current_profile.clone())
+            .await
+        {
             Ok((instances, available)) => {
                 let total = instances.len();
                 (
@@ -81,7 +80,12 @@ pub async fn fetch_rds(app: &App) -> (RdsSummary, Vec<RdsInstanceInfo>) {
         };
     }
 
-    let futures = app.regions.iter().cloned().map(fetch_rds_for_region);
+    let profile = app.current_profile.clone();
+    let futures = app
+        .regions
+        .iter()
+        .cloned()
+        .map(|region| fetch_rds_for_region(region, profile.clone()));
 
     let results = join_all(futures).await;
 
