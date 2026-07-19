@@ -1852,8 +1852,11 @@ impl App {
     }
 
     pub async fn refresh_cost_data(&mut self, force_refresh: bool) {
+        let profile = self.current_profile.clone();
+        let region = self.current_region_label().to_string();
+
         if !force_refresh {
-            if let Some(cache) = load_if_fresh() {
+            if let Some(cache) = load_if_fresh(profile.as_deref(), &region) {
                 let cache_has_usage_insight =
                     !cache.service_cost_insights.is_empty() || cache.service_costs.is_empty();
 
@@ -1898,6 +1901,8 @@ impl App {
         if matches!(cost_status, ServiceStatus::Ok) {
             save(&CostCache {
                 fetched_at: Utc::now(),
+                profile,
+                region,
                 budget,
                 monthly_costs,
                 service_costs,
