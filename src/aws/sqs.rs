@@ -8,28 +8,30 @@ use crate::{
 use aws_sdk_sqs::types::QueueAttributeName;
 
 pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
-    let resp = match app.aws.sqs.list_queues().send().await {
-        Ok(r) => r,
-        Err(err) => {
-            return SqsSummary {
-                queue_count: 0,
-                dlq_count: 0,
-                status: ServiceStatus::from_sdk_error(&err),
-            };
-        }
-    };
+    let mut pages = app.aws.sqs.list_queues().into_paginator().items().send();
 
-    let urls = resp.queue_urls();
-    let queue_count = urls.len() as u32;
-
+    let mut queue_count = 0u32;
     let mut dlq_count = 0;
 
-    for url in urls {
+    while let Some(item) = pages.next().await {
+        let url = match item {
+            Ok(url) => url,
+            Err(err) => {
+                return SqsSummary {
+                    queue_count: 0,
+                    dlq_count: 0,
+                    status: ServiceStatus::from_sdk_error(&err),
+                };
+            }
+        };
+
+        queue_count += 1;
+
         let attrs = match app
             .aws
             .sqs
             .get_queue_attributes()
-            .queue_url(url)
+            .queue_url(&url)
             .attribute_names(QueueAttributeName::RedrivePolicy)
             .send()
             .await
@@ -55,19 +57,21 @@ pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
 }
 
 pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
-    let resp = match app.aws.sqs.list_queues().send().await {
-        Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut pages = app.aws.sqs.list_queues().into_paginator().items().send();
 
     let mut queues = vec![];
 
-    for url in resp.queue_urls() {
+    while let Some(item) = pages.next().await {
+        let url = match item {
+            Ok(url) => url,
+            Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
+        };
+
         let attrs = match app
             .aws
             .sqs
             .get_queue_attributes()
-            .queue_url(url)
+            .queue_url(&url)
             .attribute_names(QueueAttributeName::ApproximateNumberOfMessages)
             .attribute_names(QueueAttributeName::ApproximateNumberOfMessagesNotVisible)
             .attribute_names(QueueAttributeName::RedrivePolicy)

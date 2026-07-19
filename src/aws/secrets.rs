@@ -14,38 +14,42 @@ fn aws_datetime_to_utc(dt: &aws_sdk_secretsmanager::primitives::DateTime) -> Dat
 }
 
 pub async fn fetch_secrets(app: &App) -> (SecretsSummary, Vec<SecretInfo>) {
-    let resp = match app.aws.sm.list_secrets().send().await {
-        Ok(r) => r,
-        Err(err) => {
-            return (
-                SecretsSummary {
-                    status: ServiceStatus::from_sdk_error(&err),
-                    total: 0,
-                    rotation_disabled: 0,
-                },
-                vec![],
-            );
-        }
-    };
+    let mut pages = app.aws.sm.list_secrets().into_paginator().send();
 
     let mut secrets = Vec::new();
     let mut rotation_disabled = 0;
 
-    for s in resp.secret_list() {
-        let rotation_enabled = s.rotation_enabled().unwrap_or(false);
-        if !rotation_enabled {
-            rotation_disabled += 1;
+    while let Some(page) = pages.next().await {
+        let page = match page {
+            Ok(page) => page,
+            Err(err) => {
+                return (
+                    SecretsSummary {
+                        status: ServiceStatus::from_sdk_error(&err),
+                        total: 0,
+                        rotation_disabled: 0,
+                    },
+                    vec![],
+                );
+            }
+        };
+
+        for s in page.secret_list() {
+            let rotation_enabled = s.rotation_enabled().unwrap_or(false);
+            if !rotation_enabled {
+                rotation_disabled += 1;
+            }
+
+            let last_rotated = s
+                .last_rotated_date()
+                .map(|d| aws_datetime_to_utc(d).to_rfc3339());
+
+            secrets.push(SecretInfo {
+                name: s.name().unwrap_or("unknown").to_string(),
+                rotation_enabled,
+                last_rotated,
+            });
         }
-
-        let last_rotated = s
-            .last_rotated_date()
-            .map(|d| aws_datetime_to_utc(d).to_rfc3339());
-
-        secrets.push(SecretInfo {
-            name: s.name().unwrap_or("unknown").to_string(),
-            rotation_enabled,
-            last_rotated,
-        });
     }
 
     (

@@ -3,35 +3,39 @@ use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::service_status::ServiceStatus;
 
 pub async fn fetch_cloudwatch(app: &App) -> (CloudWatchSummary, Vec<CloudWatchAlarm>) {
-    let resp = match app.aws.cw.describe_alarms().send().await {
-        Ok(r) => r,
-        Err(err) => {
-            return (
-                CloudWatchSummary {
-                    status: ServiceStatus::from_sdk_error(&err),
-                    total_alarms: 0,
-                    alarms_in_alarm: 0,
-                },
-                vec![],
-            );
-        }
-    };
+    let mut pages = app.aws.cw.describe_alarms().into_paginator().send();
 
-    let alarms: Vec<CloudWatchAlarm> = resp
-        .metric_alarms()
-        .iter()
-        .map(|a| CloudWatchAlarm {
-            name: a.alarm_name().unwrap_or("").to_string(),
-            state: a
-                .state_value()
-                .map(|s| s.as_str())
-                .unwrap_or("UNKNOWN")
-                .to_string(),
-            namespace: a.namespace().unwrap_or("").to_string(),
-            metric: a.metric_name().unwrap_or("").to_string(),
-        })
-        .collect();
-    let mut alarms = alarms;
+    let mut alarms: Vec<CloudWatchAlarm> = Vec::new();
+
+    while let Some(page) = pages.next().await {
+        let page = match page {
+            Ok(page) => page,
+            Err(err) => {
+                return (
+                    CloudWatchSummary {
+                        status: ServiceStatus::from_sdk_error(&err),
+                        total_alarms: 0,
+                        alarms_in_alarm: 0,
+                    },
+                    vec![],
+                );
+            }
+        };
+
+        for a in page.metric_alarms() {
+            alarms.push(CloudWatchAlarm {
+                name: a.alarm_name().unwrap_or("").to_string(),
+                state: a
+                    .state_value()
+                    .map(|s| s.as_str())
+                    .unwrap_or("UNKNOWN")
+                    .to_string(),
+                namespace: a.namespace().unwrap_or("").to_string(),
+                metric: a.metric_name().unwrap_or("").to_string(),
+            });
+        }
+    }
+
     alarms.sort_by(|a, b| {
         let a_rank = if a.state == "ALARM" { 0 } else { 1 };
         let b_rank = if b.state == "ALARM" { 0 } else { 1 };

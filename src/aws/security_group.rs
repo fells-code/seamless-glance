@@ -31,44 +31,50 @@ fn permission_includes_port(perm: &aws_sdk_ec2::types::IpPermission, port: i32) 
 }
 
 pub async fn fetch_security_groups(app: &App) -> (Vec<SecurityGroupInfo>, ServiceStatus) {
-    let resp = match app.aws.ec2.describe_security_groups().send().await {
-        Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut pages = app
+        .aws
+        .ec2
+        .describe_security_groups()
+        .into_paginator()
+        .items()
+        .send();
 
-    let security_groups = resp
-        .security_groups()
-        .iter()
-        .map(|sg| {
-            let inbound = sg.ip_permissions().len();
-            let outbound = sg.ip_permissions_egress().len();
+    let mut security_groups = Vec::new();
 
-            let open_to_world = sg.ip_permissions().iter().any(permission_open_to_world);
+    while let Some(item) = pages.next().await {
+        let sg = match item {
+            Ok(sg) => sg,
+            Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
+        };
 
-            let mut sensitive_public_ports = SENSITIVE_PORTS
-                .iter()
-                .copied()
-                .filter(|port| {
-                    sg.ip_permissions().iter().any(|perm| {
-                        permission_open_to_world(perm) && permission_includes_port(perm, *port)
-                    })
+        let inbound = sg.ip_permissions().len();
+        let outbound = sg.ip_permissions_egress().len();
+
+        let open_to_world = sg.ip_permissions().iter().any(permission_open_to_world);
+
+        let mut sensitive_public_ports = SENSITIVE_PORTS
+            .iter()
+            .copied()
+            .filter(|port| {
+                sg.ip_permissions().iter().any(|perm| {
+                    permission_open_to_world(perm) && permission_includes_port(perm, *port)
                 })
-                .collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
 
-            sensitive_public_ports.sort_unstable();
-            sensitive_public_ports.dedup();
+        sensitive_public_ports.sort_unstable();
+        sensitive_public_ports.dedup();
 
-            SecurityGroupInfo {
-                id: sg.group_id().unwrap_or_default().to_string(),
-                name: sg.group_name().unwrap_or("unknown").to_string(),
-                vpc_id: sg.vpc_id().unwrap_or("unknown").to_string(),
-                inbound_rules: inbound,
-                outbound_rules: outbound,
-                open_to_world,
-                sensitive_public_ports,
-            }
-        })
-        .collect();
+        security_groups.push(SecurityGroupInfo {
+            id: sg.group_id().unwrap_or_default().to_string(),
+            name: sg.group_name().unwrap_or("unknown").to_string(),
+            vpc_id: sg.vpc_id().unwrap_or("unknown").to_string(),
+            inbound_rules: inbound,
+            outbound_rules: outbound,
+            open_to_world,
+            sensitive_public_ports,
+        });
+    }
 
     (security_groups, ServiceStatus::Ok)
 }

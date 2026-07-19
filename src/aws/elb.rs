@@ -6,15 +6,23 @@ use crate::{
 };
 
 pub async fn fetch_load_balancers(app: &App) -> (Vec<LoadBalancerInfo>, ServiceStatus) {
-    let resp = match app.aws.elb.describe_load_balancers().send().await {
-        Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut pages = app
+        .aws
+        .elb
+        .describe_load_balancers()
+        .into_paginator()
+        .items()
+        .send();
 
-    let load_balancers = resp
-        .load_balancers()
-        .iter()
-        .map(|lb| LoadBalancerInfo {
+    let mut load_balancers = Vec::new();
+
+    while let Some(item) = pages.next().await {
+        let lb = match item {
+            Ok(lb) => lb,
+            Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
+        };
+
+        load_balancers.push(LoadBalancerInfo {
             arn: lb.load_balancer_arn().unwrap_or_default().to_string(),
             name: lb.load_balancer_name().unwrap_or("unknown").to_string(),
             lb_type: lb
@@ -34,8 +42,8 @@ pub async fn fetch_load_balancers(app: &App) -> (Vec<LoadBalancerInfo>, ServiceS
             attached_target_groups: 0,
             total_targets: 0,
             healthy_targets: 0,
-        })
-        .collect();
+        });
+    }
 
     (load_balancers, ServiceStatus::Ok)
 }

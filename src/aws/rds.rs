@@ -16,15 +16,22 @@ async fn fetch_rds_for_region(
 ) -> Result<(Vec<RdsInstanceInfo>, usize), ServiceStatus> {
     let aws = clients_for_region(&region, profile.as_deref()).await;
 
-    let resp = match aws.rds.describe_db_instances().send().await {
-        Ok(r) => r,
-        Err(err) => return Err(ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut pages = aws
+        .rds
+        .describe_db_instances()
+        .into_paginator()
+        .items()
+        .send();
 
     let mut instances = Vec::new();
     let mut available = 0;
 
-    for db in resp.db_instances() {
+    while let Some(item) = pages.next().await {
+        let db = match item {
+            Ok(db) => db,
+            Err(err) => return Err(ServiceStatus::from_sdk_error(&err)),
+        };
+
         let status = db.db_instance_status().unwrap_or("unknown").to_string();
         if status == "available" {
             available += 1;

@@ -7,34 +7,43 @@ use crate::{
 };
 
 pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
-    let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
-        Ok(r) => r,
-        Err(err) => {
-            return VpcSummary {
-                vpc_count: 0,
-                subnet_count: 0,
-                status: ServiceStatus::from_sdk_error(&err),
-            };
+    let mut vpc_pages = app.aws.ec2.describe_vpcs().into_paginator().items().send();
+    let mut vpc_count = 0u32;
+    while let Some(item) = vpc_pages.next().await {
+        match item {
+            Ok(_) => vpc_count += 1,
+            Err(err) => {
+                return VpcSummary {
+                    vpc_count: 0,
+                    subnet_count: 0,
+                    status: ServiceStatus::from_sdk_error(&err),
+                };
+            }
         }
-    };
+    }
 
-    let vpc_count = vpcs_resp.vpcs().len() as u32;
-
-    // Subnets (count only)
-    let subnets_resp = match app.aws.ec2.describe_subnets().send().await {
-        Ok(r) => r,
-        Err(_) => {
-            // If subnets are denied but VPCs are allowed, keep status Ok and show 0.
-            // If you'd rather surface a warning, model subnet_status separately.
-            return VpcSummary {
-                vpc_count,
-                subnet_count: 0,
-                status: ServiceStatus::Ok,
-            };
+    // Subnets (count only). If subnets are denied but VPCs are allowed, keep
+    // status Ok and show 0.
+    let mut subnet_pages = app
+        .aws
+        .ec2
+        .describe_subnets()
+        .into_paginator()
+        .items()
+        .send();
+    let mut subnet_count = 0u32;
+    while let Some(item) = subnet_pages.next().await {
+        match item {
+            Ok(_) => subnet_count += 1,
+            Err(_) => {
+                return VpcSummary {
+                    vpc_count,
+                    subnet_count: 0,
+                    status: ServiceStatus::Ok,
+                };
+            }
         }
-    };
-
-    let subnet_count = subnets_resp.subnets().len() as u32;
+    }
 
     VpcSummary {
         vpc_count,
@@ -44,18 +53,34 @@ pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
 }
 
 pub async fn fetch_vpcs(app: &App) -> (Vec<VpcInfo>, ServiceStatus) {
-    let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
-        Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut vpc_pages = app.aws.ec2.describe_vpcs().into_paginator().items().send();
+    let mut vpcs = Vec::new();
+    while let Some(item) = vpc_pages.next().await {
+        match item {
+            Ok(v) => vpcs.push(v),
+            Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
+        }
+    }
 
-    // Pull all subnets once, then count per VPC (fast + simple for MVP)
-    let subnets_resp = app.aws.ec2.describe_subnets().send().await.ok();
-    let subnets = subnets_resp.as_ref().map(|r| r.subnets()).unwrap_or(&[]);
+    // Pull all subnets once (best effort), then count per VPC.
+    let mut subnets = Vec::new();
+    let mut subnet_pages = app
+        .aws
+        .ec2
+        .describe_subnets()
+        .into_paginator()
+        .items()
+        .send();
+    while let Some(item) = subnet_pages.next().await {
+        match item {
+            Ok(s) => subnets.push(s),
+            Err(_) => break,
+        }
+    }
 
     let mut out = Vec::new();
 
-    for v in vpcs_resp.vpcs() {
+    for v in &vpcs {
         let vpc_id = v.vpc_id().unwrap_or("-").to_string();
 
         let cidr = v.cidr_block().unwrap_or("-").to_string();

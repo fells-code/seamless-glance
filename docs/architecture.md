@@ -186,6 +186,7 @@ This is especially important for a triage tool because incorrect region context 
 The codebase uses a mix of strategies:
 
 - list fetchers return `(Vec<_>, ServiceStatus)`; the app stores the status in a companion `*_status` field and the view guards on it via `ui::views::status::render_unavailable` before drawing the table, so an access denial or throttle reads as such rather than as an empty list
+- list fetchers page through the full result set (`.into_paginator().items().send()`, or a manual next-token loop where the SDK has no generated paginator, such as `apigatewayv2::get_apis`), so large accounts are not silently truncated to the first page
 - cost fetchers return `(data, ServiceStatus)` too; `refresh_cost_data` composes a single `cost_status`, the cost overview and cost savings views guard on it, and only a successful fetch is written to the on-disk cost cache so a denied fetch is not persisted as a misleading $0 overview
 - account overview fans out with concurrent calls and composes summary status
 - SDK errors are classified centrally by `ServiceStatus::from_sdk_error`, which inspects the error code via `ProvideErrorMetadata` (recognizing `AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, and related authz codes) rather than substring-matching the display string
