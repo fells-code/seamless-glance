@@ -1,19 +1,16 @@
 use crate::app::App;
-use crate::aws::clients::{build_sdk_config, AwsClients};
+use crate::aws::clients::clients_for_region;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::service_status::ServiceStatus;
+use crate::resources::region_aggregate::fetch_all_regions;
 use aws_types::region::Region;
-use futures::future::join_all;
 
-async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
-    let sdk_config = build_sdk_config(region.clone(), profile).await;
-    AwsClients::new(&sdk_config)
-}
+const UNAVAILABLE_EVERYWHERE: &str = "RDS unavailable in all regions";
 
 async fn fetch_rds_for_region(
     region: Region,
     profile: Option<String>,
-) -> Result<(Vec<RdsInstanceInfo>, usize), ServiceStatus> {
+) -> Result<Vec<RdsInstanceInfo>, ServiceStatus> {
     let aws = clients_for_region(&region, profile.as_deref()).await;
 
     let mut pages = aws
@@ -24,7 +21,6 @@ async fn fetch_rds_for_region(
         .send();
 
     let mut instances = Vec::new();
-    let mut available = 0;
 
     while let Some(item) = pages.next().await {
         let db = match item {
@@ -33,9 +29,6 @@ async fn fetch_rds_for_region(
         };
 
         let status = db.db_instance_status().unwrap_or("unknown").to_string();
-        if status == "available" {
-            available += 1;
-        }
 
         instances.push(RdsInstanceInfo {
             identifier: db.db_instance_identifier().unwrap_or("unknown").to_string(),
@@ -48,94 +41,44 @@ async fn fetch_rds_for_region(
         });
     }
 
-    Ok((instances, available))
+    Ok(instances)
+}
+
+/// Instances reporting the `available` state, derived from the rows rather than
+/// tallied per region so the single-region and global paths agree.
+fn available_count(instances: &[RdsInstanceInfo]) -> usize {
+    instances
+        .iter()
+        .filter(|instance| instance.status == "available")
+        .count()
 }
 
 pub async fn fetch_rds(app: &App) -> (RdsSummary, Vec<RdsInstanceInfo>) {
-    if !app.is_global_region_selected() {
-        return match fetch_rds_for_region(app.current_region().clone(), app.current_profile.clone())
-            .await
-        {
-            Ok((instances, available)) => {
-                let total = instances.len();
-                (
-                    RdsSummary {
-                        status: ServiceStatus::Ok,
-                        total,
-                        available,
-                    },
-                    instances,
-                )
-            }
-            Err(status) => (
-                RdsSummary {
-                    status,
-                    total: 0,
-                    available: 0,
-                },
-                vec![],
-            ),
-        };
-    }
-
     let profile = app.current_profile.clone();
-    let futures = app
-        .regions
-        .iter()
-        .cloned()
-        .map(|region| fetch_rds_for_region(region, profile.clone()));
 
-    let results = join_all(futures).await;
-
-    let mut all_instances = Vec::new();
-    let mut total_available = 0usize;
-    let mut any_success = false;
-    let mut saw_access_denied = false;
-    let mut saw_unavailable_msg: Option<String> = None;
-
-    for result in results {
-        match result {
-            Ok((mut instances, available)) => {
-                any_success = true;
-                total_available += available;
-                all_instances.append(&mut instances);
-            }
-            Err(ServiceStatus::AccessDenied) => {
-                saw_access_denied = true;
-            }
-            Err(ServiceStatus::Unavailable(msg)) => {
-                if saw_unavailable_msg.is_none() {
-                    saw_unavailable_msg = Some(msg);
-                }
-            }
-            Err(_) => {}
+    let (mut instances, status) = if app.is_global_region_selected() {
+        fetch_all_regions(&app.regions, UNAVAILABLE_EVERYWHERE, move |region| {
+            fetch_rds_for_region(region, profile.clone())
+        })
+        .await
+    } else {
+        match fetch_rds_for_region(app.current_region().clone(), profile).await {
+            Ok(instances) => (instances, ServiceStatus::Ok),
+            Err(status) => (vec![], status),
         }
-    }
+    };
 
-    all_instances.sort_by(|a, b| {
+    instances.sort_by(|a, b| {
         a.region
             .cmp(&b.region)
             .then_with(|| a.identifier.cmp(&b.identifier))
     });
 
-    let summary_status = if any_success {
-        ServiceStatus::Ok
-    } else if saw_access_denied {
-        ServiceStatus::AccessDenied
-    } else {
-        ServiceStatus::Unavailable(
-            saw_unavailable_msg.unwrap_or_else(|| "RDS unavailable in all regions".to_string()),
-        )
+    let summary = RdsSummary {
+        status,
+        total: instances.len(),
+        available: available_count(&instances),
     };
 
-    let total = all_instances.len();
-
-    (
-        RdsSummary {
-            status: summary_status,
-            total,
-            available: total_available,
-        },
-        all_instances,
-    )
+    (summary, instances)
 }

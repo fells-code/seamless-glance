@@ -28,7 +28,7 @@ use crate::models::{AccountOverview, BudgetInfo, EcsClusterInfo, ServiceCostInsi
 pub enum RefreshUpdate {
     Phase(RefreshPhase),
     AccountOverview(Box<AccountOverview>),
-    Ec2(Vec<Ec2InstanceInfo>),
+    Ec2(Vec<Ec2InstanceInfo>, ServiceStatus),
     Lambda(Vec<LambdaFunctionInfo>, ServiceStatus),
     Apigateway(Vec<ApiGatewayInfo>, ServiceStatus),
     Sqs(Vec<SqsQueueInfo>, ServiceStatus),
@@ -81,7 +81,7 @@ impl RefreshUpdate {
     fn inventory_kind(&self) -> Option<InventoryKind> {
         Some(match self {
             RefreshUpdate::AccountOverview(_) => InventoryKind::AccountOverview,
-            RefreshUpdate::Ec2(_) => InventoryKind::Ec2,
+            RefreshUpdate::Ec2(..) => InventoryKind::Ec2,
             RefreshUpdate::Lambda(..) => InventoryKind::Lambda,
             RefreshUpdate::Apigateway(..) => InventoryKind::Apigateway,
             RefreshUpdate::Sqs(..) => InventoryKind::Sqs,
@@ -129,7 +129,7 @@ impl App {
                 // latency becomes the slowest single fetch, not their sum.
                 let (
                     (cw_summary, cw_alarms),
-                    ec2,
+                    (ec2, ec2_status),
                     (apis, apigw_status),
                     (secrets_summary, secrets),
                     (sgs, sg_status),
@@ -152,7 +152,7 @@ impl App {
                 );
 
                 let _ = tx.send(RefreshUpdate::CloudWatch(cw_summary, cw_alarms));
-                let _ = tx.send(RefreshUpdate::Ec2(ec2));
+                let _ = tx.send(RefreshUpdate::Ec2(ec2, ec2_status));
                 let _ = tx.send(RefreshUpdate::Apigateway(apis, apigw_status));
                 let _ = tx.send(RefreshUpdate::Secrets(secrets_summary, secrets));
                 let _ = tx.send(RefreshUpdate::SecurityGroups(sgs, sg_status));
@@ -178,7 +178,7 @@ impl App {
                 ])));
 
                 let (
-                    ec2,
+                    (ec2, ec2_status),
                     (apis, apigw_status),
                     (functions, lambda_status),
                     (target_groups, tg_status, load_balancers, lb_status),
@@ -189,7 +189,7 @@ impl App {
                     self.fetch_target_groups_and_load_balancers(),
                 );
 
-                let _ = tx.send(RefreshUpdate::Ec2(ec2));
+                let _ = tx.send(RefreshUpdate::Ec2(ec2, ec2_status));
                 let _ = tx.send(RefreshUpdate::Apigateway(apis, apigw_status));
                 let _ = tx.send(RefreshUpdate::Lambda(functions, lambda_status));
                 let _ = tx.send(RefreshUpdate::TargetGroups(target_groups, tg_status));
@@ -197,8 +197,8 @@ impl App {
             }
             ActiveView::Ec2 => {
                 phase(&tx, "EC2");
-                let instances = aws::ec2::fetch_instances(&self).await;
-                let _ = tx.send(RefreshUpdate::Ec2(instances));
+                let (instances, status) = aws::ec2::fetch_instances(&self).await;
+                let _ = tx.send(RefreshUpdate::Ec2(instances, status));
             }
             ActiveView::Lambda => {
                 phase(&tx, "Lambda");
@@ -370,7 +370,10 @@ impl App {
         match update {
             RefreshUpdate::Phase(phase) => self.refresh_phase = phase,
             RefreshUpdate::AccountOverview(overview) => self.account_overview = Some(*overview),
-            RefreshUpdate::Ec2(instances) => self.ec2_instances = instances,
+            RefreshUpdate::Ec2(instances, status) => {
+                self.ec2_instances = instances;
+                self.ec2_status = status;
+            }
             RefreshUpdate::Lambda(functions, status) => {
                 self.lambda_functions = functions;
                 self.lambda_status = status;
@@ -498,7 +501,7 @@ mod tests {
     fn payload_updates_land_on_the_matching_fields() {
         let mut app = test_app();
 
-        assert!(!app.apply_refresh_update(RefreshUpdate::Ec2(vec![])));
+        assert!(!app.apply_refresh_update(RefreshUpdate::Ec2(vec![], ServiceStatus::Ok)));
         app.apply_refresh_update(RefreshUpdate::Lambda(vec![], ServiceStatus::AccessDenied));
         assert!(matches!(app.lambda_status, ServiceStatus::AccessDenied));
 
@@ -509,7 +512,7 @@ mod tests {
     #[test]
     fn done_update_signals_completion() {
         let mut app = test_app();
-        assert!(!app.apply_refresh_update(RefreshUpdate::Ec2(vec![])));
+        assert!(!app.apply_refresh_update(RefreshUpdate::Ec2(vec![], ServiceStatus::Ok)));
         assert!(app.apply_refresh_update(RefreshUpdate::Done));
     }
 
@@ -546,7 +549,7 @@ mod tests {
 
         // With EC2 also fetched (through the real apply path, which stamps
         // freshness), the EC2 view is served from cache.
-        app.apply_refresh_update(RefreshUpdate::Ec2(vec![]));
+        app.apply_refresh_update(RefreshUpdate::Ec2(vec![], ServiceStatus::Ok));
         assert!(app.active_view_is_fresh());
 
         // A different view whose inventory was never fetched still refetches.

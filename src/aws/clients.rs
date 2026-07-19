@@ -53,6 +53,14 @@ pub async fn build_sdk_config(region: Region, profile: Option<&str>) -> SdkConfi
     loader.load().await
 }
 
+/// Build the client bundle for one region, honoring the active profile. Global
+/// (multi-region) fetches call this per region; every service shares this one
+/// definition so a region fan-out cannot drift from the central config policy.
+pub async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
+    let sdk_config = build_sdk_config(region.clone(), profile).await;
+    AwsClients::new(&sdk_config)
+}
+
 #[derive(Clone)]
 pub struct AwsClients {
     pub ec2: Ec2Client,

@@ -61,7 +61,7 @@ This layer should remain primarily factual. As the product shifts toward triage,
 Representative files:
 
 - [`src/aws/account.rs`](src/aws/account.rs): account overview fan-out
-- [`src/aws/clients.rs`](src/aws/clients.rs): shared SDK client bundle and `build_sdk_config`, the single region/profile-aware config builder. Every SDK config in the app is built here, so it is also where the retry and timeout policy lives: adaptive retry (client-side rate limiting that backs off when AWS throttles) plus connect, per-attempt, and overall operation timeouts, which matter because the app fans out across every enabled region and issues a describe per resource
+- [`src/aws/clients.rs`](src/aws/clients.rs): shared SDK client bundle, `build_sdk_config` (the single region/profile-aware config builder), and `clients_for_region`, the one definition global fan-outs use to build a per-region bundle. Every SDK config in the app is built here, so it is also where the retry and timeout policy lives: adaptive retry (client-side rate limiting that backs off when AWS throttles) plus connect, per-attempt, and overall operation timeouts, which matter because the app fans out across every enabled region and issues a describe per resource
 - [`src/aws/profiles.rs`](src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
 - [`src/aws/cost.rs`](src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
 - [`src/aws/ec2.rs`](src/aws/ec2.rs): EC2 inventory and global aggregation
@@ -94,7 +94,7 @@ Owns presentation concerns:
 
 Owns helpers shared across domains:
 
-- multi-region aggregation
+- multi-region aggregation: `region_aggregate::fetch_all_regions` is the single status-preserving fan-out. EC2, RDS, and Lambda all run their global fetch through it, so one region answering yields `Ok` with partial data, and when nothing answers a denial outranks a generic failure
 - SSH command context construction
 
 This area is a good home for future shared action helpers such as CLI command generation or resource-specific operator pivots.

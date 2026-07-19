@@ -133,6 +133,7 @@ pub struct App {
 
     // EC2
     pub ec2_instances: Vec<Ec2InstanceInfo>,
+    pub ec2_status: ServiceStatus,
 
     // Cloudwatch
     pub cloudwatch_summary: CloudWatchSummary,
@@ -208,6 +209,7 @@ impl App {
             },
             cloudwatch_alarms: vec![],
             ec2_instances: vec![],
+            ec2_status: ServiceStatus::Unavailable("Not loaded".into()),
             ecs_clusters: vec![],
 
             secrets_summary: SecretsSummary {
@@ -1746,6 +1748,7 @@ impl App {
         self.findings.clear();
 
         let not_loaded = ServiceStatus::Unavailable("Not loaded".into());
+        self.ec2_status = not_loaded.clone();
         self.lambda_status = not_loaded.clone();
         self.apigateway_status = not_loaded.clone();
         self.sqs_status = not_loaded.clone();
