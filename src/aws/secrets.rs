@@ -17,16 +17,9 @@ pub async fn fetch_secrets(app: &App) -> (SecretsSummary, Vec<SecretInfo>) {
     let resp = match app.aws.sm.list_secrets().send().await {
         Ok(r) => r,
         Err(err) => {
-            let msg = err.to_string();
-            let status = if msg.contains("AccessDenied") {
-                ServiceStatus::AccessDenied
-            } else {
-                ServiceStatus::Unavailable(msg)
-            };
-
             return (
                 SecretsSummary {
-                    status,
+                    status: ServiceStatus::from_sdk_error(&err),
                     total: 0,
                     rotation_disabled: 0,
                 },

@@ -10,19 +10,10 @@ pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
     let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
         Ok(r) => r,
         Err(err) => {
-            let msg = err.to_string();
-            return if msg.contains("AccessDenied") {
-                VpcSummary {
-                    vpc_count: 0,
-                    subnet_count: 0,
-                    status: ServiceStatus::AccessDenied,
-                }
-            } else {
-                VpcSummary {
-                    vpc_count: 0,
-                    subnet_count: 0,
-                    status: ServiceStatus::Unavailable(msg),
-                }
+            return VpcSummary {
+                vpc_count: 0,
+                subnet_count: 0,
+                status: ServiceStatus::from_sdk_error(&err),
             };
         }
     };
@@ -55,7 +46,7 @@ pub async fn fetch_vpc_summary(app: &App) -> VpcSummary {
 pub async fn fetch_vpcs(app: &App) -> (Vec<VpcInfo>, ServiceStatus) {
     let vpcs_resp = match app.aws.ec2.describe_vpcs().send().await {
         Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
+        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
     };
 
     // Pull all subnets once, then count per VPC (fast + simple for MVP)

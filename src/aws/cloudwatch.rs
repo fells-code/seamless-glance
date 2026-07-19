@@ -6,16 +6,9 @@ pub async fn fetch_cloudwatch(app: &App) -> (CloudWatchSummary, Vec<CloudWatchAl
     let resp = match app.aws.cw.describe_alarms().send().await {
         Ok(r) => r,
         Err(err) => {
-            let msg = err.to_string();
-            let status = if msg.contains("AccessDenied") {
-                ServiceStatus::AccessDenied
-            } else {
-                ServiceStatus::Unavailable(msg)
-            };
-
             return (
                 CloudWatchSummary {
-                    status,
+                    status: ServiceStatus::from_sdk_error(&err),
                     total_alarms: 0,
                     alarms_in_alarm: 0,
                 },

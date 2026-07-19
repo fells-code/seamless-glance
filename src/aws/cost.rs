@@ -115,7 +115,7 @@ pub async fn fetch_service_cost_insights(app: &App) -> (Vec<ServiceCostInsight>,
         .await
     {
         Ok(response) => response,
-        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
+        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
     };
 
     let mut usage_by_service = BTreeMap::<String, Vec<UsageTypeCost>>::new();
@@ -196,12 +196,7 @@ pub async fn fetch_last_6_month_costs(app: &App) -> (Vec<f64>, ServiceStatus) {
         .await
     {
         Ok(response) => response,
-        Err(err) => {
-            return (
-                vec![0.0; 6],
-                ServiceStatus::from_error_message(err.to_string()),
-            )
-        }
+        Err(err) => return (vec![0.0; 6], ServiceStatus::from_sdk_error(&err)),
     };
 
     let mut values = response
@@ -240,10 +235,7 @@ pub async fn fetch_budget(app: &App) -> (BudgetInfo, ServiceStatus) {
     {
         Ok(response) => response,
         Err(err) => {
-            return (
-                BudgetInfo::default(),
-                ServiceStatus::from_error_message(err.to_string()),
-            );
+            return (BudgetInfo::default(), ServiceStatus::from_sdk_error(&err));
         }
     };
 

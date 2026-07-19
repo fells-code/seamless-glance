@@ -11,19 +11,10 @@ pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
     let resp = match app.aws.sqs.list_queues().send().await {
         Ok(r) => r,
         Err(err) => {
-            let msg = err.to_string();
-            return if msg.contains("AccessDenied") {
-                SqsSummary {
-                    queue_count: 0,
-                    dlq_count: 0,
-                    status: ServiceStatus::AccessDenied,
-                }
-            } else {
-                SqsSummary {
-                    queue_count: 0,
-                    dlq_count: 0,
-                    status: ServiceStatus::Unavailable(msg),
-                }
+            return SqsSummary {
+                queue_count: 0,
+                dlq_count: 0,
+                status: ServiceStatus::from_sdk_error(&err),
             };
         }
     };
@@ -66,7 +57,7 @@ pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
 pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
     let resp = match app.aws.sqs.list_queues().send().await {
         Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
+        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
     };
 
     let mut queues = vec![];

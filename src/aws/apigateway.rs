@@ -18,14 +18,11 @@ pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
         Ok(resp) => {
             rest_count = resp.items().len() as u32;
         }
-        Err(err) => {
-            let msg = err.to_string();
-            if msg.contains("AccessDenied") {
-                saw_access_denied = true;
-            } else {
-                error_message = Some(msg);
-            }
-        }
+        Err(err) => match ServiceStatus::from_sdk_error(&err) {
+            ServiceStatus::AccessDenied => saw_access_denied = true,
+            ServiceStatus::Unavailable(msg) => error_message = Some(msg),
+            ServiceStatus::Ok => {}
+        },
     }
 
     // --- HTTP APIs ---
@@ -33,14 +30,11 @@ pub async fn fetch_apigateway_summary(app: &App) -> ApiGatewaySummary {
         Ok(resp) => {
             http_count = resp.items().len() as u32;
         }
-        Err(err) => {
-            let msg = err.to_string();
-            if msg.contains("AccessDenied") {
-                saw_access_denied = true;
-            } else {
-                error_message = Some(msg);
-            }
-        }
+        Err(err) => match ServiceStatus::from_sdk_error(&err) {
+            ServiceStatus::AccessDenied => saw_access_denied = true,
+            ServiceStatus::Unavailable(msg) => error_message = Some(msg),
+            ServiceStatus::Ok => {}
+        },
     }
 
     let status = if saw_access_denied {
@@ -78,7 +72,7 @@ pub async fn fetch_apigateway_apis(app: &App) -> (Vec<ApiGatewayInfo>, ServiceSt
                 });
             }
         }
-        Err(err) => match ServiceStatus::from_error_message(err.to_string()) {
+        Err(err) => match ServiceStatus::from_sdk_error(&err) {
             ServiceStatus::AccessDenied => saw_access_denied = true,
             ServiceStatus::Unavailable(msg) => error_message = Some(msg),
             ServiceStatus::Ok => {}
@@ -102,7 +96,7 @@ pub async fn fetch_apigateway_apis(app: &App) -> (Vec<ApiGatewayInfo>, ServiceSt
                 });
             }
         }
-        Err(err) => match ServiceStatus::from_error_message(err.to_string()) {
+        Err(err) => match ServiceStatus::from_sdk_error(&err) {
             ServiceStatus::AccessDenied => saw_access_denied = true,
             ServiceStatus::Unavailable(msg) => error_message = Some(msg),
             ServiceStatus::Ok => {}

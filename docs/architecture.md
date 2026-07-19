@@ -184,7 +184,7 @@ The codebase uses a mix of strategies:
 - list fetchers return `(Vec<_>, ServiceStatus)`; the app stores the status in a companion `*_status` field and the view guards on it via `ui::views::status::render_unavailable` before drawing the table, so an access denial or throttle reads as such rather than as an empty list
 - cost fetchers return `(data, ServiceStatus)` too; `refresh_cost_data` composes a single `cost_status`, the cost overview and cost savings views guard on it, and only a successful fetch is written to the on-disk cost cache so a denied fetch is not persisted as a misleading $0 overview
 - account overview fans out with concurrent calls and composes summary status
-- SDK error strings are classified centrally by `ServiceStatus::from_error_message`
+- SDK errors are classified centrally by `ServiceStatus::from_sdk_error`, which inspects the error code via `ProvideErrorMetadata` (recognizing `AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, and related authz codes) rather than substring-matching the display string
 
 Contributors adding a new list view should follow the same shape: carry a `ServiceStatus` out of the fetcher, store it alongside the data, and call `render_unavailable` at the top of the view so AWS failures never render as misleading empty-state success UIs.
 
