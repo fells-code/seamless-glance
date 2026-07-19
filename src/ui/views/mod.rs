@@ -8,6 +8,7 @@ pub mod ec2;
 pub mod ecs;
 pub mod findings;
 pub mod lambda;
+pub mod list_table;
 pub mod load_balancers;
 pub mod rds;
 pub mod secrets;

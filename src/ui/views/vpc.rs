@@ -1,11 +1,12 @@
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
 use crate::app::App;
+use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
 
 pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(frame, area, "VPC", &app.vpc_status, &app.theme)
@@ -13,38 +14,34 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    let total_rows = app.vpcs.len();
-    if total_rows == 0 {
-        app.selected_row = 0;
-        app.scroll_offset = 0;
-    }
+    let theme = app.theme;
 
-    if total_rows > 0 {
-        app.selected_row = app.selected_row.min(total_rows - 1);
-    }
-
-    let visible_height = area.height.saturating_sub(3) as usize; // header + borders
-
-    // Keep selected row in view
-    if app.selected_row < app.scroll_offset as usize {
-        app.scroll_offset = app.selected_row as u16;
-    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
-        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
-    }
-
-    let rows: Vec<Row> = app
-        .vpcs
-        .iter()
-        .enumerate()
-        .skip(app.scroll_offset as usize)
-        .take(visible_height)
-        .map(|(i, v)| {
-            let style = if i == app.selected_row {
-                Style::default().fg(app.theme.highlight)
-            } else if v.is_default {
-                Style::default().fg(app.theme.primary)
+    render_list_table(
+        frame,
+        area,
+        ListSelection {
+            selected_row: &mut app.selected_row,
+            scroll_offset: &mut app.scroll_offset,
+        },
+        &theme,
+        ListTable {
+            title: "VPCs",
+            headers: &["VPC ID", "CIDR", "State", "Default", "Subnets"],
+            widths: &[
+                Constraint::Percentage(28),
+                Constraint::Percentage(22),
+                Constraint::Percentage(12),
+                Constraint::Percentage(10),
+                Constraint::Percentage(10),
+            ],
+            empty_message: "No VPCs found in this region.",
+        },
+        &app.vpcs,
+        |v| {
+            let style = if v.is_default {
+                Style::default().fg(theme.primary)
             } else {
-                Style::default().fg(app.theme.text)
+                Style::default().fg(theme.text)
             };
 
             Row::new(vec![
@@ -55,29 +52,6 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(v.subnet_count.to_string()),
             ])
             .style(style)
-        })
-        .collect();
-
-    let table = Table::new(
-        rows,
-        &[
-            Constraint::Percentage(28),
-            Constraint::Percentage(22),
-            Constraint::Percentage(12),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-        ],
-    )
-    .header(
-        Row::new(vec!["VPC ID", "CIDR", "State", "Default", "Subnets"])
-            .style(Style::default().fg(app.theme.accent)),
-    )
-    .block(
-        Block::default()
-            .title("VPCs")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.primary)),
+        },
     );
-
-    frame.render_widget(table, area);
 }
