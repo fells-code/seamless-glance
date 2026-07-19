@@ -34,10 +34,28 @@ fn account_health_label(app: &App) -> (&'static str, ratatui::style::Style) {
     }
 }
 
+fn relative_age(seconds: i64) -> String {
+    if seconds < 5 {
+        "just now".into()
+    } else if seconds < 60 {
+        format!("{seconds}s ago")
+    } else if seconds < 3600 {
+        format!("{}m ago", seconds / 60)
+    } else {
+        format!("{}h ago", seconds / 3600)
+    }
+}
+
 fn refresh_text(app: &App) -> String {
     let refresh = app
         .last_refresh
-        .map(|t| t.format("%H:%M:%S UTC").to_string())
+        .map(|t| {
+            let age = chrono::Utc::now()
+                .signed_duration_since(t)
+                .num_seconds()
+                .max(0);
+            format!("{} ({})", t.format("%H:%M:%S UTC"), relative_age(age))
+        })
         .unwrap_or_else(|| "—".into());
 
     match &app.refresh_phase {
@@ -114,4 +132,18 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         );
 
     frame.render_widget(header, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::relative_age;
+
+    #[test]
+    fn relative_age_reads_naturally() {
+        assert_eq!(relative_age(0), "just now");
+        assert_eq!(relative_age(4), "just now");
+        assert_eq!(relative_age(30), "30s ago");
+        assert_eq!(relative_age(90), "1m ago");
+        assert_eq!(relative_age(3600), "1h ago");
+    }
 }
