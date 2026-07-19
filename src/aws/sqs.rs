@@ -1,53 +1,72 @@
 use crate::{
     app::App,
+    aws::DESCRIBE_CONCURRENCY,
     models::{
         service_status::ServiceStatus,
         sqs::{SqsQueueInfo, SqsSummary},
     },
 };
 use aws_sdk_sqs::types::QueueAttributeName;
+use futures::StreamExt;
 
-pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
+/// Page through every queue URL. Returns the list, or the classified status when
+/// the list call itself fails.
+async fn list_queue_urls(app: &App) -> Result<Vec<String>, ServiceStatus> {
     let mut pages = app.aws.sqs.list_queues().into_paginator().items().send();
-
-    let mut queue_count = 0u32;
-    let mut dlq_count = 0;
+    let mut urls = Vec::new();
 
     while let Some(item) = pages.next().await {
-        let url = match item {
-            Ok(url) => url,
-            Err(err) => {
-                return SqsSummary {
-                    queue_count: 0,
-                    dlq_count: 0,
-                    status: ServiceStatus::from_sdk_error(&err),
-                };
-            }
-        };
-
-        queue_count += 1;
-
-        let attrs = match app
-            .aws
-            .sqs
-            .get_queue_attributes()
-            .queue_url(&url)
-            .attribute_names(QueueAttributeName::RedrivePolicy)
-            .send()
-            .await
-        {
-            Ok(a) => a,
-            Err(_) => continue,
-        };
-
-        if attrs
-            .attributes()
-            .map(|m| m.contains_key(&QueueAttributeName::RedrivePolicy))
-            .unwrap_or(false)
-        {
-            dlq_count += 1;
+        match item {
+            Ok(url) => urls.push(url),
+            Err(err) => return Err(ServiceStatus::from_sdk_error(&err)),
         }
     }
+
+    Ok(urls)
+}
+
+pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
+    let urls = match list_queue_urls(app).await {
+        Ok(urls) => urls,
+        Err(status) => {
+            return SqsSummary {
+                queue_count: 0,
+                dlq_count: 0,
+                status,
+            };
+        }
+    };
+
+    let queue_count = urls.len() as u32;
+
+    // Attributes are a separate call per queue, so run them with bounded
+    // concurrency instead of one round trip at a time.
+    let dlq_count = futures::stream::iter(urls)
+        .map(|url| async move {
+            let Ok(attrs) = app
+                .aws
+                .sqs
+                .get_queue_attributes()
+                .queue_url(&url)
+                .attribute_names(QueueAttributeName::RedrivePolicy)
+                .send()
+                .await
+            else {
+                return false;
+            };
+
+            attrs
+                .attributes()
+                .map(|m| m.contains_key(&QueueAttributeName::RedrivePolicy))
+                .unwrap_or(false)
+        })
+        .buffered(DESCRIBE_CONCURRENCY)
+        .filter(|has_dlq| {
+            let has_dlq = *has_dlq;
+            async move { has_dlq }
+        })
+        .count()
+        .await as u32;
 
     SqsSummary {
         queue_count,
@@ -57,61 +76,57 @@ pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
 }
 
 pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
-    let mut pages = app.aws.sqs.list_queues().into_paginator().items().send();
+    let urls = match list_queue_urls(app).await {
+        Ok(urls) => urls,
+        Err(status) => return (vec![], status),
+    };
 
-    let mut queues = vec![];
+    // Attributes are a separate call per queue, so run them with bounded
+    // concurrency instead of one round trip at a time.
+    let queues = futures::stream::iter(urls)
+        .map(|url| async move {
+            let attrs = app
+                .aws
+                .sqs
+                .get_queue_attributes()
+                .queue_url(&url)
+                .attribute_names(QueueAttributeName::ApproximateNumberOfMessages)
+                .attribute_names(QueueAttributeName::ApproximateNumberOfMessagesNotVisible)
+                .attribute_names(QueueAttributeName::RedrivePolicy)
+                .send()
+                .await
+                .ok()?;
 
-    while let Some(item) = pages.next().await {
-        let url = match item {
-            Ok(url) => url,
-            Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
-        };
+            let map = attrs.attributes()?;
 
-        let attrs = match app
-            .aws
-            .sqs
-            .get_queue_attributes()
-            .queue_url(&url)
-            .attribute_names(QueueAttributeName::ApproximateNumberOfMessages)
-            .attribute_names(QueueAttributeName::ApproximateNumberOfMessagesNotVisible)
-            .attribute_names(QueueAttributeName::RedrivePolicy)
-            .send()
-            .await
-        {
-            Ok(a) => a,
-            Err(_) => continue,
-        };
+            let name = url.rsplit('/').next().unwrap_or("unknown").to_string();
+            let is_fifo = name.ends_with(".fifo");
 
-        let name = url.rsplit('/').next().unwrap_or("unknown").to_string();
+            let messages_available = map
+                .get(&QueueAttributeName::ApproximateNumberOfMessages)
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
 
-        let is_fifo = name.ends_with(".fifo");
+            let messages_in_flight = map
+                .get(&QueueAttributeName::ApproximateNumberOfMessagesNotVisible)
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
 
-        let map = match attrs.attributes() {
-            Some(m) => m,
-            None => continue,
-        };
+            let has_dlq = map.contains_key(&QueueAttributeName::RedrivePolicy);
 
-        let messages_available = map
-            .get(&QueueAttributeName::ApproximateNumberOfMessages)
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0);
-
-        let messages_in_flight = map
-            .get(&QueueAttributeName::ApproximateNumberOfMessagesNotVisible)
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0);
-
-        let has_dlq = map.contains_key(&QueueAttributeName::RedrivePolicy);
-
-        queues.push(SqsQueueInfo {
-            name,
-            queue_url: url.to_string(),
-            is_fifo,
-            messages_available,
-            messages_in_flight,
-            has_dlq,
-        });
-    }
+            Some(SqsQueueInfo {
+                name,
+                queue_url: url.clone(),
+                is_fifo,
+                messages_available,
+                messages_in_flight,
+                has_dlq,
+            })
+        })
+        .buffered(DESCRIBE_CONCURRENCY)
+        .filter_map(|queue| async move { queue })
+        .collect()
+        .await;
 
     (queues, ServiceStatus::Ok)
 }
