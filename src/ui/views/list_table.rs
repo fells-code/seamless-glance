@@ -205,6 +205,22 @@ mod tests {
     }
 
     #[test]
+    fn a_shrinking_list_cannot_leave_the_selection_out_of_bounds() {
+        // Select deep into a long list, then render a much shorter one, the way
+        // a refresh that returns fewer rows would.
+        let (_, selected, _) = draw(&rows(30), 27, 20, 10);
+        assert_eq!(selected, 27);
+
+        let (text, selected, offset) = draw(&rows(4), 27, 20, 10);
+        assert_eq!(selected, 3, "selection clamps to the last row that exists");
+        assert!(
+            (offset as usize) < 4,
+            "the window cannot sit past the end of the list"
+        );
+        assert!(text.contains("row-3"));
+    }
+
+    #[test]
     fn scrolls_back_up_when_the_selection_moves_above_the_window() {
         let (text, _, offset) = draw(&rows(20), 2, 11, 8);
         assert_eq!(offset, 2, "window follows the selection upward");

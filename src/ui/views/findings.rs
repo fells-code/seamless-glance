@@ -70,7 +70,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App) {
-    let finding = &app.findings[app.selected_row];
+    // Indexing here would panic if the selection ever outran the list, so read
+    // it fallibly and bail rather than trusting an upstream clamp.
+    let Some(finding) = app.findings.get(app.selected_row) else {
+        return;
+    };
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(5), Constraint::Min(0)])
