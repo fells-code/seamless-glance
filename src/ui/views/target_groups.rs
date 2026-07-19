@@ -7,6 +7,16 @@ use ratatui::{
 };
 
 pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(
+        frame,
+        area,
+        "Target Groups",
+        &app.target_groups_status,
+        &app.theme,
+    ) {
+        return;
+    }
+
     let total_rows = app.target_groups.len();
     if total_rows == 0 {
         app.selected_row = 0;

@@ -8,6 +8,11 @@ use ratatui::{
 use crate::app::App;
 
 pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
+    if crate::ui::views::status::render_unavailable(frame, area, "SQS", &app.sqs_status, &app.theme)
+    {
+        return;
+    }
+
     let total_rows = app.sqs_queues_data.len();
     if total_rows == 0 {
         app.selected_row = 0;

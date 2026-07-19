@@ -181,11 +181,11 @@ This is especially important for a triage tool because incorrect region context 
 
 The codebase uses a mix of strategies:
 
-- some views convert permission problems into `ServiceStatus`
-- some fetchers log errors and return empty collections
+- list fetchers return `(Vec<_>, ServiceStatus)`; the app stores the status in a companion `*_status` field and the view guards on it via `ui::views::status::render_unavailable` before drawing the table, so an access denial or throttle reads as such rather than as an empty list
 - account overview fans out with concurrent calls and composes summary status
+- SDK error strings are classified centrally by `ServiceStatus::from_error_message`
 
-This is workable, but it means contributors should be careful not to turn AWS failures into misleading empty-state success UIs.
+Contributors adding a new list view should follow the same shape: carry a `ServiceStatus` out of the fetcher, store it alongside the data, and call `render_unavailable` at the top of the view so AWS failures never render as misleading empty-state success UIs.
 
 ## Extension Pattern
 

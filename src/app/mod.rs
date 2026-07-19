@@ -100,15 +100,19 @@ pub struct App {
 
     // Lambda
     pub lambda_functions: Vec<LambdaFunctionInfo>,
+    pub lambda_status: ServiceStatus,
 
     // APIGW
     pub apigateway_apis: Vec<ApiGatewayInfo>,
+    pub apigateway_status: ServiceStatus,
 
     // SQS
     pub sqs_queues_data: Vec<SqsQueueInfo>,
+    pub sqs_status: ServiceStatus,
 
     // VPC
     pub vpcs: Vec<VpcInfo>,
+    pub vpc_status: ServiceStatus,
 
     // EC2
     pub ec2_instances: Vec<Ec2InstanceInfo>,
@@ -127,12 +131,15 @@ pub struct App {
 
     // Load Balancers
     pub load_balancers: Vec<LoadBalancerInfo>,
+    pub load_balancers_status: ServiceStatus,
 
     // Target Groups
     pub target_groups: Vec<TargetGroupInfo>,
+    pub target_groups_status: ServiceStatus,
 
     // Security Groups
     pub security_groups: Vec<SecurityGroupInfo>,
+    pub security_groups_status: ServiceStatus,
 }
 
 impl App {
@@ -169,9 +176,13 @@ impl App {
             theme_name: ThemeName::Autumn,
             findings: vec![],
             lambda_functions: vec![],
+            lambda_status: ServiceStatus::Unavailable("Not loaded".into()),
             apigateway_apis: vec![],
+            apigateway_status: ServiceStatus::Unavailable("Not loaded".into()),
             sqs_queues_data: vec![],
+            sqs_status: ServiceStatus::Unavailable("Not loaded".into()),
             vpcs: vec![],
+            vpc_status: ServiceStatus::Unavailable("Not loaded".into()),
             cloudwatch_summary: CloudWatchSummary {
                 status: ServiceStatus::Unavailable("Not loaded".into()),
                 total_alarms: 0,
@@ -189,6 +200,7 @@ impl App {
             secrets: vec![],
 
             load_balancers: vec![],
+            load_balancers_status: ServiceStatus::Unavailable("Not loaded".into()),
 
             rds_summary: RdsSummary {
                 status: ServiceStatus::Unavailable("Not loaded".into()),
@@ -205,7 +217,9 @@ impl App {
             show_help: false,
 
             target_groups: vec![],
+            target_groups_status: ServiceStatus::Unavailable("Not loaded".into()),
             security_groups: vec![],
+            security_groups_status: ServiceStatus::Unavailable("Not loaded".into()),
         }
     }
 
@@ -1646,6 +1660,48 @@ impl App {
         self.trigger_refresh();
     }
 
+    async fn load_lambda(&mut self) {
+        let (functions, status) = aws::lambda::fetch_lambda_functions(self).await;
+        self.lambda_functions = functions;
+        self.lambda_status = status;
+    }
+
+    async fn load_apigateway(&mut self) {
+        let (apis, status) = aws::apigateway::fetch_apigateway_apis(self).await;
+        self.apigateway_apis = apis;
+        self.apigateway_status = status;
+    }
+
+    async fn load_sqs(&mut self) {
+        let (queues, status) = aws::sqs::fetch_sqs_queues(self).await;
+        self.sqs_queues_data = queues;
+        self.sqs_status = status;
+    }
+
+    async fn load_vpcs(&mut self) {
+        let (vpcs, status) = aws::vpc::fetch_vpcs(self).await;
+        self.vpcs = vpcs;
+        self.vpc_status = status;
+    }
+
+    async fn load_load_balancers(&mut self) {
+        let (load_balancers, status) = aws::elb::fetch_load_balancers(self).await;
+        self.load_balancers = load_balancers;
+        self.load_balancers_status = status;
+    }
+
+    async fn load_target_groups(&mut self) {
+        let (target_groups, status) = aws::target_group::fetch_target_groups(self).await;
+        self.target_groups = target_groups;
+        self.target_groups_status = status;
+    }
+
+    async fn load_security_groups(&mut self) {
+        let (security_groups, status) = aws::security_group::fetch_security_groups(self).await;
+        self.security_groups = security_groups;
+        self.security_groups_status = status;
+    }
+
     pub async fn refresh_active(&mut self) {
         self.refresh_phase = RefreshPhase::Overview;
         self.account_overview = None;
@@ -1673,20 +1729,20 @@ impl App {
                 self.cloudwatch_summary = summary;
                 self.cloudwatch_alarms = alarms;
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
-                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
+                self.load_apigateway().await;
                 let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
                 self.secrets_summary = summary;
                 self.secrets = secrets;
-                self.security_groups = aws::security_group::fetch_security_groups(self).await;
-                self.target_groups = aws::target_group::fetch_target_groups(self).await;
-                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+                self.load_security_groups().await;
+                self.load_target_groups().await;
+                self.load_load_balancers().await;
                 aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
-                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
+                self.load_sqs().await;
                 let (summary, instances) = aws::rds::fetch_rds(self).await;
                 self.rds_summary = summary;
                 self.rds_instances = instances;
-                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
-                self.vpcs = aws::vpc::fetch_vpcs(self).await;
+                self.load_lambda().await;
+                self.load_vpcs().await;
             }
             ActiveView::CostSavings => {
                 self.refresh_phase = RefreshPhase::Services(vec![
@@ -1699,10 +1755,10 @@ impl App {
                 ]);
                 self.refresh_cost_data(true).await;
                 self.ec2_instances = aws::ec2::fetch_instances(self).await;
-                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
-                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
-                self.target_groups = aws::target_group::fetch_target_groups(self).await;
-                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+                self.load_apigateway().await;
+                self.load_lambda().await;
+                self.load_target_groups().await;
+                self.load_load_balancers().await;
                 aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
             }
             ActiveView::Ec2 => {
@@ -1712,7 +1768,7 @@ impl App {
 
             ActiveView::Lambda => {
                 self.refresh_phase = RefreshPhase::Services(vec!["Lambda"]);
-                self.lambda_functions = aws::lambda::fetch_lambda_functions(self).await;
+                self.load_lambda().await;
             }
 
             ActiveView::CloudWatch => {
@@ -1724,17 +1780,17 @@ impl App {
 
             ActiveView::Vpc => {
                 self.refresh_phase = RefreshPhase::Services(vec!["VPC"]);
-                self.vpcs = aws::vpc::fetch_vpcs(self).await;
+                self.load_vpcs().await;
             }
 
             ActiveView::Sqs => {
                 self.refresh_phase = RefreshPhase::Services(vec!["SQS"]);
-                self.sqs_queues_data = aws::sqs::fetch_sqs_queues(self).await;
+                self.load_sqs().await;
             }
 
             ActiveView::Apigateway => {
                 self.refresh_phase = RefreshPhase::Services(vec!["API Gateway"]);
-                self.apigateway_apis = aws::apigateway::fetch_apigateway_apis(self).await;
+                self.load_apigateway().await;
             }
 
             ActiveView::Ecs => {
@@ -1759,18 +1815,18 @@ impl App {
             ActiveView::LoadBalancers => {
                 self.refresh_phase =
                     RefreshPhase::Services(vec!["Load Balancers", "Target Groups"]);
-                self.target_groups = aws::target_group::fetch_target_groups(self).await;
-                self.load_balancers = aws::elb::fetch_load_balancers(self).await;
+                self.load_target_groups().await;
+                self.load_load_balancers().await;
                 aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
             }
 
             ActiveView::TargetGroups => {
                 self.refresh_phase = RefreshPhase::Services(vec!["Target Groups"]);
-                self.target_groups = aws::target_group::fetch_target_groups(self).await;
+                self.load_target_groups().await;
             }
 
             ActiveView::SecurityGroups => {
-                self.security_groups = aws::security_group::fetch_security_groups(self).await;
+                self.load_security_groups().await;
             }
 
             // Views with no region-scoped data

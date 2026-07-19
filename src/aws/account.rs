@@ -72,6 +72,10 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
     let ecs_clusters_count = ecs_clusters.len() as u32;
     let ecs_services_count: u32 = ecs_clusters.iter().map(|c| c.active_services as u32).sum();
 
+    // The account overview only needs the target-group list here; the fetch
+    // status is surfaced in the dedicated Target Groups view.
+    let (target_groups, _) = target_groups;
+
     let unhealthy = target_groups
         .iter()
         .filter(|tg| tg.unhealthy_targets > 0)

@@ -53,9 +53,9 @@ async fn fetch_lambda_for_region(
     Ok(functions)
 }
 
-pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
+pub async fn fetch_lambda_functions(app: &App) -> (Vec<LambdaFunctionInfo>, ServiceStatus) {
     let profile = app.current_profile.clone();
-    let mut functions = if app.is_global_region_selected() {
+    let (mut functions, status) = if app.is_global_region_selected() {
         let region_profile = profile.clone();
         let futures = app
             .regions
@@ -66,30 +66,48 @@ pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
         let results = join_all(futures).await;
 
         let mut all = Vec::new();
+        let mut any_success = false;
+        let mut saw_access_denied = false;
+        let mut saw_unavailable_msg: Option<String> = None;
 
         for result in results {
             match result {
-                Ok(mut funcs) => all.append(&mut funcs),
-                Err(ServiceStatus::AccessDenied) => {
-                    eprintln!("Access denied to Lambda in one region");
+                Ok(mut funcs) => {
+                    any_success = true;
+                    all.append(&mut funcs);
                 }
+                Err(ServiceStatus::AccessDenied) => saw_access_denied = true,
                 Err(ServiceStatus::Unavailable(msg)) => {
-                    eprintln!("Lambda unavailable in one region: {}", msg);
+                    if saw_unavailable_msg.is_none() {
+                        saw_unavailable_msg = Some(msg);
+                    }
                 }
                 Err(_) => {}
             }
         }
 
-        all
+        let status = if any_success {
+            ServiceStatus::Ok
+        } else if saw_access_denied {
+            ServiceStatus::AccessDenied
+        } else {
+            ServiceStatus::Unavailable(
+                saw_unavailable_msg
+                    .unwrap_or_else(|| "Lambda unavailable in all regions".to_string()),
+            )
+        };
+
+        (all, status)
     } else {
-        fetch_lambda_for_region(app.current_region().clone(), profile)
-            .await
-            .unwrap_or_default()
+        match fetch_lambda_for_region(app.current_region().clone(), profile).await {
+            Ok(funcs) => (funcs, ServiceStatus::Ok),
+            Err(status) => (vec![], status),
+        }
     };
 
     functions.sort_by(|a, b| a.region.cmp(&b.region).then_with(|| a.name.cmp(&b.name)));
 
-    functions
+    (functions, status)
 }
 
 pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {

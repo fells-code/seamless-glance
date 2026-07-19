@@ -63,10 +63,10 @@ pub async fn fetch_sqs_summary(app: &App) -> SqsSummary {
     }
 }
 
-pub async fn fetch_sqs_queues(app: &App) -> Vec<SqsQueueInfo> {
+pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
     let resp = match app.aws.sqs.list_queues().send().await {
         Ok(r) => r,
-        Err(_) => return vec![],
+        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
     };
 
     let mut queues = vec![];
@@ -118,5 +118,5 @@ pub async fn fetch_sqs_queues(app: &App) -> Vec<SqsQueueInfo> {
         });
     }
 
-    queues
+    (queues, ServiceStatus::Ok)
 }
