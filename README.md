@@ -206,12 +206,12 @@ Other views remain region-scoped today.
 
 ## Project Structure
 
-- [`src/main.rs`](/Users/brandoncorbett/git/seamless-glance/src/main.rs) owns process startup, terminal setup, and key handling.
-- [`src/app/mod.rs`](/Users/brandoncorbett/git/seamless-glance/src/app/mod.rs) owns application state, refresh orchestration, view transitions, overlays, and resource actions.
-- [`src/aws/`](/Users/brandoncorbett/git/seamless-glance/src/aws) contains AWS service fetchers and SDK client wiring.
-- [`src/models/`](/Users/brandoncorbett/git/seamless-glance/src/models) defines data models rendered by the UI.
-- [`src/ui/`](/Users/brandoncorbett/git/seamless-glance/src/ui) contains rendering, overlays, command palette, and terminal helpers.
-- [`src/cache/`](/Users/brandoncorbett/git/seamless-glance/src/cache) currently caches cost data.
+- [`src/main.rs`](src/main.rs) owns process startup, terminal setup, and key handling.
+- [`src/app/mod.rs`](src/app/mod.rs) owns application state, refresh orchestration, view transitions, overlays, and resource actions.
+- [`src/aws/`](src/aws) contains AWS service fetchers and SDK client wiring.
+- [`src/models/`](src/models) defines data models rendered by the UI.
+- [`src/ui/`](src/ui) contains rendering, overlays, command palette, and terminal helpers.
+- [`src/cache/`](src/cache) currently caches cost data.
 
 Longer-form references:
 

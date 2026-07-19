@@ -56,7 +56,7 @@ Be careful when changing startup behavior because config and AWS region selectio
 
 ### App-first orchestration
 
-Most interactive behavior is coordinated from [`src/app/mod.rs`](/Users/brandoncorbett/git/seamless-glance/src/app/mod.rs). If a change affects refreshes, selected rows, overlays, or region behavior, inspect that file first.
+Most interactive behavior is coordinated from [`src/app/mod.rs`](src/app/mod.rs). If a change affects refreshes, selected rows, overlays, or region behavior, inspect that file first.
 This is also where cost-savings opportunities are derived from the combination of cached billing insight and live AWS resource data.
 
 ### Service fetchers return UI-ready data
