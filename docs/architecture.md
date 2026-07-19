@@ -121,25 +121,23 @@ At startup, `main`:
 
 ### Refresh Flow
 
-`App::trigger_refresh` marks refresh intent, and `App::refresh_active` performs the work:
+The AWS fetches run off the draw thread so the UI stays responsive and the per-service progress phases actually render. `App::trigger_refresh` (see `src/app/refresh.rs`):
 
-1. clear stale inventory if the account context (profile + region) changed since the held data was fetched
-2. refresh account overview first
-3. refresh the active view's service data
-4. rebuild findings and clear loading state
-5. update `last_refresh`
-6. reset selection and scroll state
+1. clears stale inventory if the account context (profile + region) changed since the held data was fetched
+2. spawns a worker task on a throwaway clone of the account context (`AwsClients` is cheap to clone; the SDK clients are `Arc`-backed)
+3. stores the receiving end of an `mpsc` channel on the app
+
+The worker fetches account overview first, then the active view's service data, sending a `RefreshUpdate` per phase and per service, then `Done`. Each frame, `App::drain_refresh_updates` applies whatever has arrived (so `refresh_phase` advances and views populate) without ever blocking the loop. On `Done` it rebuilds findings and cost savings, updates `last_refresh`, and clears the refreshing flag.
 
 Step 1 matters because a single-service refresh only fetches its own service but `rebuild_findings` reads several service inventories. Tracking the context the data was fetched under (`data_context`) and clearing on change ensures findings are never built from a prior region or profile's data and mislabeled with the current region.
 
-This design keeps the header accurate even when a service view is active.
-It also allows the TUI to render a loading state between view transitions instead of blocking silently on inline fetches.
+`trigger_refresh` records the `(profile, region, view)` it is fetching for in `in_flight_refresh`: an identical re-trigger is deduped, while a context or view change (now possible mid-refresh, since the UI is responsive) supersedes the in-flight worker by replacing the receiver.
 
-Cost views are a partial exception: they still rely on cached Cost Explorer data, but can force a fresh reload when the active view is `Cost Overview` or `Cost Savings`.
+Cost views are a partial exception: they still rely on cached Cost Explorer data, but force a fresh reload when the active view is `Cost Overview` or `Cost Savings`.
 
 ### View Entry Flow
 
-`App::on_view_enter` now schedules a refresh and resets selection state when the user changes screens, rather than fetching inline. The actual AWS work happens in `refresh_active`, which keeps the event loop free to draw an intermediate loading overlay.
+`App::on_view_enter` schedules a refresh and resets selection state when the user changes screens, rather than fetching inline. The actual AWS work happens on the spawned worker, which keeps the event loop free to draw an intermediate loading overlay with live per-service progress.
 
 ### Navigation Flow
 

@@ -217,15 +217,12 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         app.clear_expired_notification();
+        app.drain_refresh_updates();
 
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
         if app.should_quit {
             break;
-        }
-
-        if app.is_refreshing {
-            app.refresh_active().await;
         }
 
         if !event::poll(std::time::Duration::from_millis(100))? {

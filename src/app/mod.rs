@@ -32,6 +32,8 @@ use crate::ui::overlay::overlays::{
 use crate::ui::theme::{Theme, ThemeName};
 use crate::{aws, config};
 
+mod refresh;
+
 #[derive(Debug, Clone)]
 pub enum RefreshPhase {
     Idle,
@@ -80,6 +82,11 @@ pub struct App {
     pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
     pub is_refreshing: bool,
     pub refresh_phase: RefreshPhase,
+    // Receiver for results streamed from the in-flight refresh worker task.
+    refresh_rx: Option<tokio::sync::mpsc::UnboundedReceiver<refresh::RefreshUpdate>>,
+    // (profile, region, view) the in-flight refresh is fetching for, so an
+    // identical re-trigger is deduped while a context or view change supersedes.
+    in_flight_refresh: Option<(Option<String>, String, ActiveView)>,
     // (profile, region label) the currently held per-service data was fetched
     // under. When it changes, stale data is cleared so findings are never built
     // from a prior region or profile and mislabeled with the new one.
@@ -218,6 +225,8 @@ impl App {
             last_refresh: None,
             is_refreshing: false,
             refresh_phase: RefreshPhase::Idle,
+            refresh_rx: None,
+            in_flight_refresh: None,
             data_context: None,
             footer_mode: FooterMode::Normal,
             notification: None,
@@ -1626,13 +1635,44 @@ impl App {
     }
 
     pub fn trigger_refresh(&mut self) {
-        if self.is_refreshing {
+        let want = (
+            self.current_profile.clone(),
+            self.current_region_label(),
+            self.active_view,
+        );
+
+        // A refresh for the exact same profile, region, and view is already in
+        // flight; leave it alone. A context or view change supersedes it below.
+        if self.is_refreshing && self.in_flight_refresh.as_ref() == Some(&want) {
             return;
+        }
+
+        // Clear stale inventory when the account context (profile + region)
+        // changes so findings are never rebuilt from a prior context's data.
+        let data_context = (want.0.clone(), want.1.clone());
+        if self.data_context.as_ref() != Some(&data_context) {
+            self.clear_service_data();
+            self.data_context = Some(data_context);
         }
 
         self.is_refreshing = true;
         self.account_overview = None;
         self.refresh_phase = RefreshPhase::Overview;
+        self.in_flight_refresh = Some(want);
+
+        // Run the fetches on a throwaway clone of the account context so the
+        // event loop keeps drawing and handling input while they run. Replacing
+        // the receiver supersedes any older in-flight refresh (its sends drop).
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        self.refresh_rx = Some(rx);
+
+        let mut worker = App::new(self.aws.clone());
+        worker.regions = self.regions.clone();
+        worker.current_region_index = self.current_region_index;
+        worker.current_profile = self.current_profile.clone();
+        worker.active_view = self.active_view;
+
+        tokio::spawn(worker.stream_refresh(tx));
     }
 
     pub async fn next_region(&mut self) {
@@ -1674,51 +1714,9 @@ impl App {
         self.trigger_refresh();
     }
 
-    async fn load_lambda(&mut self) {
-        let (functions, status) = aws::lambda::fetch_lambda_functions(self).await;
-        self.lambda_functions = functions;
-        self.lambda_status = status;
-    }
-
-    async fn load_apigateway(&mut self) {
-        let (apis, status) = aws::apigateway::fetch_apigateway_apis(self).await;
-        self.apigateway_apis = apis;
-        self.apigateway_status = status;
-    }
-
-    async fn load_sqs(&mut self) {
-        let (queues, status) = aws::sqs::fetch_sqs_queues(self).await;
-        self.sqs_queues_data = queues;
-        self.sqs_status = status;
-    }
-
-    async fn load_vpcs(&mut self) {
-        let (vpcs, status) = aws::vpc::fetch_vpcs(self).await;
-        self.vpcs = vpcs;
-        self.vpc_status = status;
-    }
-
-    async fn load_load_balancers(&mut self) {
-        let (load_balancers, status) = aws::elb::fetch_load_balancers(self).await;
-        self.load_balancers = load_balancers;
-        self.load_balancers_status = status;
-    }
-
-    async fn load_target_groups(&mut self) {
-        let (target_groups, status) = aws::target_group::fetch_target_groups(self).await;
-        self.target_groups = target_groups;
-        self.target_groups_status = status;
-    }
-
-    async fn load_security_groups(&mut self) {
-        let (security_groups, status) = aws::security_group::fetch_security_groups(self).await;
-        self.security_groups = security_groups;
-        self.security_groups_status = status;
-    }
-
     /// Drop every per-service inventory so a region or profile switch cannot
     /// leave a prior context's resources to be rebuilt into findings and stamped
-    /// with the new region. `refresh_active` refetches the fresh data.
+    /// with the new region. The refresh worker refetches the fresh data.
     fn clear_service_data(&mut self) {
         self.ec2_instances.clear();
         self.lambda_functions.clear();
@@ -1745,157 +1743,6 @@ impl App {
         self.rds_summary.status = not_loaded.clone();
         self.secrets_summary.status = not_loaded.clone();
         self.cloudwatch_summary.status = not_loaded;
-    }
-
-    pub async fn refresh_active(&mut self) {
-        // Clear stale inventory when the account context changes so findings are
-        // never rebuilt from a prior region or profile's data.
-        let context = (self.current_profile.clone(), self.current_region_label());
-        if self.data_context.as_ref() != Some(&context) {
-            self.clear_service_data();
-            self.data_context = Some(context);
-        }
-
-        self.refresh_phase = RefreshPhase::Overview;
-        self.account_overview = None;
-
-        // Always refresh overview (header correctness)
-        self.account_overview = Some(aws::account::fetch_account_overview(self).await);
-
-        match self.active_view {
-            ActiveView::Findings => {
-                self.refresh_phase = RefreshPhase::Services(vec![
-                    "CloudWatch",
-                    "EC2",
-                    "API Gateway",
-                    "Secrets",
-                    "Security Groups",
-                    "Target Groups",
-                    "Load Balancers",
-                    "SQS",
-                    "RDS",
-                    "Lambda",
-                    "VPC",
-                    "Findings",
-                ]);
-                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
-                self.cloudwatch_summary = summary;
-                self.cloudwatch_alarms = alarms;
-                self.ec2_instances = aws::ec2::fetch_instances(self).await;
-                self.load_apigateway().await;
-                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
-                self.secrets_summary = summary;
-                self.secrets = secrets;
-                self.load_security_groups().await;
-                self.load_target_groups().await;
-                self.load_load_balancers().await;
-                aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
-                self.load_sqs().await;
-                let (summary, instances) = aws::rds::fetch_rds(self).await;
-                self.rds_summary = summary;
-                self.rds_instances = instances;
-                self.load_lambda().await;
-                self.load_vpcs().await;
-            }
-            ActiveView::CostSavings => {
-                self.refresh_phase = RefreshPhase::Services(vec![
-                    "Cost Explorer",
-                    "EC2",
-                    "API Gateway",
-                    "Lambda",
-                    "Load Balancers",
-                    "Target Groups",
-                ]);
-                self.refresh_cost_data(true).await;
-                self.ec2_instances = aws::ec2::fetch_instances(self).await;
-                self.load_apigateway().await;
-                self.load_lambda().await;
-                self.load_target_groups().await;
-                self.load_load_balancers().await;
-                aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
-            }
-            ActiveView::Ec2 => {
-                self.refresh_phase = RefreshPhase::Services(vec!["EC2"]);
-                self.ec2_instances = aws::ec2::fetch_instances(self).await;
-            }
-
-            ActiveView::Lambda => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Lambda"]);
-                self.load_lambda().await;
-            }
-
-            ActiveView::CloudWatch => {
-                self.refresh_phase = RefreshPhase::Services(vec!["CloudWatch"]);
-                let (summary, alarms) = aws::cloudwatch::fetch_cloudwatch(self).await;
-                self.cloudwatch_summary = summary;
-                self.cloudwatch_alarms = alarms;
-            }
-
-            ActiveView::Vpc => {
-                self.refresh_phase = RefreshPhase::Services(vec!["VPC"]);
-                self.load_vpcs().await;
-            }
-
-            ActiveView::Sqs => {
-                self.refresh_phase = RefreshPhase::Services(vec!["SQS"]);
-                self.load_sqs().await;
-            }
-
-            ActiveView::Apigateway => {
-                self.refresh_phase = RefreshPhase::Services(vec!["API Gateway"]);
-                self.load_apigateway().await;
-            }
-
-            ActiveView::Ecs => {
-                self.refresh_phase = RefreshPhase::Services(vec!["ECS"]);
-                self.ecs_clusters = aws::ecs::fetch_ecs_clusters(self).await;
-            }
-
-            ActiveView::Secrets => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Secrets"]);
-                let (summary, secrets) = aws::secrets::fetch_secrets(self).await;
-                self.secrets_summary = summary;
-                self.secrets = secrets;
-            }
-
-            ActiveView::Rds => {
-                self.refresh_phase = RefreshPhase::Services(vec!["RDS"]);
-                let (summary, instances) = aws::rds::fetch_rds(self).await;
-                self.rds_summary = summary;
-                self.rds_instances = instances;
-            }
-
-            ActiveView::LoadBalancers => {
-                self.refresh_phase =
-                    RefreshPhase::Services(vec!["Load Balancers", "Target Groups"]);
-                self.load_target_groups().await;
-                self.load_load_balancers().await;
-                aws::elb::apply_target_group_health(&mut self.load_balancers, &self.target_groups);
-            }
-
-            ActiveView::TargetGroups => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Target Groups"]);
-                self.load_target_groups().await;
-            }
-
-            ActiveView::SecurityGroups => {
-                self.load_security_groups().await;
-            }
-
-            // Views with no region-scoped data
-            ActiveView::AccountOverview => {}
-            ActiveView::CostOverview => {
-                self.refresh_phase = RefreshPhase::Services(vec!["Cost Explorer"]);
-                self.refresh_cost_data(true).await;
-            }
-        }
-
-        self.rebuild_findings();
-        self.refresh_phase = RefreshPhase::Idle;
-        self.last_refresh = Some(Utc::now());
-        self.is_refreshing = false;
-        self.selected_row = 0;
-        self.scroll_offset = 0;
     }
 
     pub async fn load_cost_data(&mut self) {
