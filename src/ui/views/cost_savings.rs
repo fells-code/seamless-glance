@@ -1,8 +1,9 @@
 use crate::app::App;
+use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
+    style::Style,
+    widgets::{Block, Borders, Cell, Paragraph, Row, Wrap},
     Frame,
 };
 
@@ -36,46 +37,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         app.budget.month_to_date_cost, app.budget.forecast, budget_gap, forecast_range
     );
 
-    let total_rows = app.cost_savings_opportunities.len();
-    if total_rows == 0 {
-        app.selected_row = 0;
-        app.scroll_offset = 0;
-
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(8), Constraint::Min(0)])
-            .split(area);
-
-        let summary = Paragraph::new(summary_text)
-            .style(Style::default().fg(app.theme.text))
-            .wrap(Wrap { trim: true })
-            .block(
-                Block::default()
-                    .title("Cost Savings")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.theme.primary)),
-            );
-
-        frame.render_widget(summary, layout[0]);
-
-        let empty = Paragraph::new(
-            "No concrete cost-savings opportunities are available yet.\n\
-             This view will highlight savings when spend and waste signals line up.",
-        )
-        .style(Style::default().fg(app.theme.text))
-        .block(
-            Block::default()
-                .title("Opportunities")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.theme.primary)),
-        );
-
-        frame.render_widget(empty, layout[1]);
-        return;
-    }
-
-    app.selected_row = app.selected_row.min(total_rows - 1);
-    if app.wrap_mode_active() {
+    // Wrap mode replaces the table with a detail pane, so it diverts before the
+    // shared table renderer (and only with a row to describe).
+    if !app.cost_savings_opportunities.is_empty() && app.wrap_mode_active() {
+        app.selected_row = app
+            .selected_row
+            .min(app.cost_savings_opportunities.len() - 1);
         render_wrapped_detail(frame, area, app, &summary_text);
         return;
     }
@@ -97,29 +64,41 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 
     frame.render_widget(summary, layout[0]);
 
-    let visible_height = layout[1].height.saturating_sub(3) as usize;
+    let theme = app.theme;
 
-    if app.selected_row < app.scroll_offset as usize {
-        app.scroll_offset = app.selected_row as u16;
-    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
-        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
-    }
-
-    let rows = app
-        .cost_savings_opportunities
-        .iter()
-        .enumerate()
-        .skip(app.scroll_offset as usize)
-        .take(visible_height)
-        .map(|(index, opportunity)| {
-            let style = if index == app.selected_row {
-                Style::default()
-                    .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(app.theme.text)
-            };
-
+    render_list_table(
+        frame,
+        layout[1],
+        ListSelection {
+            selected_row: &mut app.selected_row,
+            scroll_offset: &mut app.scroll_offset,
+        },
+        &theme,
+        ListTable {
+            title: "Savings Opportunities",
+            headers: &[
+                "EST SAVE",
+                "SERVICE",
+                "CURRENT",
+                "OPPORTUNITY",
+                "EVIDENCE",
+                "USAGE",
+                "NEXT STEP",
+            ],
+            widths: &[
+                Constraint::Length(10),
+                Constraint::Length(16),
+                Constraint::Length(10),
+                Constraint::Length(24),
+                Constraint::Percentage(26),
+                Constraint::Percentage(24),
+                Constraint::Percentage(24),
+            ],
+            empty_message: "No concrete cost-savings opportunities are available yet.\n\
+                            This view will highlight savings when spend and waste signals line up.",
+        },
+        &app.cost_savings_opportunities,
+        |opportunity| {
             Row::new(vec![
                 Cell::from(format!("${:.2}", opportunity.estimated_monthly_savings)),
                 Cell::from(opportunity.service.clone()),
@@ -129,46 +108,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(opportunity.usage_context.clone()),
                 Cell::from(opportunity.recommendation.clone()),
             ])
-            .style(style)
-        })
-        .collect::<Vec<_>>();
-
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(10),
-            Constraint::Length(16),
-            Constraint::Length(10),
-            Constraint::Length(24),
-            Constraint::Percentage(26),
-            Constraint::Percentage(24),
-            Constraint::Percentage(24),
-        ],
-    )
-    .header(
-        Row::new([
-            "EST SAVE",
-            "SERVICE",
-            "CURRENT",
-            "OPPORTUNITY",
-            "EVIDENCE",
-            "USAGE",
-            "NEXT STEP",
-        ])
-        .style(
-            Style::default()
-                .fg(app.theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
-    .block(
-        Block::default()
-            .title("Savings Opportunities")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.primary)),
+            .style(Style::default().fg(theme.text))
+        },
     );
-
-    frame.render_widget(table, layout[1]);
 }
 
 fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App, summary_text: &str) {
@@ -193,7 +135,11 @@ fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App, summary_t
 
     frame.render_widget(summary, layout[0]);
 
-    let opportunity = &app.cost_savings_opportunities[app.selected_row];
+    // Indexing here would panic if the selection ever outran the list, so read
+    // it fallibly and bail rather than trusting an upstream clamp.
+    let Some(opportunity) = app.cost_savings_opportunities.get(app.selected_row) else {
+        return;
+    };
     let metadata = Paragraph::new(format!(
         "Opportunity {}/{}\n{}  |  Current ${:.2}  |  Estimated savings ${:.2}\n{}",
         app.selected_row + 1,
