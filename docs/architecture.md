@@ -86,6 +86,7 @@ Owns presentation concerns:
 - theme definitions and theme switching presentation
 - individual views
 - help and overlay rendering
+- transient notifications (`src/ui/notification.rs`): a non-modal toast for surfacing failed actions and bad command input, since `eprintln!` is invisible behind the alternate screen. Call `App::notify_error` or `App::notify_warning` to raise one; it auto-dismisses after a few seconds via `App::clear_expired_notification` in the event loop.
 - terminal suspend/resume helpers used for shell execution
 
 ### `src/resources/`

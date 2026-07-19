@@ -1,5 +1,6 @@
 pub mod footer;
 pub mod header;
+pub mod notification;
 pub mod open;
 pub mod overlay;
 pub mod terminal;
@@ -150,6 +151,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 render_select_profile_overlay(frame, frame.size(), state, &app.theme)
             }
         }
+    }
+
+    if let Some(notification) = &app.notification {
+        notification::render_notification(frame, notification, main_area, &app.theme);
     }
 
     draw_footer(frame, footer_area, app);
