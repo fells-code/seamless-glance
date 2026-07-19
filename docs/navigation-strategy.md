@@ -73,22 +73,22 @@ Examples:
 - `/volumes`
 - `/logs`
 
-### Numeric Shortcuts Become Transitional
+### Numeric Shortcuts Removed
 
-The current numeric shortcuts should be treated as a legacy convenience, not the long-term navigation model.
+Numeric view-switching has been removed. It was a legacy convenience, not the long-term navigation model.
 
 Why:
 
-- numbers do not scale as services grow
-- numbers are hard to discover without help text
-- changing the mapping later can be disruptive
+- numbers did not scale as services grew (only ten digits, arbitrary mapping)
+- numbers were hard to discover without help text
+- the digit keys are needed for in-view input (search, filter, sort)
+- they fired inconsistently while overlays were open
 
-Recommended strategy:
+Current model:
 
-- keep current numeric shortcuts for now
-- avoid expanding the numeric set much further
-- shift new service discoverability to the command palette
-- eventually reduce dependence on numeric destination bindings
+- `f` (Findings) and `Tab` / `Shift+Tab` are the direct view keys
+- every other view is reached through the command palette by name or alias
+- all navigation and resource-action keys are gated behind a single "modal open" predicate so nothing mutates view or region state while a modal is up
 
 ## Suggested Navigation Layers
 
@@ -159,9 +159,9 @@ This reduces the need for direct raw-service navigation in many workflows.
 ## Recommended Near-Term Navigation Plan
 
 1. Keep `f` as the Findings shortcut.
-2. Keep existing numeric shortcuts as transitional compatibility.
+2. Reach all other views through the command palette (numeric view-switching has been removed).
 3. Keep `Tab` / `Shift+Tab` as a low-friction way to browse major views.
-4. Add new services primarily to the command palette rather than to numeric slots.
+4. Add new services to the command palette rather than to one-key slots.
 5. Avoid growing the one-key destination map aggressively.
 6. Keep help text and README generated from shared navigation metadata where practical.
 7. Consider a future grouped service launcher once service count grows meaningfully.

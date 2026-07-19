@@ -59,7 +59,7 @@ pub const COMMANDS: &[Command] = &[
         description: "Account overview",
         view: ActiveView::AccountOverview,
         group: CommandGroup::Overview,
-        shortcut: Some('1'),
+        shortcut: None,
         aliases: &["overview", "account-overview", "summary"],
     },
     Command {
@@ -67,7 +67,7 @@ pub const COMMANDS: &[Command] = &[
         description: "Cost overview",
         view: ActiveView::CostOverview,
         group: CommandGroup::Overview,
-        shortcut: Some('2'),
+        shortcut: None,
         aliases: &["billing", "spend"],
     },
     Command {
@@ -75,7 +75,7 @@ pub const COMMANDS: &[Command] = &[
         description: "Cost savings opportunities",
         view: ActiveView::CostSavings,
         group: CommandGroup::Overview,
-        shortcut: Some('0'),
+        shortcut: None,
         aliases: &["cost-savings", "optimize", "optimization"],
     },
     Command {
@@ -83,7 +83,7 @@ pub const COMMANDS: &[Command] = &[
         description: "EC2 instances",
         view: ActiveView::Ec2,
         group: CommandGroup::Compute,
-        shortcut: Some('4'),
+        shortcut: None,
         aliases: &["instances", "compute"],
     },
     Command {
@@ -91,7 +91,7 @@ pub const COMMANDS: &[Command] = &[
         description: "Lambda functions",
         view: ActiveView::Lambda,
         group: CommandGroup::Compute,
-        shortcut: Some('6'),
+        shortcut: None,
         aliases: &["functions"],
     },
     Command {
@@ -99,7 +99,7 @@ pub const COMMANDS: &[Command] = &[
         description: "ECS clusters",
         view: ActiveView::Ecs,
         group: CommandGroup::Compute,
-        shortcut: Some('8'),
+        shortcut: None,
         aliases: &["containers", "cluster"],
     },
     Command {
@@ -123,7 +123,7 @@ pub const COMMANDS: &[Command] = &[
         description: "VPCs",
         view: ActiveView::Vpc,
         group: CommandGroup::Networking,
-        shortcut: Some('3'),
+        shortcut: None,
         aliases: &["network", "networks"],
     },
     Command {
@@ -131,7 +131,7 @@ pub const COMMANDS: &[Command] = &[
         description: "API Gateway APIs",
         view: ActiveView::Apigateway,
         group: CommandGroup::Networking,
-        shortcut: Some('9'),
+        shortcut: None,
         aliases: &["api", "apigateway", "gateway"],
     },
     Command {
@@ -163,7 +163,7 @@ pub const COMMANDS: &[Command] = &[
         description: "Secrets Manager",
         view: ActiveView::Secrets,
         group: CommandGroup::Security,
-        shortcut: Some('7'),
+        shortcut: None,
         aliases: &["secrets", "secret", "secretsmanager"],
     },
     Command {
@@ -171,7 +171,7 @@ pub const COMMANDS: &[Command] = &[
         description: "CloudWatch alarms",
         view: ActiveView::CloudWatch,
         group: CommandGroup::Observability,
-        shortcut: Some('5'),
+        shortcut: None,
         aliases: &["cloudwatch", "alarms", "monitoring"],
     },
 ];
@@ -347,4 +347,23 @@ pub fn draw_command_palette(frame: &mut Frame, area: Rect, app: &App) {
         );
 
     frame.render_widget(cmd_ui, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_command_uses_a_numeric_shortcut() {
+        for command in COMMANDS {
+            if let Some(shortcut) = command.shortcut {
+                assert!(
+                    !shortcut.is_ascii_digit(),
+                    "command `{}` still binds numeric shortcut `{}`; numeric view-switching was removed",
+                    command.name,
+                    shortcut
+                );
+            }
+        }
+    }
 }
