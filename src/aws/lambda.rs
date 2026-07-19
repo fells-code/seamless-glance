@@ -20,15 +20,17 @@ async fn fetch_lambda_for_region(
 ) -> Result<Vec<LambdaFunctionInfo>, ServiceStatus> {
     let aws = clients_for_region(&region, profile.as_deref()).await;
 
-    let resp = match aws.lambda.list_functions().send().await {
-        Ok(r) => r,
-        Err(err) => return Err(ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut pages = aws.lambda.list_functions().into_paginator().items().send();
 
-    let functions = resp
-        .functions()
-        .iter()
-        .map(|f| LambdaFunctionInfo {
+    let mut functions = Vec::new();
+
+    while let Some(item) = pages.next().await {
+        let f = match item {
+            Ok(f) => f,
+            Err(err) => return Err(ServiceStatus::from_sdk_error(&err)),
+        };
+
+        functions.push(LambdaFunctionInfo {
             name: f.function_name().unwrap_or("unknown").to_string(),
             region: region.as_ref().to_string(),
             runtime: f
@@ -38,8 +40,8 @@ async fn fetch_lambda_for_region(
             memory_mb: f.memory_size().unwrap_or(0),
             timeout_sec: f.timeout().unwrap_or(0),
             last_modified: f.last_modified().unwrap_or("-").to_string(),
-        })
-        .collect();
+        });
+    }
 
     Ok(functions)
 }

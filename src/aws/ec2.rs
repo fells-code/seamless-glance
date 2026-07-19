@@ -115,17 +115,19 @@ async fn fetch_instances_for_region(
 ) -> Result<Vec<Ec2InstanceInfo>, String> {
     let aws = clients_for_region(&region, profile.as_deref()).await;
 
-    let resp = aws.ec2.describe_instances().send().await.map_err(|err| {
-        format!(
-            "EC2 describe_instances failed for {}: {:?}",
-            region.as_ref(),
-            err
-        )
-    })?;
+    let mut pages = aws.ec2.describe_instances().into_paginator().items().send();
 
     let mut instances = vec![];
 
-    for reservation in resp.reservations() {
+    while let Some(item) = pages.next().await {
+        let reservation = item.map_err(|err| {
+            format!(
+                "EC2 describe_instances failed for {}: {:?}",
+                region.as_ref(),
+                err
+            )
+        })?;
+
         for inst in reservation.instances() {
             let tag_value = |key: &str| {
                 inst.tags()

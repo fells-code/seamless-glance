@@ -4,14 +4,22 @@ use crate::{
 };
 
 pub async fn fetch_target_groups(app: &App) -> (Vec<TargetGroupInfo>, ServiceStatus) {
-    let resp = match app.aws.elb.describe_target_groups().send().await {
-        Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
-    };
+    let mut pages = app
+        .aws
+        .elb
+        .describe_target_groups()
+        .into_paginator()
+        .items()
+        .send();
 
     let mut groups = Vec::new();
 
-    for tg in resp.target_groups() {
+    while let Some(item) = pages.next().await {
+        let tg = match item {
+            Ok(tg) => tg,
+            Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
+        };
+
         let arn = match tg.target_group_arn() {
             Some(a) => a.to_string(),
             None => continue,
