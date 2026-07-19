@@ -159,7 +159,20 @@ async fn main() -> anyhow::Result<()> {
     let profile = cli_profile.or_else(|| cfg.profile.clone());
     let profiles = aws::profiles::discover_profiles();
 
-    let region_names = aws::regions::fetch_enabled_regions(profile.as_deref()).await;
+    let (region_names, region_discovery_warning) =
+        match aws::regions::fetch_enabled_regions(profile.as_deref()).await {
+            Ok(regions) if !regions.is_empty() => (regions, None),
+            Ok(_) => (
+                aws::regions::fallback_regions(),
+                Some("Region discovery returned no regions; using a static fallback list. Global views may be incomplete.".to_string()),
+            ),
+            Err(err) => (
+                aws::regions::fallback_regions(),
+                Some(format!(
+                    "Region discovery failed; using a static fallback list. Global views may be incomplete. {err}"
+                )),
+            ),
+        };
     let regions: Vec<Region> = region_names.into_iter().map(Region::new).collect();
 
     let mut current_region_index = 0;
@@ -187,6 +200,12 @@ async fn main() -> anyhow::Result<()> {
 
     app.load_cost_data().await;
     app.trigger_refresh();
+
+    // Raise the region-discovery warning last so its display window starts at
+    // the first draw rather than being consumed by startup fetches.
+    if let Some(warning) = region_discovery_warning {
+        app.notify_warning(warning);
+    }
 
     const PAGE_SCROLL_LINES: usize = 10;
 
