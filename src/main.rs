@@ -24,6 +24,7 @@ use crate::{
     config::VERSION,
     ui::{
         footer::FooterMode,
+        keys::{self, KeyAction},
         overlay::overlays::{ConfirmCommandState, OverlayState},
         theme::ThemeName,
         views::command::{self, next_command, previous_command},
@@ -95,6 +96,50 @@ async fn handle_command(app: &mut App) {
                 app.on_view_enter().await;
             }
         }
+    }
+}
+
+/// Run the action a bound key maps to. Every key in `keys::KEY_BINDINGS`
+/// resolves here, so adding a binding is one registry entry plus one arm.
+async fn run_key_action(app: &mut App, action: KeyAction) {
+    use KeyAction as A;
+
+    // The palette, help, refresh, and quit stay reachable with a modal open;
+    // everything else requires a normal view (the guard from #23).
+    let modal_safe = matches!(action, A::CommandPalette | A::Help | A::Refresh | A::Quit);
+    if !modal_safe && app.modal_open() {
+        return;
+    }
+
+    match action {
+        A::CommandPalette => {
+            app.command_mode = true;
+            app.command_input.clear();
+            app.footer_mode = FooterMode::Command;
+        }
+        A::Help => {
+            app.show_help = true;
+            app.footer_mode = FooterMode::Help;
+            app.scroll_offset = 0;
+        }
+        A::Refresh => app.trigger_refresh(),
+        A::Quit => {
+            app.persist_region_selection();
+            app.should_quit = true;
+        }
+        A::Findings => activate_view(app, ActiveView::Findings).await,
+        A::CycleTheme => app.cycle_theme(),
+        A::SwitchProfile => app.open_profile_picker(),
+        A::GlobalRegion => {
+            app.set_global_region();
+            app.persist_region_selection();
+            app.trigger_refresh();
+        }
+        A::ToggleWrap => app.toggle_wrap_mode(),
+        A::Describe => app.trigger_describe().await,
+        A::Cli => app.trigger_cli(),
+        A::OpenConsole => app.trigger_open(),
+        A::Ssh => app.trigger_ssh(),
     }
 }
 
@@ -237,16 +282,6 @@ async fn main() -> anyhow::Result<()> {
         };
 
         match key.code {
-            KeyCode::Char('/') => {
-                app.command_mode = true;
-                app.command_input.clear();
-                app.footer_mode = FooterMode::Command;
-            }
-            KeyCode::Char('?') => {
-                app.show_help = true;
-                app.footer_mode = FooterMode::Help;
-                app.scroll_offset = 0;
-            }
             KeyCode::Char('v') if !app.command_mode => {
                 if let Some(overlay) = &mut app.overlay {
                     if overlay.toggle_describe_mode() {
@@ -255,19 +290,8 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            KeyCode::Char('w') => {
-                if !app.modal_open() {
-                    app.toggle_wrap_mode();
-                }
-            }
             KeyCode::Char(c) if app.command_mode => {
                 app.command_input.push(c);
-            }
-            KeyCode::Char('r') => {
-                if !app.command_mode {
-                    app.trigger_refresh();
-                    continue;
-                }
             }
             KeyCode::Enter => {
                 if let Some(OverlayState::SelectProfile(_)) = &app.overlay {
@@ -408,52 +432,6 @@ async fn main() -> anyhow::Result<()> {
                     app.scroll_active_view_to_bottom();
                 }
             }
-            KeyCode::Char('o') => {
-                if !app.modal_open() {
-                    app.trigger_open();
-                }
-            }
-            KeyCode::Char('q') => {
-                app.persist_region_selection();
-                app.should_quit = true;
-            }
-            KeyCode::Char('d') => {
-                if !app.modal_open() {
-                    app.trigger_describe().await;
-                }
-            }
-            KeyCode::Char('f') => {
-                if !app.modal_open() {
-                    activate_view(&mut app, ActiveView::Findings).await;
-                }
-            }
-            KeyCode::Char('c') => {
-                if !app.modal_open() {
-                    app.trigger_cli();
-                }
-            }
-            KeyCode::Char('g') => {
-                if !app.modal_open() {
-                    app.set_global_region();
-                    app.persist_region_selection();
-                    app.trigger_refresh();
-                }
-            }
-            KeyCode::Char('s') => {
-                if !app.modal_open() {
-                    app.trigger_ssh();
-                }
-            }
-            KeyCode::Char('p') => {
-                if !app.modal_open() {
-                    app.open_profile_picker();
-                }
-            }
-            KeyCode::Char('t') => {
-                if !app.modal_open() {
-                    app.cycle_theme();
-                }
-            }
             // Digits 1 and 2 pick an SSH command when the key-selection overlay is
             // open. Numeric view-switching was removed in favor of the command
             // palette; digits do nothing otherwise.
@@ -484,6 +462,14 @@ async fn main() -> anyhow::Result<()> {
                         scroll: 0,
                     }));
                     continue;
+                }
+            }
+            // Anything else the registry binds runs through one dispatcher, so
+            // the keys advertised in the footer and help cannot drift from the
+            // keys that actually do something.
+            KeyCode::Char(c) => {
+                if let Some(binding) = keys::binding_for(c) {
+                    run_key_action(&mut app, binding.action).await;
                 }
             }
             _ => {}

@@ -83,6 +83,7 @@ Owns presentation concerns:
 - screen layout
 - headers and footers
 - shared navigation metadata and command palette rendering
+- the key registry (`src/ui/keys.rs`): one table of `key -> action, label, help, scope`. The event loop dispatches every bound character key through it, and the footer hints and help screen render from it, so an advertised binding cannot drift from the one that runs. Adding a key is one registry entry plus one arm in the dispatcher, whose exhaustive match over `KeyAction` means the compiler catches an unhandled action. Keys whose meaning depends on the surface (`Enter`, `Esc`, `v`, arrows, the SSH picker digits) stay contextual and are listed in `CONTEXTUAL_KEYS` so help still describes them in one place
 - theme definitions and theme switching presentation
 - individual views
 - the shared list-view renderer (`src/ui/views/list_table.rs`): every service list view goes through `render_list_table`, which owns selection clamping, the visible-height math, keeping the selected row on screen, windowing, the empty state, and table assembly. Views supply only their columns and content styling; selection styling is applied centrally so it looks the same everywhere. Note the windowing enumerates before skipping, so the index compared against the selection is the absolute row index
