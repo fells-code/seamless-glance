@@ -1,3 +1,8 @@
+/// Cap on in-flight per-resource describe calls (target-group health, SQS queue
+/// attributes). These fan out one request per resource, so they run
+/// concurrently but bounded, to stay fast without amplifying throttling.
+pub const DESCRIBE_CONCURRENCY: usize = 10;
+
 pub mod account;
 pub mod apigateway;
 pub mod clients;
