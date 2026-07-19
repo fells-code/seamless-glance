@@ -85,6 +85,7 @@ Owns presentation concerns:
 - shared navigation metadata and command palette rendering
 - theme definitions and theme switching presentation
 - individual views
+- the shared list-view renderer (`src/ui/views/list_table.rs`): every service list view goes through `render_list_table`, which owns selection clamping, the visible-height math, keeping the selected row on screen, windowing, the empty state, and table assembly. Views supply only their columns and content styling; selection styling is applied centrally so it looks the same everywhere. Note the windowing enumerates before skipping, so the index compared against the selection is the absolute row index
 - help and overlay rendering
 - transient notifications (`src/ui/notification.rs`): a non-modal toast for surfacing failed actions and bad command input, since `eprintln!` is invisible behind the alternate screen. Call `App::notify_error` or `App::notify_warning` to raise one; it auto-dismisses after a few seconds via `App::clear_expired_notification` in the event loop.
 - terminal suspend/resume helpers used for shell execution

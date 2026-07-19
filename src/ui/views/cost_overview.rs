@@ -1,11 +1,15 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    widgets::{BarChart, Block, Borders, Cell, Paragraph, Row, Table, Wrap},
+    style::Style,
+    widgets::{BarChart, Block, Borders, Cell, Paragraph, Row, Wrap},
     Frame,
 };
 
-use crate::{app::App, aws::cost::last_6_month_labels};
+use crate::{
+    app::App,
+    aws::cost::last_6_month_labels,
+    ui::views::list_table::{render_list_table, ListSelection, ListTable},
+};
 
 fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
     let labels = last_6_month_labels(); // using the helper above
@@ -33,6 +37,7 @@ fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
+    // Rows are ranked by spend, so the selection index refers to sort order.
     let mut sorted = app.service_cost_insights.clone();
     sorted.sort_by(|a, b| {
         b.monthly_cost
@@ -41,50 +46,33 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
     });
 
     let total: f64 = sorted.iter().map(|insight| insight.monthly_cost).sum();
-    let total_rows = sorted.len();
-    if total_rows == 0 {
-        app.selected_row = 0;
-        app.scroll_offset = 0;
+    let theme = app.theme;
 
-        let empty = Paragraph::new("No service cost insight is available yet.")
-            .style(Style::default().fg(app.theme.text))
-            .block(
-                Block::default()
-                    .title("Service Cost + Usage")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.theme.primary)),
-            );
-
-        frame.render_widget(empty, area);
-        return;
-    }
-
-    app.selected_row = app.selected_row.min(total_rows - 1);
-    let visible_height = area.height.saturating_sub(3) as usize;
-    if app.selected_row < app.scroll_offset as usize {
-        app.scroll_offset = app.selected_row as u16;
-    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
-        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
-    }
-
-    let rows = sorted
-        .iter()
-        .enumerate()
-        .skip(app.scroll_offset as usize)
-        .take(visible_height)
-        .map(|(index, insight)| {
+    render_list_table(
+        frame,
+        area,
+        ListSelection {
+            selected_row: &mut app.selected_row,
+            scroll_offset: &mut app.scroll_offset,
+        },
+        &theme,
+        ListTable {
+            title: "Service Cost + Usage",
+            headers: &["SERVICE", "COST", "SHARE", "TOP USAGE"],
+            widths: &[
+                Constraint::Percentage(32),
+                Constraint::Length(10),
+                Constraint::Length(8),
+                Constraint::Percentage(58),
+            ],
+            empty_message: "No service cost insight is available yet.",
+        },
+        &sorted,
+        |insight| {
             let pct = if total > 0.0 {
                 insight.monthly_cost / total
             } else {
                 0.0
-            };
-
-            let style = if index == app.selected_row {
-                Style::default()
-                    .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(app.theme.text)
             };
 
             Row::new(vec![
@@ -93,35 +81,9 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(format!("{:.1}%", pct * 100.0)),
                 Cell::from(insight.primary_usage_summary()),
             ])
-            .style(style)
-        })
-        .collect::<Vec<_>>();
-
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Percentage(32),
-            Constraint::Length(10),
-            Constraint::Length(8),
-            Constraint::Percentage(58),
-        ],
-    )
-    .header(
-        Row::new(["SERVICE", "COST", "SHARE", "TOP USAGE"]).style(
-            Style::default()
-                .fg(app.theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
-    .block(
-        Block::default()
-            .title("Service Cost + Usage")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.primary)),
-    )
-    .style(Style::default().fg(app.theme.text));
-
-    frame.render_widget(table, area);
+            .style(Style::default().fg(theme.text))
+        },
+    );
 }
 
 fn render_service_cost_detail(frame: &mut Frame, area: Rect, app: &mut App) {

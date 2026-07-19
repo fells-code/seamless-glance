@@ -1,8 +1,9 @@
 use crate::app::App;
+use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Rect},
     style::{Modifier, Style},
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -17,60 +18,55 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    let total_rows = app.target_groups.len();
-    if total_rows == 0 {
-        app.selected_row = 0;
-        app.scroll_offset = 0;
+    let theme = app.theme;
 
-        let empty = ratatui::widgets::Paragraph::new(
-            "No target groups found in this region.\n\
-             This is normal if no load balancers or services are deployed.",
-        )
-        .block(
-            Block::default()
-                .title("Target Groups")
-                .borders(Borders::ALL),
-        );
-
-        frame.render_widget(empty, area);
-        return;
-    }
-
-    app.selected_row = app.selected_row.min(total_rows - 1);
-
-    let visible_height = area.height.saturating_sub(3) as usize;
-
-    if app.selected_row < app.scroll_offset as usize {
-        app.scroll_offset = app.selected_row as u16;
-    } else if app.selected_row >= app.scroll_offset as usize + visible_height {
-        app.scroll_offset = (app.selected_row + 1 - visible_height) as u16;
-    }
-
-    let rows = app
-        .target_groups
-        .iter()
-        .enumerate()
-        .skip(app.scroll_offset as usize)
-        .take(visible_height)
-        .map(|(i, tg)| {
-            let unhealthy = tg.unhealthy_targets > 0;
-            let zero_healthy = tg.has_zero_healthy_targets();
-            let orphan = tg.is_orphan_candidate();
-
-            let style = if i == app.selected_row {
+    render_list_table(
+        frame,
+        area,
+        ListSelection {
+            selected_row: &mut app.selected_row,
+            scroll_offset: &mut app.scroll_offset,
+        },
+        &theme,
+        ListTable {
+            title: "Target Groups",
+            headers: &[
+                "NAME",
+                "PROTO",
+                "TYPE",
+                "PORT",
+                "LBS",
+                "TARGETS",
+                "HEALTHY",
+                "UNHEALTHY",
+                "SIGNALS",
+            ],
+            widths: &[
+                Constraint::Percentage(24),
+                Constraint::Length(10),
+                Constraint::Length(10),
+                Constraint::Length(6),
+                Constraint::Length(8),
+                Constraint::Length(8),
+                Constraint::Length(8),
+                Constraint::Length(10),
+                Constraint::Length(16),
+            ],
+            empty_message: "No target groups found in this region.\n\
+                            This is normal if no load balancers or services are deployed.",
+        },
+        &app.target_groups,
+        |tg| {
+            let style = if tg.has_zero_healthy_targets() {
                 Style::default()
-                    .fg(app.theme.accent)
+                    .fg(theme.primary)
                     .add_modifier(Modifier::BOLD)
-            } else if zero_healthy {
-                Style::default()
-                    .fg(app.theme.primary)
-                    .add_modifier(Modifier::BOLD)
-            } else if orphan {
-                Style::default().fg(app.theme.accent)
-            } else if unhealthy {
-                Style::default().fg(app.theme.primary)
+            } else if tg.is_orphan_candidate() {
+                Style::default().fg(theme.accent)
+            } else if tg.unhealthy_targets > 0 {
+                Style::default().fg(theme.primary)
             } else {
-                Style::default().fg(app.theme.text)
+                Style::default().fg(theme.text)
             };
 
             Row::new(vec![
@@ -92,47 +88,6 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
                 }),
             ])
             .style(style)
-        })
-        .collect::<Vec<_>>();
-
-    let table = Table::new(
-        rows,
-        [
-            ratatui::layout::Constraint::Percentage(24),
-            ratatui::layout::Constraint::Length(10),
-            ratatui::layout::Constraint::Length(10),
-            ratatui::layout::Constraint::Length(6),
-            ratatui::layout::Constraint::Length(8),
-            ratatui::layout::Constraint::Length(8),
-            ratatui::layout::Constraint::Length(8),
-            ratatui::layout::Constraint::Length(10),
-            ratatui::layout::Constraint::Length(16),
-        ],
-    )
-    .header(
-        Row::new([
-            "NAME",
-            "PROTO",
-            "TYPE",
-            "PORT",
-            "LBS",
-            "TARGETS",
-            "HEALTHY",
-            "UNHEALTHY",
-            "SIGNALS",
-        ])
-        .style(
-            Style::default()
-                .fg(app.theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
-    .block(
-        Block::default()
-            .title("Target Groups")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(app.theme.primary)),
+        },
     );
-
-    frame.render_widget(table, area);
 }
