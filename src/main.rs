@@ -178,13 +178,19 @@ async fn main() -> anyhow::Result<()> {
     let mut current_region_index = 0;
 
     if let Some(ref region_str) = cfg.region {
-        if let Some(idx) = regions.iter().position(|r| r.as_ref() == region_str) {
+        if region_str.eq_ignore_ascii_case("global") {
+            // The global slot sits one past the last real region.
+            current_region_index = regions.len();
+        } else if let Some(idx) = regions.iter().position(|r| r.as_ref() == region_str) {
             current_region_index = idx;
         }
     }
 
+    // The initial client bundle needs a real region even when the global slot is
+    // selected; global fans out per region separately.
+    let client_region_index = current_region_index.min(regions.len().saturating_sub(1));
     let sdk_config =
-        aws::clients::build_sdk_config(regions[current_region_index].clone(), profile.as_deref())
+        aws::clients::build_sdk_config(regions[client_region_index].clone(), profile.as_deref())
             .await;
 
     let aws = AwsClients::new(&sdk_config);
