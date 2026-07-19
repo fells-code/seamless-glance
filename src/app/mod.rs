@@ -26,7 +26,7 @@ use crate::resources::ssh;
 use crate::ui::footer::FooterMode;
 use crate::ui::open::open_in_browser;
 use crate::ui::overlay::overlays::{
-    ConfirmCommandState, DescribeOverlayState, OverlayState, SelectSshKeyState,
+    ConfirmCommandState, DescribeOverlayState, OverlayState, SelectProfileState, SelectSshKeyState,
 };
 use crate::ui::theme::{Theme, ThemeName};
 use crate::{aws, config};
@@ -65,6 +65,8 @@ pub struct App {
     pub cost_loaded: bool,
     pub regions: Vec<Region>,
     pub current_region_index: usize,
+    pub profiles: Vec<String>,
+    pub current_profile: Option<String>,
     pub active_view: ActiveView,
     pub should_quit: bool,
     pub command_mode: bool,
@@ -144,6 +146,8 @@ impl App {
             account_overview: None,
             regions: vec![],
             current_region_index: 0,
+            profiles: vec![],
+            current_profile: None,
             should_quit: false,
             command_mode: false,
             command_input: String::new(),
@@ -246,7 +250,67 @@ impl App {
         let mut cfg = config::load_config();
         cfg.region = Some(self.current_region_label());
         cfg.theme = Some(self.theme_name.as_str().to_string());
+        cfg.profile = self.current_profile.clone();
         config::save_config(&cfg);
+    }
+
+    /// Rebuild every AWS client for the current region and profile. Region and
+    /// profile switches both route through here so a selected profile is
+    /// preserved across region changes.
+    async fn rebuild_aws_clients(&mut self) {
+        let sdk_config = aws::clients::build_sdk_config(
+            self.current_region().clone(),
+            self.current_profile.as_deref(),
+        )
+        .await;
+
+        self.aws = AwsClients::new(&sdk_config);
+    }
+
+    /// Switch to a named AWS profile if it was discovered, rebuilding clients
+    /// and refreshing. Returns false for an unknown profile name.
+    pub async fn set_profile_by_name(&mut self, name: &str) -> bool {
+        if !self.profiles.is_empty() && !self.profiles.iter().any(|p| p == name) {
+            return false;
+        }
+
+        self.apply_profile(Some(name.to_string())).await;
+        true
+    }
+
+    async fn apply_profile(&mut self, profile: Option<String>) {
+        self.current_profile = profile;
+        self.rebuild_aws_clients().await;
+        self.persist_preferences();
+        self.trigger_refresh();
+    }
+
+    pub fn open_profile_picker(&mut self) {
+        let selected = self
+            .current_profile
+            .as_ref()
+            .and_then(|current| self.profiles.iter().position(|p| p == current))
+            .unwrap_or(0);
+
+        self.overlay = Some(OverlayState::SelectProfile(SelectProfileState {
+            profiles: self.profiles.clone(),
+            selected,
+        }));
+        self.footer_mode = FooterMode::Overlay;
+    }
+
+    pub async fn commit_profile_selection(&mut self) {
+        let selected = match &self.overlay {
+            Some(OverlayState::SelectProfile(state)) => state.profiles.get(state.selected).cloned(),
+            _ => None,
+        };
+
+        self.overlay = None;
+        self.footer_mode = FooterMode::Normal;
+
+        if let Some(name) = selected {
+            self.apply_profile(Some(name)).await;
+        }
     }
 
     pub fn set_theme_name(&mut self, theme_name: ThemeName) {
@@ -269,13 +333,7 @@ impl App {
         }
 
         self.current_region_index = index;
-
-        let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-            .region(self.current_region().clone())
-            .load()
-            .await;
-
-        self.aws = AwsClients::new(&sdk_config);
+        self.rebuild_aws_clients().await;
     }
 
     pub async fn set_region_by_name(&mut self, name: &str) -> bool {
@@ -1537,12 +1595,7 @@ impl App {
         self.persist_region_selection();
 
         if !self.is_global_region_selected() {
-            let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-                .region(self.current_region().clone())
-                .load()
-                .await;
-
-            self.aws = AwsClients::new(&sdk_config);
+            self.rebuild_aws_clients().await;
         }
 
         self.trigger_refresh();
@@ -1564,12 +1617,7 @@ impl App {
         self.persist_region_selection();
 
         if !self.is_global_region_selected() {
-            let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-                .region(self.current_region().clone())
-                .load()
-                .await;
-
-            self.aws = AwsClients::new(&sdk_config);
+            self.rebuild_aws_clients().await;
         }
 
         self.trigger_refresh();

@@ -7,6 +7,7 @@ pub mod ec2;
 pub mod ecs;
 pub mod elb;
 pub mod lambda;
+pub mod profiles;
 pub mod rds;
 pub mod regions;
 pub mod secrets;

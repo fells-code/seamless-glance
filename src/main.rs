@@ -39,8 +39,9 @@ USAGE:
   seamless-glance [OPTIONS]
 
 OPTIONS:
-  --help       Show this help message
-  --version    Show version information
+  --help              Show this help message
+  --version           Show version information
+  --profile <name>    Start with a specific AWS profile (overrides config)
 
 INSTALL:
   brew install fells-code/seamless/seamless-glance
@@ -68,6 +69,13 @@ async fn handle_command(app: &mut App) {
                 app.trigger_refresh();
             } else {
                 eprintln!("Unknown region: {}", args);
+            }
+        }
+        "profile" | "pf" => {
+            if args.is_empty() {
+                app.open_profile_picker();
+            } else if !app.set_profile_by_name(&args).await {
+                eprintln!("Unknown profile: {}", args);
             }
         }
         "theme" => {
@@ -98,9 +106,12 @@ async fn activate_view(app: &mut App, view: ActiveView) {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
+    let mut cli_profile: Option<String> = None;
 
-    if args.len() > 1 {
-        match args[1].as_str() {
+    let mut i = 1;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        match arg {
             "--help" | "-h" => {
                 print_help();
                 return Ok(());
@@ -109,12 +120,24 @@ async fn main() -> anyhow::Result<()> {
                 println!("Seamless Glance v{}", VERSION);
                 return Ok(());
             }
+            "--profile" | "-p" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    eprintln!("--profile requires a profile name");
+                    std::process::exit(1);
+                };
+                cli_profile = Some(value.clone());
+            }
+            _ if arg.starts_with("--profile=") => {
+                cli_profile = Some(arg.trim_start_matches("--profile=").to_string());
+            }
             _ => {
-                eprintln!("Unknown option: {}", args[1]);
+                eprintln!("Unknown option: {}", arg);
                 eprintln!("Run `seamless-glance --help` for usage.");
                 std::process::exit(1);
             }
         }
+        i += 1;
     }
 
     enable_raw_mode()?;
@@ -133,7 +156,10 @@ async fn main() -> anyhow::Result<()> {
     let cfg = config::load_config();
     let mut terminal = Terminal::new(backend)?;
 
-    let region_names = aws::regions::fetch_enabled_regions().await;
+    let profile = cli_profile.or_else(|| cfg.profile.clone());
+    let profiles = aws::profiles::discover_profiles();
+
+    let region_names = aws::regions::fetch_enabled_regions(profile.as_deref()).await;
     let regions: Vec<Region> = region_names.into_iter().map(Region::new).collect();
 
     let mut current_region_index = 0;
@@ -144,15 +170,16 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-        .region(regions[current_region_index].clone())
-        .load()
-        .await;
+    let sdk_config =
+        aws::clients::build_sdk_config(regions[current_region_index].clone(), profile.as_deref())
+            .await;
 
     let aws = AwsClients::new(&sdk_config);
     let mut app = App::new(aws);
     app.regions = regions;
     app.current_region_index = current_region_index;
+    app.profiles = profiles;
+    app.current_profile = profile;
     if let Some(theme_name) = cfg.theme.as_deref().and_then(ThemeName::from_str) {
         app.theme_name = theme_name;
         app.theme = crate::ui::theme::Theme::from_name(theme_name);
@@ -219,7 +246,10 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             KeyCode::Enter => {
-                if let Some(OverlayState::ConfirmCommand(state)) = &app.overlay {
+                if let Some(OverlayState::SelectProfile(_)) = &app.overlay {
+                    app.commit_profile_selection().await;
+                    continue;
+                } else if let Some(OverlayState::ConfirmCommand(state)) = &app.overlay {
                     let _ = crate::ui::terminal::suspend_tui();
 
                     let _ = std::process::Command::new("sh")
@@ -381,6 +411,11 @@ async fn main() -> anyhow::Result<()> {
             }
             KeyCode::Char('s') => {
                 app.trigger_ssh();
+            }
+            KeyCode::Char('p') => {
+                if !app.command_mode && !app.show_help && app.overlay.is_none() {
+                    app.open_profile_picker();
+                }
             }
             KeyCode::Char('t') => {
                 if !app.command_mode && !app.show_help && app.overlay.is_none() {

@@ -57,7 +57,7 @@ Today the app provides:
 - AWS account overview data
 - cost overview data with cache-backed loading
 - service inventory views for ECS, EC2, RDS, Lambda, API Gateway, SQS, VPC, CloudWatch, Secrets Manager, Load Balancers, Target Groups, and Security Groups
-- resource actions such as describe overlays, AWS console deep links, region switching, and EC2 SSH command generation
+- resource actions such as describe overlays, AWS console deep links, region switching, in-app AWS profile switching, and EC2 SSH command generation
 
 Current gap to keep in mind:
 
@@ -200,7 +200,7 @@ If the change affects navigation, also decide explicitly:
 - Global aggregation is currently only implemented for selected services, not every view.
 - Cost data is cached separately from the main refresh loop.
 - The working tree may be dirty; assume other work can be in flight.
-- AWS profile support exists in config shape but is not fully wired into runtime behavior.
+- AWS profile switching is wired into runtime: a `--profile` flag, a `p` key and `profile` command open a picker sourced from the shared config and credentials files, and the choice is persisted. Switching a profile does not re-enumerate enabled regions, and it is a credential switch only. It is not a tenant isolation boundary, which is governed by the profile's IAM permissions and account.
 - Several current resource actions are better described as prototypes than finished operator pivots.
 
 ## Maintenance Rule

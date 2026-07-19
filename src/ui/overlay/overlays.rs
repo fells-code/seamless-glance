@@ -25,10 +25,30 @@ pub struct SelectSshKeyState {
     pub context: SshContext,
 }
 
+pub struct SelectProfileState {
+    pub profiles: Vec<String>,
+    pub selected: usize,
+}
+
+impl SelectProfileState {
+    fn move_up(&mut self, count: usize) {
+        self.selected = self.selected.saturating_sub(count);
+    }
+
+    fn move_down(&mut self, count: usize) {
+        if self.profiles.is_empty() {
+            return;
+        }
+
+        self.selected = (self.selected + count).min(self.profiles.len() - 1);
+    }
+}
+
 pub enum OverlayState {
     Describe(DescribeOverlayState),
     ConfirmCommand(ConfirmCommandState),
     SelectSshKey(SelectSshKeyState),
+    SelectProfile(SelectProfileState),
 }
 
 impl DescribeOverlayState {
@@ -73,7 +93,8 @@ impl OverlayState {
         match self {
             OverlayState::Describe(o) => o.scroll_up(),
             OverlayState::ConfirmCommand(o) => o.scroll_up(),
-            OverlayState::SelectSshKey(_) => todo!(),
+            OverlayState::SelectSshKey(_) => {}
+            OverlayState::SelectProfile(o) => o.move_up(1),
         }
     }
 
@@ -81,7 +102,8 @@ impl OverlayState {
         match self {
             OverlayState::Describe(o) => o.scroll_down(),
             OverlayState::ConfirmCommand(o) => o.scroll_down(),
-            OverlayState::SelectSshKey(_) => todo!(),
+            OverlayState::SelectSshKey(_) => {}
+            OverlayState::SelectProfile(o) => o.move_down(1),
         }
     }
 
@@ -90,6 +112,7 @@ impl OverlayState {
             OverlayState::Describe(o) => o.page_up(lines),
             OverlayState::ConfirmCommand(o) => o.page_up(lines),
             OverlayState::SelectSshKey(_) => {}
+            OverlayState::SelectProfile(o) => o.move_up(lines as usize),
         }
     }
 
@@ -98,6 +121,7 @@ impl OverlayState {
             OverlayState::Describe(o) => o.page_down(lines),
             OverlayState::ConfirmCommand(o) => o.page_down(lines),
             OverlayState::SelectSshKey(_) => {}
+            OverlayState::SelectProfile(o) => o.move_down(lines as usize),
         }
     }
 
@@ -106,6 +130,7 @@ impl OverlayState {
             OverlayState::Describe(o) => o.scroll_to_top(),
             OverlayState::ConfirmCommand(o) => o.scroll_to_top(),
             OverlayState::SelectSshKey(_) => {}
+            OverlayState::SelectProfile(o) => o.selected = 0,
         }
     }
 
@@ -114,6 +139,9 @@ impl OverlayState {
             OverlayState::Describe(o) => o.scroll_to_bottom(),
             OverlayState::ConfirmCommand(o) => o.scroll_to_bottom(),
             OverlayState::SelectSshKey(_) => {}
+            OverlayState::SelectProfile(o) => {
+                o.selected = o.profiles.len().saturating_sub(1);
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_sdk_apigateway::Client as RestClient;
 use aws_sdk_apigatewayv2::Client as V2Client;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
@@ -10,6 +11,19 @@ use aws_sdk_rds::Client as RdsClient;
 use aws_sdk_secretsmanager::Client as SecretsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sts::Client as StsClient;
+
+/// Build an `SdkConfig` for the given region, optionally pinned to a named AWS
+/// shared-config profile. Centralizing this keeps region and profile switching
+/// on one code path so a profile selection survives region changes.
+pub async fn build_sdk_config(region: Region, profile: Option<&str>) -> SdkConfig {
+    let mut loader = aws_config::defaults(BehaviorVersion::v2026_01_12()).region(region);
+
+    if let Some(name) = profile {
+        loader = loader.profile_name(name);
+    }
+
+    loader.load().await
+}
 
 pub struct AwsClients {
     pub ec2: Ec2Client,
