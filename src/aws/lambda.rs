@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    aws::clients::AwsClients,
+    aws::clients::{build_sdk_config, AwsClients},
     models::{
         lambda::{LambdaFunctionInfo, LambdaSummary},
         service_status::ServiceStatus,
@@ -9,17 +9,16 @@ use crate::{
 use aws_types::region::Region;
 use futures::future::join_all;
 
-async fn clients_for_region(region: &Region) -> AwsClients {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-        .region(region.clone())
-        .load()
-        .await;
-
+async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
+    let sdk_config = build_sdk_config(region.clone(), profile).await;
     AwsClients::new(&sdk_config)
 }
 
-async fn fetch_lambda_for_region(region: Region) -> Result<Vec<LambdaFunctionInfo>, ServiceStatus> {
-    let aws = clients_for_region(&region).await;
+async fn fetch_lambda_for_region(
+    region: Region,
+    profile: Option<String>,
+) -> Result<Vec<LambdaFunctionInfo>, ServiceStatus> {
+    let aws = clients_for_region(&region, profile.as_deref()).await;
 
     let resp = match aws.lambda.list_functions().send().await {
         Ok(r) => r,
@@ -55,8 +54,14 @@ async fn fetch_lambda_for_region(region: Region) -> Result<Vec<LambdaFunctionInf
 }
 
 pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
+    let profile = app.current_profile.clone();
     let mut functions = if app.is_global_region_selected() {
-        let futures = app.regions.iter().cloned().map(fetch_lambda_for_region);
+        let region_profile = profile.clone();
+        let futures = app
+            .regions
+            .iter()
+            .cloned()
+            .map(move |region| fetch_lambda_for_region(region, region_profile.clone()));
 
         let results = join_all(futures).await;
 
@@ -77,7 +82,7 @@ pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
 
         all
     } else {
-        fetch_lambda_for_region(app.current_region().clone())
+        fetch_lambda_for_region(app.current_region().clone(), profile)
             .await
             .unwrap_or_default()
     };
@@ -89,7 +94,12 @@ pub async fn fetch_lambda_functions(app: &App) -> Vec<LambdaFunctionInfo> {
 
 pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
     if !app.is_global_region_selected() {
-        return match fetch_lambda_for_region(app.current_region().clone()).await {
+        return match fetch_lambda_for_region(
+            app.current_region().clone(),
+            app.current_profile.clone(),
+        )
+        .await
+        {
             Ok(functions) => LambdaSummary {
                 function_count: functions.len() as u32,
                 status: ServiceStatus::Ok,
@@ -101,7 +111,12 @@ pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
         };
     }
 
-    let futures = app.regions.iter().cloned().map(fetch_lambda_for_region);
+    let profile = app.current_profile.clone();
+    let futures = app
+        .regions
+        .iter()
+        .cloned()
+        .map(move |region| fetch_lambda_for_region(region, profile.clone()));
 
     let results = join_all(futures).await;
 

@@ -1,5 +1,7 @@
 use crate::{
-    app::App, aws::clients::AwsClients, models::ec2::Ec2InstanceInfo,
+    app::App,
+    aws::clients::{build_sdk_config, AwsClients},
+    models::ec2::Ec2InstanceInfo,
     resources::region_aggregate::fetch_all_regions,
 };
 use aws_sdk_cloudwatch::{
@@ -15,12 +17,8 @@ pub struct Ec2Counts {
     pub stopped: u32,
 }
 
-async fn clients_for_region(region: &Region) -> AwsClients {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::v2026_01_12())
-        .region(region.clone())
-        .load()
-        .await;
-
+async fn clients_for_region(region: &Region, profile: Option<&str>) -> AwsClients {
+    let sdk_config = build_sdk_config(region.clone(), profile).await;
     AwsClients::new(&sdk_config)
 }
 
@@ -113,8 +111,9 @@ async fn fetch_average_cpu_utilization(
 async fn fetch_instances_for_region(
     region: Region,
     include_cpu_metrics: bool,
+    profile: Option<String>,
 ) -> Result<Vec<Ec2InstanceInfo>, String> {
-    let aws = clients_for_region(&region).await;
+    let aws = clients_for_region(&region, profile.as_deref()).await;
 
     let resp = aws.ec2.describe_instances().send().await.map_err(|err| {
         format!(
@@ -183,13 +182,16 @@ async fn fetch_instances_with_metrics(
     app: &App,
     include_cpu_metrics: bool,
 ) -> Vec<Ec2InstanceInfo> {
+    let profile = app.current_profile.clone();
     let mut instances = if app.is_global_region_selected() {
         fetch_all_regions(&app.regions, move |region| {
-            fetch_instances_for_region(region, include_cpu_metrics)
+            fetch_instances_for_region(region, include_cpu_metrics, profile.clone())
         })
         .await
     } else {
-        match fetch_instances_for_region(app.current_region().clone(), include_cpu_metrics).await {
+        match fetch_instances_for_region(app.current_region().clone(), include_cpu_metrics, profile)
+            .await
+        {
             Ok(items) => items,
             Err(err) => {
                 eprintln!("{}", err);
