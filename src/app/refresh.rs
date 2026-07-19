@@ -2,6 +2,8 @@
 //! results back to the UI over a channel, so the event loop keeps drawing and
 //! accepting input (and the per-service progress phases actually render).
 
+use std::time::{Duration, Instant};
+
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app::{ActiveView, App, RefreshPhase};
@@ -46,6 +48,55 @@ pub enum RefreshUpdate {
         status: ServiceStatus,
     },
     Done,
+}
+
+/// How long a fetched inventory is served from memory before a view switch
+/// refetches it. Navigation within this window is instant and never re-hits
+/// AWS; a manual refresh (`r`) or a profile/region switch always refetches.
+const INVENTORY_TTL: Duration = Duration::from_secs(60);
+
+/// The per-service inventories whose freshness is tracked so navigation can
+/// serve cached data instead of always refetching.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum InventoryKind {
+    AccountOverview,
+    Ec2,
+    Lambda,
+    Apigateway,
+    Sqs,
+    Vpc,
+    LoadBalancers,
+    TargetGroups,
+    SecurityGroups,
+    Ecs,
+    Secrets,
+    Rds,
+    CloudWatch,
+    Cost,
+}
+
+impl RefreshUpdate {
+    /// The inventory a payload update refreshes, if any. `Phase` and `Done`
+    /// carry no inventory.
+    fn inventory_kind(&self) -> Option<InventoryKind> {
+        Some(match self {
+            RefreshUpdate::AccountOverview(_) => InventoryKind::AccountOverview,
+            RefreshUpdate::Ec2(_) => InventoryKind::Ec2,
+            RefreshUpdate::Lambda(..) => InventoryKind::Lambda,
+            RefreshUpdate::Apigateway(..) => InventoryKind::Apigateway,
+            RefreshUpdate::Sqs(..) => InventoryKind::Sqs,
+            RefreshUpdate::Vpc(..) => InventoryKind::Vpc,
+            RefreshUpdate::LoadBalancers(..) => InventoryKind::LoadBalancers,
+            RefreshUpdate::TargetGroups(..) => InventoryKind::TargetGroups,
+            RefreshUpdate::SecurityGroups(..) => InventoryKind::SecurityGroups,
+            RefreshUpdate::Ecs(_) => InventoryKind::Ecs,
+            RefreshUpdate::Secrets(..) => InventoryKind::Secrets,
+            RefreshUpdate::Rds(..) => InventoryKind::Rds,
+            RefreshUpdate::CloudWatch(..) => InventoryKind::CloudWatch,
+            RefreshUpdate::Cost { .. } => InventoryKind::Cost,
+            RefreshUpdate::Phase(_) | RefreshUpdate::Done => return None,
+        })
+    }
 }
 
 impl App {
@@ -247,10 +298,75 @@ impl App {
         });
     }
 
+    /// The inventories the given view reads, so navigation knows what must be
+    /// fresh before it can skip a refetch. Every view depends on the account
+    /// overview (the worker fetches it first for header correctness).
+    fn required_inventories(view: ActiveView) -> &'static [InventoryKind] {
+        use InventoryKind::*;
+        match view {
+            ActiveView::Findings => &[
+                AccountOverview,
+                CloudWatch,
+                Ec2,
+                Apigateway,
+                Secrets,
+                SecurityGroups,
+                TargetGroups,
+                LoadBalancers,
+                Sqs,
+                Rds,
+                Lambda,
+                Vpc,
+            ],
+            ActiveView::CostSavings => &[
+                AccountOverview,
+                Cost,
+                Ec2,
+                Apigateway,
+                Lambda,
+                TargetGroups,
+                LoadBalancers,
+            ],
+            ActiveView::CostOverview => &[AccountOverview, Cost],
+            ActiveView::Ec2 => &[AccountOverview, Ec2],
+            ActiveView::Lambda => &[AccountOverview, Lambda],
+            ActiveView::CloudWatch => &[AccountOverview, CloudWatch],
+            ActiveView::Vpc => &[AccountOverview, Vpc],
+            ActiveView::Sqs => &[AccountOverview, Sqs],
+            ActiveView::Apigateway => &[AccountOverview, Apigateway],
+            ActiveView::Ecs => &[AccountOverview, Ecs],
+            ActiveView::Secrets => &[AccountOverview, Secrets],
+            ActiveView::Rds => &[AccountOverview, Rds],
+            ActiveView::LoadBalancers => &[AccountOverview, TargetGroups, LoadBalancers],
+            ActiveView::TargetGroups => &[AccountOverview, TargetGroups],
+            ActiveView::SecurityGroups => &[AccountOverview, SecurityGroups],
+            ActiveView::AccountOverview => &[AccountOverview],
+        }
+    }
+
+    /// True when every inventory the active view needs was fetched within the
+    /// TTL under the current context, so a view switch can serve cached data
+    /// instead of refetching. Freshness is cleared on a profile or region
+    /// change, so this can never serve a prior context's data.
+    pub(crate) fn active_view_is_fresh(&self) -> bool {
+        let now = Instant::now();
+        Self::required_inventories(self.active_view)
+            .iter()
+            .all(|kind| {
+                self.inventory_fetched_at
+                    .get(kind)
+                    .is_some_and(|fetched| now.duration_since(*fetched) < INVENTORY_TTL)
+            })
+    }
+
     /// Apply one streamed update to the live app state. Returns `true` when the
     /// refresh finished (the caller then rebuilds derived state and clears the
     /// refreshing flag).
     pub(crate) fn apply_refresh_update(&mut self, update: RefreshUpdate) -> bool {
+        if let Some(kind) = update.inventory_kind() {
+            self.inventory_fetched_at.insert(kind, Instant::now());
+        }
+
         match update {
             RefreshUpdate::Phase(phase) => self.refresh_phase = phase,
             RefreshUpdate::AccountOverview(overview) => self.account_overview = Some(*overview),
@@ -410,5 +526,43 @@ mod tests {
         });
         assert!(app.cost_loaded);
         assert!(matches!(app.cost_status, ServiceStatus::Ok));
+    }
+
+    fn mark_fresh(app: &mut App, kind: InventoryKind) {
+        app.inventory_fetched_at.insert(kind, Instant::now());
+    }
+
+    #[test]
+    fn a_view_is_fresh_only_when_all_its_inventories_were_fetched() {
+        let mut app = test_app();
+        app.active_view = ActiveView::Ec2;
+
+        // Nothing fetched yet: must refetch.
+        assert!(!app.active_view_is_fresh());
+
+        // The account overview alone is not enough for the EC2 view.
+        mark_fresh(&mut app, InventoryKind::AccountOverview);
+        assert!(!app.active_view_is_fresh());
+
+        // With EC2 also fetched (through the real apply path, which stamps
+        // freshness), the EC2 view is served from cache.
+        app.apply_refresh_update(RefreshUpdate::Ec2(vec![]));
+        assert!(app.active_view_is_fresh());
+
+        // A different view whose inventory was never fetched still refetches.
+        app.active_view = ActiveView::Lambda;
+        assert!(!app.active_view_is_fresh());
+    }
+
+    #[test]
+    fn clearing_service_data_resets_freshness() {
+        let mut app = test_app();
+        app.active_view = ActiveView::Ec2;
+        mark_fresh(&mut app, InventoryKind::AccountOverview);
+        mark_fresh(&mut app, InventoryKind::Ec2);
+        assert!(app.active_view_is_fresh());
+
+        app.clear_service_data();
+        assert!(!app.active_view_is_fresh());
     }
 }

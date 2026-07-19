@@ -1,6 +1,7 @@
 use aws_config::Region;
 use chrono::Utc;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
+use std::time::Instant;
 
 use crate::aws::clients::AwsClients;
 use crate::cache::cost::{load_if_fresh, save, CostCache};
@@ -87,6 +88,10 @@ pub struct App {
     // (profile, region, view) the in-flight refresh is fetching for, so an
     // identical re-trigger is deduped while a context or view change supersedes.
     in_flight_refresh: Option<(Option<String>, String, ActiveView)>,
+    // When each service inventory was last fetched under the current context, so
+    // a view switch can serve fresh-enough data instead of refetching. Cleared
+    // on a profile or region change alongside the inventory itself.
+    inventory_fetched_at: HashMap<refresh::InventoryKind, Instant>,
     // (profile, region label) the currently held per-service data was fetched
     // under. When it changes, stale data is cleared so findings are never built
     // from a prior region or profile and mislabeled with the new one.
@@ -227,6 +232,7 @@ impl App {
             refresh_phase: RefreshPhase::Idle,
             refresh_rx: None,
             in_flight_refresh: None,
+            inventory_fetched_at: HashMap::new(),
             data_context: None,
             footer_mode: FooterMode::Normal,
             notification: None,
@@ -414,7 +420,13 @@ impl App {
         self.selected_row = 0;
         self.scroll_offset = 0;
         self.detail_scroll_offset = 0;
-        self.trigger_refresh();
+
+        // Serve cached inventory when it is still fresh so navigation does not
+        // re-hit AWS on every view switch. A manual refresh (`r`) and profile or
+        // region switches call `trigger_refresh` directly and always refetch.
+        if !self.active_view_is_fresh() {
+            self.trigger_refresh();
+        }
     }
 
     fn view_uses_free_scroll(&self) -> bool {
@@ -1718,6 +1730,7 @@ impl App {
     /// leave a prior context's resources to be rebuilt into findings and stamped
     /// with the new region. The refresh worker refetches the fresh data.
     fn clear_service_data(&mut self) {
+        self.inventory_fetched_at.clear();
         self.ec2_instances.clear();
         self.lambda_functions.clear();
         self.apigateway_apis.clear();

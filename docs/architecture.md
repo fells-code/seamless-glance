@@ -137,7 +137,7 @@ Cost views are a partial exception: they still rely on cached Cost Explorer data
 
 ### View Entry Flow
 
-`App::on_view_enter` schedules a refresh and resets selection state when the user changes screens, rather than fetching inline. The actual AWS work happens on the spawned worker, which keeps the event loop free to draw an intermediate loading overlay with live per-service progress.
+`App::on_view_enter` resets selection state and schedules a refresh only when the new view's data is stale. Each applied `RefreshUpdate` stamps an in-memory `inventory_fetched_at` timestamp per service; `active_view_is_fresh` checks that every inventory the view needs (see `required_inventories`) was fetched within `INVENTORY_TTL`. If so, the cached data is served with no AWS call; otherwise the spawned worker refetches. The freshness map is cleared alongside the inventory on a profile or region change, so cached data is never served across contexts. A manual refresh (`r`) and profile/region switches call `trigger_refresh` directly and always refetch. The header shows the data's relative age (for example `Last updated 14:32:10 UTC (2m ago)`) so staleness is explicit.
 
 ### Navigation Flow
 
