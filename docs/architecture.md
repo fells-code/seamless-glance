@@ -60,11 +60,11 @@ This layer should remain primarily factual. As the product shifts toward triage,
 
 Representative files:
 
-- [`src/aws/account.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/account.rs): account overview fan-out
-- [`src/aws/clients.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/clients.rs): shared SDK client bundle and `build_sdk_config`, the single region/profile-aware config builder
-- [`src/aws/profiles.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
-- [`src/aws/cost.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
-- [`src/aws/ec2.rs`](/Users/brandoncorbett/git/seamless-glance/src/aws/ec2.rs): EC2 inventory and global aggregation
+- [`src/aws/account.rs`](src/aws/account.rs): account overview fan-out
+- [`src/aws/clients.rs`](src/aws/clients.rs): shared SDK client bundle and `build_sdk_config`, the single region/profile-aware config builder
+- [`src/aws/profiles.rs`](src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
+- [`src/aws/cost.rs`](src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
+- [`src/aws/ec2.rs`](src/aws/ec2.rs): EC2 inventory and global aggregation
 
 ### `src/models/`
 
