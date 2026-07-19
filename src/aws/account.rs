@@ -39,8 +39,10 @@ fn parse_identity_from_arn(arn: &str) -> IdentityInfo {
 }
 
 pub async fn fetch_account_overview(app: &App) -> AccountOverview {
-    let ident = app.aws.sts.get_caller_identity().send().await.unwrap();
-    let arn = ident.arn().unwrap_or("");
+    // TODO(#16): surface a denied/throttled sts:GetCallerIdentity in the UI once
+    // the error surface exists; for now degrade to an unknown identity.
+    let ident = app.aws.sts.get_caller_identity().send().await.ok();
+    let arn = ident.as_ref().and_then(|i| i.arn()).unwrap_or("");
     let identity = parse_identity_from_arn(arn);
 
     let (
@@ -76,12 +78,17 @@ pub async fn fetch_account_overview(app: &App) -> AccountOverview {
         .count();
 
     AccountOverview {
-        account_id: ident.account().unwrap_or("unknown").to_string(),
+        account_id: ident
+            .as_ref()
+            .and_then(|i| i.account())
+            .unwrap_or("unknown")
+            .to_string(),
         identity_kind: identity.kind,
         identity_name: identity.name,
         region: app.current_region_label().to_string(),
         role_name: ident
-            .arn()
+            .as_ref()
+            .and_then(|i| i.arn())
             .and_then(|arn| arn.split(":assumed-role/").nth(1))
             .and_then(|s| s.split('/').next())
             .map(|s| s.to_string()),

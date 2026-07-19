@@ -1,15 +1,12 @@
 use crate::{app::App, models::EcsClusterInfo};
 
 pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
-    let arns = app
-        .aws
-        .ecs
-        .list_clusters()
-        .send()
-        .await
-        .unwrap()
-        .cluster_arns()
-        .to_vec();
+    // TODO(#16): surface throttle/denied errors in the UI instead of degrading
+    // to an empty cluster list once the in-UI error surface exists.
+    let arns = match app.aws.ecs.list_clusters().send().await {
+        Ok(resp) => resp.cluster_arns().to_vec(),
+        Err(_) => return vec![],
+    };
 
     if arns.is_empty() {
         return vec![];
@@ -21,7 +18,10 @@ pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
         builder = builder.clusters(arn);
     }
 
-    let resp = builder.send().await.unwrap();
+    let resp = match builder.send().await {
+        Ok(resp) => resp,
+        Err(_) => return vec![],
+    };
 
     resp.clusters()
         .iter()
