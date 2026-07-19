@@ -9,6 +9,7 @@ use crate::{
     app::App,
     ui::{
         centered_rect,
+        keys::{KeyGroup, CONTEXTUAL_KEYS, KEY_BINDINGS},
         views::command::{CommandGroup, COMMANDS},
     },
 };
@@ -40,46 +41,46 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 }
 
 fn build_help_text() -> String {
-    let mut lines = vec![
-        "Seamless Glance — Help".into(),
-        "".into(),
-        "Global Navigation".into(),
-        "  f                    Findings home".into(),
-        "  /                    Open command palette".into(),
-        "  Tab / Shift+Tab      Cycle through major views".into(),
-        "  t                    Cycle through Seamless themes".into(),
-        "  p                    Switch AWS profile".into(),
-        "  w                    Toggle wrapped detail mode on supported views".into(),
-        "  ?                    Open help".into(),
-        "  r                    Refresh active view".into(),
-        "  q                    Quit".into(),
-        "".into(),
-        "Movement And Regions".into(),
-        "  ↑ / ↓                Move selection or scroll overlays".into(),
-        "  PgUp / PgDn          Jump-scroll lists, overlays, help, or wrapped detail".into(),
-        "  Home / End           Jump to top or bottom".into(),
-        "  ← / →                Change AWS region".into(),
-        "  g                    Jump to the synthetic global slot".into(),
-        "".into(),
-        "Resource Actions".into(),
-        "  Enter                Open related service from Findings".into(),
-        "  d                    Describe selected resource".into(),
-        "  v                    Toggle Describe between structured and JSON".into(),
-        "  c                    Show AWS CLI command for selected resource".into(),
-        "  o                    Open selected resource in the AWS console".into(),
-        "  s                    Prepare an SSH command for the selected EC2 instance".into(),
-        "  Esc                  Close overlays or exit help / command palette".into(),
-        "".into(),
-        "Command Palette".into(),
-        "  findings             Jump to findings".into(),
-        "  theme <name>         Switch to a named Seamless theme".into(),
-        "  region <name>        Jump to a specific AWS region".into(),
-        "  region global        Jump to the synthetic global slot".into(),
-        "  rg <name>            Short alias for region".into(),
-        "  profile <name>       Switch to a named AWS profile".into(),
-        "  profile              Open the AWS profile picker".into(),
-        "  themes               autumn, winter, summer, spring, developer".into(),
-    ];
+    let mut lines = vec!["Seamless Glance — Help".to_string(), String::new()];
+
+    // Both of these read the key registry, so help can never advertise a
+    // binding the app does not actually run.
+    lines.push("Global Navigation".into());
+    for binding in KEY_BINDINGS
+        .iter()
+        .filter(|binding| binding.group == KeyGroup::Navigation)
+    {
+        lines.push(format!("  {:<20} {}", binding.key, binding.help));
+    }
+
+    lines.push(String::new());
+    lines.push("Resource Actions".into());
+    for binding in KEY_BINDINGS
+        .iter()
+        .filter(|binding| binding.group == KeyGroup::ResourceAction)
+    {
+        lines.push(format!("  {:<20} {}", binding.key, binding.help));
+    }
+
+    lines.push(String::new());
+    lines.push("Movement And Overlays".into());
+    for (key, description) in CONTEXTUAL_KEYS {
+        lines.push(format!("  {key:<20} {description}"));
+    }
+
+    lines.push(String::new());
+    lines.push("Command Palette".into());
+    for (command, description) in [
+        ("theme <name>", "Switch to a named Seamless theme"),
+        ("region <name>", "Jump to a specific AWS region"),
+        ("region global", "Jump to the synthetic global slot"),
+        ("rg <name>", "Short alias for region"),
+        ("profile <name>", "Switch to a named AWS profile"),
+        ("profile", "Open the AWS profile picker"),
+        ("themes", "autumn, winter, summer, spring, developer"),
+    ] {
+        lines.push(format!("  {command:<20} {description}"));
+    }
 
     for group in [
         CommandGroup::Triage,
