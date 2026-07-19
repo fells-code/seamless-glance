@@ -61,7 +61,7 @@ This layer should remain primarily factual. As the product shifts toward triage,
 Representative files:
 
 - [`src/aws/account.rs`](src/aws/account.rs): account overview fan-out
-- [`src/aws/clients.rs`](src/aws/clients.rs): shared SDK client bundle and `build_sdk_config`, the single region/profile-aware config builder
+- [`src/aws/clients.rs`](src/aws/clients.rs): shared SDK client bundle and `build_sdk_config`, the single region/profile-aware config builder. Every SDK config in the app is built here, so it is also where the retry and timeout policy lives: adaptive retry (client-side rate limiting that backs off when AWS throttles) plus connect, per-attempt, and overall operation timeouts, which matter because the app fans out across every enabled region and issues a describe per resource
 - [`src/aws/profiles.rs`](src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
 - [`src/aws/cost.rs`](src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
 - [`src/aws/ec2.rs`](src/aws/ec2.rs): EC2 inventory and global aggregation
