@@ -172,7 +172,8 @@ The app maintains a list of enabled AWS regions plus a synthetic `global` slot.
 
 Important nuance:
 
-- the global slot is a UI concept, not an AWS SDK region
+- the global slot is a UI concept, not an AWS SDK region; it sits one index past the last real region
+- it is persisted as the `global` sentinel and restored on startup (the initial client bundle still binds a real region, since global fans out per region separately)
 - only some service fetchers currently aggregate across all enabled regions
 - EC2, Lambda, and RDS implement global aggregation today
 
