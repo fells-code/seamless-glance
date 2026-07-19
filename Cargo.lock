@@ -2293,6 +2293,7 @@ dependencies = [
  "aws-sdk-sqs",
  "aws-sdk-sts",
  "aws-smithy-observability 0.1.5",
+ "aws-smithy-types",
  "aws-types",
  "chrono",
  "crossterm",

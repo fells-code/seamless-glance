@@ -46,6 +46,7 @@ aws-sdk-budgets = "1"
 aws-sdk-sts = "1"
 aws-sdk-rds = "1"
 aws-smithy-observability = { version = "0.1", default-features = false }
+aws-smithy-types = "1"
 
 serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }

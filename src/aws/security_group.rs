@@ -33,7 +33,7 @@ fn permission_includes_port(perm: &aws_sdk_ec2::types::IpPermission, port: i32) 
 pub async fn fetch_security_groups(app: &App) -> (Vec<SecurityGroupInfo>, ServiceStatus) {
     let resp = match app.aws.ec2.describe_security_groups().send().await {
         Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
+        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
     };
 
     let security_groups = resp

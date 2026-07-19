@@ -8,7 +8,7 @@ use crate::{
 pub async fn fetch_load_balancers(app: &App) -> (Vec<LoadBalancerInfo>, ServiceStatus) {
     let resp = match app.aws.elb.describe_load_balancers().send().await {
         Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
+        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
     };
 
     let load_balancers = resp

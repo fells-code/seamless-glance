@@ -22,16 +22,7 @@ async fn fetch_lambda_for_region(
 
     let resp = match aws.lambda.list_functions().send().await {
         Ok(r) => r,
-        Err(err) => {
-            let msg = err.to_string();
-            let status = if msg.contains("AccessDenied") {
-                ServiceStatus::AccessDenied
-            } else {
-                ServiceStatus::Unavailable(msg)
-            };
-
-            return Err(status);
-        }
+        Err(err) => return Err(ServiceStatus::from_sdk_error(&err)),
     };
 
     let functions = resp

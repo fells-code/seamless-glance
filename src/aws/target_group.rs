@@ -6,7 +6,7 @@ use crate::{
 pub async fn fetch_target_groups(app: &App) -> (Vec<TargetGroupInfo>, ServiceStatus) {
     let resp = match app.aws.elb.describe_target_groups().send().await {
         Ok(r) => r,
-        Err(err) => return (vec![], ServiceStatus::from_error_message(err.to_string())),
+        Err(err) => return (vec![], ServiceStatus::from_sdk_error(&err)),
     };
 
     let mut groups = Vec::new();
