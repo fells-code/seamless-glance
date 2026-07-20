@@ -36,6 +36,7 @@ use crate::{aws, config};
 
 mod findings;
 mod refresh;
+mod services;
 
 #[derive(Debug, Clone)]
 pub enum RefreshPhase {
@@ -458,24 +459,7 @@ impl App {
     }
 
     fn active_view_item_count(&self) -> usize {
-        match self.active_view {
-            ActiveView::Findings => self.findings.len(),
-            ActiveView::Ecs => self.ecs_clusters.len(),
-            ActiveView::Ec2 => self.ec2_instances.len(),
-            ActiveView::CostSavings => self.cost_savings_opportunities.len(),
-            ActiveView::Rds => self.rds_instances.len(),
-            ActiveView::Lambda => self.lambda_functions.len(),
-            ActiveView::Apigateway => self.apigateway_apis.len(),
-            ActiveView::Sqs => self.sqs_queues_data.len(),
-            ActiveView::Vpc => self.vpcs.len(),
-            ActiveView::Secrets => self.secrets.len(),
-            ActiveView::CloudWatch => self.cloudwatch_alarms.len(),
-            ActiveView::LoadBalancers => self.load_balancers.len(),
-            ActiveView::TargetGroups => self.target_groups.len(),
-            ActiveView::SecurityGroups => self.security_groups.len(),
-            ActiveView::AccountOverview => 10,
-            ActiveView::CostOverview => self.service_cost_insights.len(),
-        }
+        (services::entry_for(self.active_view).item_count)(self)
     }
 
     pub fn scroll_active_view_up(&mut self, lines: usize) {
@@ -992,6 +976,15 @@ impl App {
         items.get(self.selected_row)
     }
 
+    /// The selected row of the active view, when that view is backed by
+    /// resources that support describe/open/CLI.
+    fn selected_describable(&self) -> Option<Box<dyn DescribableResource>> {
+        match services::entry_for(self.active_view).rows {
+            services::ViewRows::Resources(selected) => selected(self),
+            services::ViewRows::Summary => None,
+        }
+    }
+
     pub fn selected_finding(&self) -> Option<&Finding> {
         self.findings.get(self.selected_row)
     }
@@ -1037,74 +1030,10 @@ impl App {
 
     pub async fn trigger_describe(&mut self) {
         self.footer_mode = FooterMode::Overlay;
-        match self.active_view {
-            ActiveView::Ec2 => {
-                if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
-                    self.describe_from_resource(&instance).await;
-                    self.footer_mode = FooterMode::Overlay;
-                }
-            }
 
-            ActiveView::Lambda => {
-                if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
-                    self.describe_from_resource(&func).await;
-                }
-            }
-
-            ActiveView::CloudWatch => {
-                if let Some(items) = self.selected_resource(&self.cloudwatch_alarms).cloned() {
-                    self.describe_from_resource(&items).await;
-                }
-            }
-
-            ActiveView::Secrets => {
-                if let Some(items) = self.selected_resource(&self.secrets).cloned() {
-                    self.describe_from_resource(&items).await;
-                }
-            }
-
-            ActiveView::Vpc => {
-                if let Some(items) = self.selected_resource(&self.vpcs).cloned() {
-                    self.describe_from_resource(&items).await;
-                }
-            }
-
-            ActiveView::Ecs => {
-                if let Some(items) = self.selected_resource(&self.ecs_clusters).cloned() {
-                    self.describe_from_resource(&items).await;
-                }
-            }
-
-            ActiveView::Rds => {
-                if let Some(items) = self.selected_resource(&self.rds_instances).cloned() {
-                    self.describe_from_resource(&items).await;
-                }
-            }
-
-            ActiveView::Apigateway => {
-                if let Some(items) = self.selected_resource(&self.apigateway_apis).cloned() {
-                    self.describe_from_resource(&items).await;
-                }
-            }
-
-            ActiveView::LoadBalancers => {
-                if let Some(lb) = self.selected_resource(&self.load_balancers).cloned() {
-                    self.describe_from_resource(&lb).await;
-                }
-            }
-
-            ActiveView::TargetGroups => {
-                if let Some(tg) = self.selected_resource(&self.target_groups).cloned() {
-                    self.describe_from_resource(&tg).await;
-                }
-            }
-
-            ActiveView::SecurityGroups => {
-                if let Some(sg) = self.selected_resource(&self.security_groups).cloned() {
-                    self.describe_from_resource(&sg).await;
-                }
-            }
-            _ => self.footer_mode = FooterMode::Normal,
+        match self.selected_describable() {
+            Some(resource) => self.describe_from_resource(resource.as_ref()).await,
+            None => self.footer_mode = FooterMode::Normal,
         }
     }
 
@@ -1112,129 +1041,15 @@ impl App {
         // Always close overlay first
         self.overlay = None;
 
-        match self.active_view {
-            ActiveView::Ec2 => {
-                if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
-                    let region = self.action_region_for_resource(&instance);
-                    if let Some(url) = instance.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
+        let Some(resource) = self.selected_describable() else {
+            return;
+        };
 
-            ActiveView::Lambda => {
-                if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
-                    let region = self.action_region_for_resource(&func);
-                    if let Some(url) = func.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
+        let region = self.action_region_for_resource(resource.as_ref());
+        if let Some(url) = resource.console_url(&region) {
+            if let Err(err) = open_in_browser(&url) {
+                self.notify_error(err);
             }
-
-            ActiveView::CloudWatch => {
-                if let Some(item) = self.selected_resource(&self.cloudwatch_alarms).cloned() {
-                    let region = self.action_region_for_resource(&item);
-                    if let Some(url) = item.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::Secrets => {
-                if let Some(item) = self.selected_resource(&self.secrets).cloned() {
-                    let region = self.action_region_for_resource(&item);
-                    if let Some(url) = item.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::Vpc => {
-                if let Some(item) = self.selected_resource(&self.vpcs).cloned() {
-                    let region = self.action_region_for_resource(&item);
-                    if let Some(url) = item.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::Ecs => {
-                if let Some(item) = self.selected_resource(&self.ecs_clusters).cloned() {
-                    let region = self.action_region_for_resource(&item);
-                    if let Some(url) = item.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::Rds => {
-                if let Some(item) = self.selected_resource(&self.rds_instances).cloned() {
-                    let region = self.action_region_for_resource(&item);
-                    if let Some(url) = item.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::Apigateway => {
-                if let Some(item) = self.selected_resource(&self.apigateway_apis).cloned() {
-                    let region = self.action_region_for_resource(&item);
-                    if let Some(url) = item.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::LoadBalancers => {
-                if let Some(lb) = self.selected_resource(&self.load_balancers).cloned() {
-                    let region = self.action_region_for_resource(&lb);
-                    if let Some(url) = lb.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::TargetGroups => {
-                if let Some(tg) = self.selected_resource(&self.target_groups).cloned() {
-                    let region = self.action_region_for_resource(&tg);
-                    if let Some(url) = tg.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            ActiveView::SecurityGroups => {
-                if let Some(sg) = self.selected_resource(&self.security_groups).cloned() {
-                    let region = self.action_region_for_resource(&sg);
-                    if let Some(url) = sg.console_url(&region) {
-                        if let Err(err) = open_in_browser(&url) {
-                            self.notify_error(err);
-                        }
-                    }
-                }
-            }
-
-            _ => {}
         }
     }
 
@@ -1254,68 +1069,8 @@ impl App {
     pub fn trigger_cli(&mut self) {
         self.overlay = None;
 
-        match self.active_view {
-            ActiveView::Ec2 => {
-                if let Some(instance) = self.selected_resource(&self.ec2_instances).cloned() {
-                    self.trigger_cli_for_resource(&instance);
-                }
-            }
-            ActiveView::Lambda => {
-                if let Some(func) = self.selected_resource(&self.lambda_functions).cloned() {
-                    self.trigger_cli_for_resource(&func);
-                }
-            }
-            ActiveView::CloudWatch => {
-                if let Some(item) = self.selected_resource(&self.cloudwatch_alarms).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::Secrets => {
-                if let Some(item) = self.selected_resource(&self.secrets).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::Vpc => {
-                if let Some(item) = self.selected_resource(&self.vpcs).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::Ecs => {
-                if let Some(item) = self.selected_resource(&self.ecs_clusters).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::Rds => {
-                if let Some(item) = self.selected_resource(&self.rds_instances).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::Apigateway => {
-                if let Some(item) = self.selected_resource(&self.apigateway_apis).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::Sqs => {
-                if let Some(item) = self.selected_resource(&self.sqs_queues_data).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::LoadBalancers => {
-                if let Some(item) = self.selected_resource(&self.load_balancers).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::TargetGroups => {
-                if let Some(item) = self.selected_resource(&self.target_groups).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            ActiveView::SecurityGroups => {
-                if let Some(item) = self.selected_resource(&self.security_groups).cloned() {
-                    self.trigger_cli_for_resource(&item);
-                }
-            }
-            _ => {}
+        if let Some(resource) = self.selected_describable() {
+            self.trigger_cli_for_resource(resource.as_ref());
         }
     }
 
