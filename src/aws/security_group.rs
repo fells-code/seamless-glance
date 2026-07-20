@@ -1,5 +1,6 @@
 use crate::{
     app::App,
+    aws::tags,
     models::{security_group::SecurityGroupInfo, service_status::ServiceStatus},
 };
 
@@ -66,6 +67,7 @@ pub async fn fetch_security_groups(app: &App) -> (Vec<SecurityGroupInfo>, Servic
         sensitive_public_ports.dedup();
 
         security_groups.push(SecurityGroupInfo {
+            tags: tags::from_pairs(sg.tags().iter().map(|t| (t.key(), t.value()))),
             id: sg.group_id().unwrap_or_default().to_string(),
             name: sg.group_name().unwrap_or("unknown").to_string(),
             vpc_id: sg.vpc_id().unwrap_or("unknown").to_string(),

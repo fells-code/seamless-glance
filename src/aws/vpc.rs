@@ -1,5 +1,6 @@
 use crate::{
     app::App,
+    aws::tags,
     models::{
         service_status::ServiceStatus,
         vpc::{VpcInfo, VpcSummary},
@@ -98,6 +99,7 @@ pub async fn fetch_vpcs(app: &App) -> (Vec<VpcInfo>, ServiceStatus) {
             .count() as u32;
 
         out.push(VpcInfo {
+            tags: tags::from_pairs(v.tags().iter().map(|t| (t.key(), t.value()))),
             vpc_id,
             cidr,
             state,

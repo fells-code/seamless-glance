@@ -5,6 +5,7 @@ use crate::{
     models::{
         describable::{shell_quote, DescribableResource},
         service_status::ServiceStatus,
+        tags::Tags,
     },
 };
 
@@ -24,6 +25,7 @@ pub struct RdsInstanceInfo {
     pub status: String,
     pub az: String,
     pub multi_az: bool,
+    pub tags: Tags,
 }
 
 impl RdsInstanceInfo {

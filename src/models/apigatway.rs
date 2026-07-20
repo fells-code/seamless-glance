@@ -7,6 +7,7 @@ use crate::{
     models::{
         describable::{shell_quote, DescribableResource},
         service_status::ServiceStatus,
+        tags::Tags,
     },
 };
 
@@ -23,6 +24,7 @@ pub struct ApiGatewayInfo {
     pub name: String,
     pub api_type: String, // REST | HTTP
     pub created_at: String,
+    pub tags: Tags,
 }
 
 impl ApiGatewayInfo {

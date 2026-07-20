@@ -1,6 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 
 use crate::models::service_status::ServiceStatus;
+use crate::models::tags::Tags;
 use crate::{
     aws::clients::AwsClients,
     models::describable::{shell_quote, DescribableResource},
@@ -19,6 +20,7 @@ pub struct SecretInfo {
     pub name: String,
     pub rotation_enabled: bool,
     pub last_rotated: Option<String>,
+    pub tags: Tags,
 }
 
 impl SecretInfo {

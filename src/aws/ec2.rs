@@ -1,6 +1,7 @@
 use crate::{
     app::App,
     aws::clients::{clients_for_region, AwsClients},
+    aws::tags,
     models::{ec2::Ec2InstanceInfo, service_status::ServiceStatus},
     resources::region_aggregate::fetch_all_regions,
 };
@@ -118,24 +119,9 @@ async fn fetch_instances_for_region(
         let reservation = item.map_err(|err| ServiceStatus::from_sdk_error(&err))?;
 
         for inst in reservation.instances() {
-            let tag_value = |key: &str| {
-                inst.tags()
-                    .iter()
-                    .find(|t| t.key().unwrap_or("") == key)
-                    .and_then(|t| t.value().map(|v| v.to_string()))
-            };
-
-            let name = inst
-                .tags()
-                .iter()
-                .find(|t| t.key().unwrap_or("") == "Name")
-                .and_then(|t| t.value().map(|v| v.to_string()));
-
             instances.push(Ec2InstanceInfo {
                 id: inst.instance_id().unwrap_or("").to_string(),
-                name,
-                owner: tag_value("Owner"),
-                environment: tag_value("Environment"),
+                tags: tags::from_pairs(inst.tags().iter().map(|t| (t.key(), t.value()))),
                 avg_cpu_utilization: None,
                 region: region.as_ref().to_string(),
                 instance_type: inst
@@ -192,7 +178,7 @@ async fn fetch_instances_with_metrics(
     instances.sort_by(|a, b| {
         a.region
             .cmp(&b.region)
-            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.name().cmp(&b.name()))
             .then_with(|| a.id.cmp(&b.id))
     });
 

@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::aws::tags;
 use crate::models::secrets::{SecretInfo, SecretsSummary};
 use crate::models::service_status::ServiceStatus;
 
@@ -45,6 +46,7 @@ pub async fn fetch_secrets(app: &App) -> (SecretsSummary, Vec<SecretInfo>) {
                 .map(|d| aws_datetime_to_utc(d).to_rfc3339());
 
             secrets.push(SecretInfo {
+                tags: tags::from_pairs(s.tags().iter().map(|t| (t.key(), t.value()))),
                 name: s.name().unwrap_or("unknown").to_string(),
                 rotation_enabled,
                 last_rotated,

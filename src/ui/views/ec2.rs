@@ -68,13 +68,13 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
 
             Row::new(vec![
                 Cell::from(inst.id.clone()),
-                Cell::from(inst.name.clone().unwrap_or("-".into())),
+                Cell::from(inst.name().unwrap_or("-").to_string()),
                 Cell::from(inst.region.clone()),
                 Cell::from(inst.state.clone()),
                 Cell::from(inst.instance_type.clone()),
                 Cell::from(inst.formatted_avg_cpu()),
-                Cell::from(inst.owner.clone().unwrap_or("-".into())),
-                Cell::from(inst.environment.clone().unwrap_or("-".into())),
+                Cell::from(inst.owner().unwrap_or("-").to_string()),
+                Cell::from(inst.environment().unwrap_or("-").to_string()),
                 Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.private_ip.clone().unwrap_or("-".into())),
                 Cell::from(inst.az.clone()),

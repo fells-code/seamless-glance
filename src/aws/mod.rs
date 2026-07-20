@@ -18,5 +18,6 @@ pub mod regions;
 pub mod secrets;
 pub mod security_group;
 pub mod sqs;
+pub mod tags;
 pub mod target_group;
 pub mod vpc;
