@@ -1,0 +1,29 @@
+# Coverage configuration, ready for when a coverage service is connected.
+#
+# The CI `coverage` job already generates and uploads an lcov report; wiring it
+# to a service (adding the repository on the service and, if it requires one, a
+# token) is a separate step only the repository owner can take.
+#
+# These ignores mirror the --ignore-filename-regex in .github/workflows/ci.yml.
+# Keep the two in step. They scope coverage to the pure decision logic in
+# src/models and src/app and exclude what unit tests cannot meaningfully reach:
+# terminal rendering, AWS SDK I/O, and the event loop, which are verified by
+# live-render and live-API checks instead.
+ignore:
+  - "src/ui/**/*"
+  - "src/aws/**/*"
+  - "src/main.rs"
+  - "src/app/refresh.rs"
+  - "src/resources/ssh.rs"
+
+coverage:
+  status:
+    project:
+      default:
+        # Matches the floor enforced in CI. Raise both together as coverage
+        # climbs rather than letting the badge and the gate drift apart.
+        target: 65%
+        threshold: 2%
+    patch: false
+
+comment: false
