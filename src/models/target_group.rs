@@ -97,3 +97,70 @@ impl DescribableResource for TargetGroupInfo {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn group(total: usize, unhealthy: usize, attached: bool) -> TargetGroupInfo {
+        TargetGroupInfo {
+            arn: "arn:aws:elasticloadbalancing:::targetgroup/tg".into(),
+            name: "tg".into(),
+            protocol: "HTTP".into(),
+            port: 80,
+            target_type: "instance".into(),
+            attached_load_balancer_arns: if attached {
+                vec!["arn:aws:elasticloadbalancing:::loadbalancer/app".into()]
+            } else {
+                Vec::new()
+            },
+            total_targets: total,
+            unhealthy_targets: unhealthy,
+            tags: Tags::empty(),
+        }
+    }
+
+    #[test]
+    fn healthy_targets_are_the_remainder() {
+        assert_eq!(group(4, 1, true).healthy_targets(), 3);
+        assert_eq!(group(4, 4, true).healthy_targets(), 0);
+    }
+
+    /// More unhealthy than registered should not underflow into a huge count.
+    #[test]
+    fn more_unhealthy_than_registered_cannot_underflow() {
+        assert_eq!(group(2, 5, true).healthy_targets(), 0);
+        assert!(group(2, 5, true).has_zero_healthy_targets());
+    }
+
+    /// An empty group is not an outage. Nothing is failing, there is just
+    /// nothing registered, which the orphan rule covers instead.
+    #[test]
+    fn an_empty_group_is_not_zero_healthy() {
+        assert!(!group(0, 0, true).has_zero_healthy_targets());
+        assert!(group(1, 1, true).has_zero_healthy_targets());
+    }
+
+    #[test]
+    fn an_orphan_has_neither_a_balancer_nor_targets() {
+        assert!(group(0, 0, false).is_orphan_candidate());
+
+        assert!(
+            !group(0, 0, true).is_orphan_candidate(),
+            "attached but empty is a deployment in progress, not an orphan"
+        );
+        assert!(
+            !group(2, 0, false).is_orphan_candidate(),
+            "unattached but serving targets is not an orphan"
+        );
+    }
+
+    /// Zero-healthy and partially-unhealthy are mutually exclusive, so a group
+    /// is never reported as both.
+    #[test]
+    fn health_signals_do_not_double_report() {
+        assert_eq!(group(2, 2, true).review_signals(), vec!["zero-healthy"]);
+        assert_eq!(group(4, 1, true).review_signals(), vec!["unhealthy"]);
+        assert!(group(4, 0, true).review_signals().is_empty());
+    }
+}

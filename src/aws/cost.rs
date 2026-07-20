@@ -42,18 +42,39 @@ fn interval(start: NaiveDate, end_exclusive: NaiveDate) -> DateInterval {
         .expect("valid Cost Explorer interval")
 }
 
-fn current_month_dates() -> (NaiveDate, NaiveDate) {
-    let today = today_exclusive();
-    (first_day_of_month(today), today)
+/// Month to date: the first of `today`'s month up to, but not including, today.
+///
+/// Cost Explorer treats the end of an interval as exclusive and rejects an
+/// interval that starts and ends on the same day. On the first of the month
+/// those coincide, so the window is widened to cover today, which is the only
+/// spend there is to report at that point.
+fn month_to_date_from(today: NaiveDate) -> (NaiveDate, NaiveDate) {
+    let start = first_day_of_month(today);
+
+    if start == today {
+        return (start, start.succ_opt().unwrap_or(today));
+    }
+
+    (start, today)
 }
 
-fn forecast_month_dates() -> (NaiveDate, NaiveDate) {
-    let today = today_exclusive();
+fn current_month_dates() -> (NaiveDate, NaiveDate) {
+    month_to_date_from(today_exclusive())
+}
+
+/// The rest of `today`'s month: today up to the first of next month.
+fn remainder_of_month_from(today: NaiveDate) -> (NaiveDate, NaiveDate) {
     (today, first_day_of_next_month(today))
 }
 
-fn trailing_six_month_dates() -> (NaiveDate, NaiveDate) {
-    let today = today_exclusive();
+fn forecast_month_dates() -> (NaiveDate, NaiveDate) {
+    remainder_of_month_from(today_exclusive())
+}
+
+/// Six calendar months ending today: the first of the month five months back,
+/// up to today. The window starts at a month boundary so the first bucket is a
+/// whole month rather than a partial one.
+fn trailing_six_months_from(today: NaiveDate) -> (NaiveDate, NaiveDate) {
     let start = first_day_of_month(
         today
             .checked_sub_months(Months::new(5))
@@ -63,17 +84,26 @@ fn trailing_six_month_dates() -> (NaiveDate, NaiveDate) {
     (start, today)
 }
 
-pub fn last_6_month_labels() -> Vec<String> {
-    let now = today_exclusive();
+fn trailing_six_month_dates() -> (NaiveDate, NaiveDate) {
+    trailing_six_months_from(today_exclusive())
+}
 
+/// Short month names for the trailing six months, oldest first, so the labels
+/// line up with the buckets `trailing_six_months_from` asks for.
+fn six_month_labels_from(today: NaiveDate) -> Vec<String> {
     (0..6)
         .map(|i| {
-            now.checked_sub_months(Months::new((5 - i) as u32))
+            today
+                .checked_sub_months(Months::new((5 - i) as u32))
                 .expect("valid month")
                 .format("%b")
                 .to_string()
         })
         .collect()
+}
+
+pub fn last_6_month_labels() -> Vec<String> {
+    six_month_labels_from(today_exclusive())
 }
 
 fn metric_amount(metric_value: Option<&aws_sdk_costexplorer::types::MetricValue>) -> f64 {
@@ -292,4 +322,176 @@ pub async fn fetch_budget(app: &App) -> (BudgetInfo, ServiceStatus) {
         },
         ServiceStatus::Ok,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_costexplorer::types::MetricValue;
+
+    fn date(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).expect("valid test date")
+    }
+
+    #[test]
+    fn month_to_date_runs_from_the_first_up_to_today() {
+        let (start, end) = month_to_date_from(date(2026, 7, 20));
+
+        assert_eq!(start, date(2026, 7, 1));
+        // Exclusive end, so today's partial spend is not requested.
+        assert_eq!(end, date(2026, 7, 20));
+    }
+
+    /// Cost Explorer rejects an interval whose start and end are the same day
+    /// ("Start date (and hour) should be before end date (and hour)"), so on
+    /// the first of the month the window has to cover today instead of
+    /// collapsing. Left as-is this made every cost view report unavailable on
+    /// the first of each month.
+    #[test]
+    fn the_first_of_the_month_is_never_an_empty_window() {
+        let (start, end) = month_to_date_from(date(2026, 7, 1));
+
+        assert_eq!(start, date(2026, 7, 1));
+        assert_eq!(end, date(2026, 7, 2));
+        assert!(start < end, "Cost Explorer requires a non-empty interval");
+    }
+
+    /// The same collapse would happen on the first of January, where the widened
+    /// end must stay inside the new year.
+    #[test]
+    fn the_first_of_january_widens_within_the_new_year() {
+        let (start, end) = month_to_date_from(date(2026, 1, 1));
+
+        assert_eq!(start, date(2026, 1, 1));
+        assert_eq!(end, date(2026, 1, 2));
+    }
+
+    #[test]
+    fn every_day_of_a_month_yields_a_usable_interval() {
+        for day in 1..=31 {
+            let today = date(2026, 7, day);
+            let (start, end) = month_to_date_from(today);
+
+            assert!(start < end, "empty interval for {today}");
+        }
+    }
+
+    #[test]
+    fn the_forecast_window_runs_to_the_start_of_next_month() {
+        let (start, end) = remainder_of_month_from(date(2026, 7, 20));
+
+        assert_eq!(start, date(2026, 7, 20));
+        assert_eq!(end, date(2026, 8, 1));
+    }
+
+    /// December has to roll the year, which plain month arithmetic gets wrong.
+    #[test]
+    fn december_rolls_into_the_next_year() {
+        assert_eq!(first_day_of_next_month(date(2026, 12, 9)), date(2027, 1, 1));
+        assert_eq!(
+            remainder_of_month_from(date(2026, 12, 31)).1,
+            date(2027, 1, 1)
+        );
+    }
+
+    #[test]
+    fn the_first_of_a_month_is_found_from_any_day_in_it() {
+        assert_eq!(first_day_of_month(date(2026, 7, 20)), date(2026, 7, 1));
+        assert_eq!(first_day_of_month(date(2026, 7, 1)), date(2026, 7, 1));
+        // A leap day is still just a day in February.
+        assert_eq!(first_day_of_month(date(2024, 2, 29)), date(2024, 2, 1));
+    }
+
+    #[test]
+    fn the_six_month_window_starts_on_a_month_boundary() {
+        let (start, end) = trailing_six_months_from(date(2026, 7, 20));
+
+        // Five months back from July is February, snapped to the 1st so the
+        // oldest bucket is a whole month.
+        assert_eq!(start, date(2026, 2, 1));
+        assert_eq!(end, date(2026, 7, 20));
+    }
+
+    #[test]
+    fn the_six_month_window_crosses_a_year_boundary() {
+        let (start, end) = trailing_six_months_from(date(2026, 3, 15));
+
+        assert_eq!(start, date(2025, 10, 1));
+        assert_eq!(end, date(2026, 3, 15));
+    }
+
+    /// Subtracting months from a 31-day date lands on a shorter month. The
+    /// window is snapped to the 1st afterwards, so the clamp cannot shift which
+    /// month the window starts in.
+    #[test]
+    fn a_month_end_date_still_starts_the_window_on_the_first() {
+        let (start, _) = trailing_six_months_from(date(2026, 7, 31));
+
+        assert_eq!(start, date(2026, 2, 1));
+    }
+
+    #[test]
+    fn labels_run_oldest_first_and_match_the_window() {
+        let labels = six_month_labels_from(date(2026, 7, 20));
+
+        assert_eq!(labels, vec!["Feb", "Mar", "Apr", "May", "Jun", "Jul"]);
+        assert_eq!(labels.len(), 6);
+    }
+
+    #[test]
+    fn labels_cross_a_year_boundary_in_order() {
+        let labels = six_month_labels_from(date(2026, 2, 5));
+
+        assert_eq!(labels, vec!["Sep", "Oct", "Nov", "Dec", "Jan", "Feb"]);
+    }
+
+    /// The label list and the requested window have to agree, or the chart
+    /// axis is offset from the data it plots.
+    #[test]
+    fn the_first_label_is_the_month_the_window_starts_in() {
+        for today in [date(2026, 7, 20), date(2026, 1, 3), date(2026, 12, 31)] {
+            let (start, _) = trailing_six_months_from(today);
+            let labels = six_month_labels_from(today);
+
+            assert_eq!(
+                labels[0],
+                start.format("%b").to_string(),
+                "window and labels disagree for {today}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_interval_is_formatted_as_cost_explorer_expects() {
+        let (start, end) = interval_strings(date(2026, 2, 1), date(2026, 7, 20));
+
+        assert_eq!(start, "2026-02-01");
+        assert_eq!(end, "2026-07-20");
+    }
+
+    #[test]
+    fn a_metric_amount_is_parsed_from_its_string() {
+        let value = MetricValue::builder().amount("123.45").unit("USD").build();
+
+        assert_eq!(metric_amount(Some(&value)), 123.45);
+        assert_eq!(metric_unit(Some(&value)), "USD");
+    }
+
+    /// Cost Explorer omits metrics for a period with no spend. That is zero,
+    /// not an error, and must not poison the total.
+    #[test]
+    fn a_missing_metric_reads_as_zero() {
+        assert_eq!(metric_amount(None), 0.0);
+        assert_eq!(metric_unit(None), "");
+
+        let empty = MetricValue::builder().build();
+        assert_eq!(metric_amount(Some(&empty)), 0.0);
+    }
+
+    #[test]
+    fn an_unparseable_amount_reads_as_zero_rather_than_panicking() {
+        let broken = MetricValue::builder().amount("not-a-number").build();
+
+        assert_eq!(metric_amount(Some(&broken)), 0.0);
+    }
 }

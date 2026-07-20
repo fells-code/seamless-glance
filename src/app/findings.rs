@@ -1471,6 +1471,303 @@ mod tests {
     }
 
     /// One finding per offending resource, each independently identifiable.
+    fn secret(name: &str, rotation_enabled: bool) -> SecretInfo {
+        SecretInfo {
+            name: name.into(),
+            rotation_enabled,
+            last_rotated: None,
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    fn api(name: &str, created_at: &str) -> ApiGatewayInfo {
+        ApiGatewayInfo {
+            id: format!("id-{name}"),
+            name: name.into(),
+            api_type: "REST".into(),
+            created_at: created_at.into(),
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    fn rds(identifier: &str, status: &str, multi_az: bool) -> RdsInstanceInfo {
+        RdsInstanceInfo {
+            identifier: identifier.into(),
+            region: "us-east-1".into(),
+            engine: "postgres".into(),
+            instance_class: "db.t3.medium".into(),
+            status: status.into(),
+            az: "us-east-1a".into(),
+            multi_az,
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    fn balancer(name: &str, groups: usize, total: usize, healthy: usize) -> LoadBalancerInfo {
+        LoadBalancerInfo {
+            arn: format!("arn:aws:elasticloadbalancing:::loadbalancer/{name}"),
+            name: name.into(),
+            lb_type: "Application".into(),
+            scheme: "internet-facing".into(),
+            state: "active".into(),
+            az_count: 2,
+            attached_target_groups: groups,
+            total_targets: total,
+            healthy_targets: healthy,
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    /// Production-like secrets are a separate, higher-severity rule, so the
+    /// general rotation rule must not report them a second time.
+    #[test]
+    fn secrets_rotation_rules_do_not_double_report() {
+        let ov = overview();
+        let secrets = vec![
+            secret("prod-signing-key", false),
+            secret("dev-token", false),
+        ];
+        let mut c = ctx(Some(&ov));
+        c.secrets = &secrets;
+
+        let production = secrets_production_rotation_disabled(&c);
+        assert_eq!(production.len(), 1);
+        assert_eq!(production[0].severity, FindingSeverity::High);
+        assert!(production[0].summary.contains("prod-signing-key"));
+
+        let general = secrets_rotation_disabled(&c);
+        assert_eq!(general.len(), 1);
+        assert!(general[0].summary.contains("dev-token"));
+    }
+
+    #[test]
+    fn a_secret_that_has_not_rotated_in_too_long_is_reported() {
+        let ov = overview();
+        let long_ago = (chrono::Utc::now()
+            - chrono::Duration::days(SecretInfo::STALE_ROTATION_DAYS + 1))
+        .to_rfc3339();
+        let recently = chrono::Utc::now().to_rfc3339();
+
+        let secrets = vec![
+            SecretInfo {
+                last_rotated: Some(long_ago),
+                ..secret("stale-key", true)
+            },
+            SecretInfo {
+                last_rotated: Some(recently),
+                ..secret("fresh-key", true)
+            },
+        ];
+        let mut c = ctx(Some(&ov));
+        c.secrets = &secrets;
+
+        let found = secrets_stale_rotation(&c);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].summary.contains("stale-key"));
+    }
+
+    /// Rotation age only means something once rotation is on. A secret that
+    /// never rotates is the other rule's case, not this one's.
+    #[test]
+    fn a_secret_with_rotation_disabled_is_not_also_reported_as_stale() {
+        let ov = overview();
+        let long_ago = (chrono::Utc::now()
+            - chrono::Duration::days(SecretInfo::STALE_ROTATION_DAYS + 1))
+        .to_rfc3339();
+
+        let secrets = vec![SecretInfo {
+            last_rotated: Some(long_ago),
+            ..secret("never-rotates", false)
+        }];
+        let mut c = ctx(Some(&ov));
+        c.secrets = &secrets;
+
+        assert!(secrets_stale_rotation(&c).is_empty());
+    }
+
+    #[test]
+    fn a_rotating_secret_is_not_reported() {
+        let ov = overview();
+        let secrets = vec![secret("prod-signing-key", true)];
+        let mut c = ctx(Some(&ov));
+        c.secrets = &secrets;
+
+        assert!(secrets_production_rotation_disabled(&c).is_empty());
+        assert!(secrets_rotation_disabled(&c).is_empty());
+    }
+
+    #[test]
+    fn orphan_target_groups_are_reported_per_group() {
+        let ov = overview();
+        let groups = vec![
+            target_group("orphan", 0, 0, false),
+            target_group("attached", 0, 0, true),
+        ];
+        let mut c = ctx(Some(&ov));
+        c.target_groups = &groups;
+
+        let found = target_groups_orphaned(&c);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].summary.contains("orphan"));
+        assert_eq!(found[0].category, FindingCategory::Waste);
+    }
+
+    #[test]
+    fn stopped_instances_split_by_whether_they_look_important() {
+        let ov = overview();
+        let mut important = low_cpu_instance("t3.medium", "us-east-1");
+        important.state = "stopped".into();
+        important.tags = Tags::loaded([("Name", "prod-api"), ("Owner", "p"), ("Environment", "e")]);
+        let mut plain = low_cpu_instance("t3.medium", "us-east-1");
+        plain.id = "i-2".into();
+        plain.state = "stopped".into();
+        plain.tags = Tags::loaded([("Name", "dev-box"), ("Owner", "p"), ("Environment", "e")]);
+
+        let instances = vec![important, plain];
+        let mut c = ctx(Some(&ov));
+        c.ec2_instances = &instances;
+
+        let needing = ec2_stopped_instances_needing_review(&c);
+        assert_eq!(needing.len(), 1);
+        assert!(needing[0].summary.contains("prod-api"));
+
+        let unused = ec2_stopped_instances_unused(&c);
+        assert_eq!(unused.len(), 1);
+        assert!(unused[0].summary.contains("dev-box"));
+    }
+
+    #[test]
+    fn ec2_tag_gaps_name_the_tags_that_are_missing() {
+        let ov = overview();
+        let mut untagged = low_cpu_instance("t3.medium", "us-east-1");
+        untagged.tags = Tags::loaded([("Name", "web")]);
+        let instances = vec![untagged];
+        let mut c = ctx(Some(&ov));
+        c.ec2_instances = &instances;
+
+        let found = ec2_tag_coverage_gaps(&c);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].summary.contains("Owner"));
+        assert!(found[0].summary.contains("Environment"));
+        assert_eq!(found[0].severity, FindingSeverity::Low);
+    }
+
+    #[test]
+    fn an_instance_with_unreadable_tags_is_not_reported_as_untagged() {
+        let ov = overview();
+        let mut unknown = low_cpu_instance("t3.medium", "us-east-1");
+        unknown.tags = Tags::Unavailable;
+        let instances = vec![unknown];
+        let mut c = ctx(Some(&ov));
+        c.ec2_instances = &instances;
+
+        assert!(ec2_tag_coverage_gaps(&c).is_empty());
+    }
+
+    #[test]
+    fn generic_api_names_are_reported_and_specific_ones_are_not() {
+        let apis = vec![
+            api("test", "2026-07-01T00:00:00Z"),
+            api("orders-public-api", "2026-07-01T00:00:00Z"),
+        ];
+        let mut c = ctx(None);
+        c.apigateway_apis = &apis;
+
+        let found = apigateway_generic_or_stale_apis(&c);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].summary.contains("test"));
+    }
+
+    #[test]
+    fn a_backlogged_queue_is_an_incident_and_a_quiet_one_is_not() {
+        let queues = vec![
+            SqsQueueInfo {
+                messages_available: 5_000,
+                ..queue_fixture("busy")
+            },
+            queue_fixture("quiet"),
+        ];
+        let mut c = ctx(None);
+        c.sqs_queues_data = &queues;
+
+        let found = sqs_queue_backlog(&c);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].summary.contains("busy"));
+        assert_eq!(found[0].severity, FindingSeverity::High);
+    }
+
+    fn queue_fixture(name: &str) -> SqsQueueInfo {
+        SqsQueueInfo {
+            name: name.into(),
+            queue_url: format!("https://sqs.us-east-1.amazonaws.com/1/{name}"),
+            is_fifo: false,
+            messages_available: 0,
+            messages_in_flight: 0,
+            has_dlq: true,
+            dead_letter_target_arn: None,
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    #[test]
+    fn rds_reports_unavailable_instances_and_single_az_separately() {
+        let instances = vec![
+            rds("prod-writer", "available", false),
+            rds("dev-reader", "creating", true),
+        ];
+        let mut c = ctx(None);
+        c.rds_instances = &instances;
+
+        let unavailable = rds_instances_not_available(&c);
+        assert_eq!(unavailable.len(), 1);
+        assert!(unavailable[0].summary.contains("dev-reader"));
+        assert_eq!(unavailable[0].category, FindingCategory::Incident);
+
+        let single_az = rds_single_az_production_like(&c);
+        assert_eq!(single_az.len(), 1);
+        assert!(single_az[0].summary.contains("prod-writer"));
+    }
+
+    /// A balancer serving nothing is waste; one whose targets are all failing
+    /// is an incident. Neither rule may claim the other's case.
+    #[test]
+    fn load_balancer_rules_split_idle_from_failing() {
+        let balancers = vec![balancer("idle", 0, 0, 0), balancer("failing", 2, 4, 0)];
+        let mut c = ctx(None);
+        c.load_balancers = &balancers;
+
+        let zero_healthy = load_balancers_zero_healthy_targets(&c);
+        assert_eq!(zero_healthy.len(), 1);
+        assert!(zero_healthy[0].summary.contains("failing"));
+        assert_eq!(zero_healthy[0].category, FindingCategory::Incident);
+
+        let idle = load_balancers_no_active_targets(&c);
+        assert_eq!(idle.len(), 1);
+        assert!(idle[0].summary.contains("idle"));
+        assert_eq!(idle[0].category, FindingCategory::Waste);
+    }
+
+    #[test]
+    fn stale_lambda_functions_are_reported_once_each() {
+        let functions = vec![
+            LambdaFunctionInfo {
+                name: "old".into(),
+                last_modified: "2020-01-01T00:00:00.000+0000".into(),
+                ..lambda(128)
+            },
+            LambdaFunctionInfo {
+                name: "fresh".into(),
+                ..lambda(128)
+            },
+        ];
+        let mut c = ctx(None);
+        c.lambda_functions = &functions;
+
+        let found = lambda_stale_functions(&c);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].summary.contains("old"));
+    }
+
     #[test]
     fn a_rule_emits_one_finding_per_offending_resource() {
         let ov = overview();
