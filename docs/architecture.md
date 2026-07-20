@@ -216,7 +216,8 @@ To add a future triage or waste feature cleanly:
 The initial findings implementation follows that pattern with:
 
 - a `Finding` model in `src/models/finding.rs`
-- derived findings stored in `App`
+- a rule registry in `src/app/findings.rs`: each rule is a small `fn(&FindingContext) -> Vec<Finding>` listed in `FINDING_RULES`, so rules are individually unit-testable and adding one is a function plus a registry entry rather than more inline branches. `FindingContext` carries borrowed inputs (the account overview and the service inventories), and `sample_list` is the shared "a, b, c (+N more)" helper every rule uses for its summary. Rules that read the account overview return nothing when it is absent
+- derived findings stored in `App`; `App::rebuild_findings` just builds the context and calls `build_findings`
 - a dedicated `Findings` view that routes into related service screens
 
 The cost-savings implementation follows a similar pattern:
