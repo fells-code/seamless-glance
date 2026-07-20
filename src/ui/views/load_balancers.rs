@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Modifier, Style},
@@ -19,6 +19,9 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.load_balancers);
 
     render_list_table(
         frame,
@@ -46,7 +49,7 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No load balancers found in this region.",
         },
-        &app.load_balancers,
+        &rows,
         |lb| {
             let style = if lb.has_zero_healthy_targets() {
                 Style::default()

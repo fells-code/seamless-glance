@@ -6,7 +6,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 
 pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(
@@ -20,6 +20,9 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.apigateway_apis);
 
     render_list_table(
         frame,
@@ -41,7 +44,7 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
             ],
             empty_message: "No API Gateway APIs found in this region.",
         },
-        &app.apigateway_apis,
+        &rows,
         |api| {
             let style = if api.needs_review() {
                 Style::default().fg(theme.primary)

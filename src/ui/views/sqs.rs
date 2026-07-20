@@ -6,7 +6,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 
 pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(frame, area, "SQS", &app.sqs_status, &app.theme)
@@ -15,6 +15,9 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.sqs_queues_data);
 
     render_list_table(
         frame,
@@ -37,7 +40,7 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
             ],
             empty_message: "No SQS queues found in this region.",
         },
-        &app.sqs_queues_data,
+        &rows,
         |q| {
             let style = if q.has_backlog_incident() {
                 Style::default().fg(theme.accent)

@@ -1,7 +1,7 @@
 use crate::{
     app::App,
     models::finding::{FindingCategory, FindingSeverity},
-    ui::views::list_table::{render_list_table, ListSelection, ListTable},
+    ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable},
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -12,14 +12,20 @@ use ratatui::{
 
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     // Wrap mode replaces the table with a single wrapped detail pane, so it has
-    // to divert before the shared table renderer.
-    if !app.findings.is_empty() && app.wrap_mode_active() {
-        app.selected_row = app.selected_row.min(app.findings.len() - 1);
+    // to divert before the shared table renderer. Guarded on the filtered rows:
+    // diverting with nothing to show would render an empty pane with no
+    // explanation, since the empty-state message lives on the table path.
+    let filtered_count = app.visible_indices().len();
+    if filtered_count > 0 && app.wrap_mode_active() {
+        app.selected_row = app.selected_row.min(filtered_count - 1);
         render_wrapped_detail(frame, area, app);
         return;
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.findings);
 
     render_list_table(
         frame,
@@ -44,7 +50,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             empty_message: "No findings detected right now.\n\
                             This view will surface incidents, waste, and hygiene issues as they appear.",
         },
-        &app.findings,
+        &rows,
         |finding| {
             let severity_style = match finding.severity {
                 FindingSeverity::High => Style::default().fg(theme.primary),
@@ -81,7 +87,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App) {
     // Indexing here would panic if the selection ever outran the list, so read
     // it fallibly and bail rather than trusting an upstream clamp.
-    let Some(finding) = app.findings.get(app.selected_row) else {
+    let visible = app.visible_indices();
+    let Some(finding) = visible
+        .get(app.selected_row)
+        .and_then(|&index| app.findings.get(index))
+    else {
         return;
     };
     let layout = Layout::default()
@@ -90,9 +100,14 @@ fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App) {
         .split(area);
 
     let metadata = Paragraph::new(format!(
-        "Finding {}/{}\n{}  |  {}  |  {}  |  {}  |  {}",
+        "Finding {}/{}{}\n{}  |  {}  |  {}  |  {}  |  {}",
         app.selected_row + 1,
-        app.findings.len(),
+        visible.len(),
+        if app.filter_is_active() {
+            format!(" (filtered from {})", app.findings.len())
+        } else {
+            String::new()
+        },
         finding.severity.as_str(),
         finding.category.as_str(),
         finding.service,

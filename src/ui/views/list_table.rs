@@ -27,6 +27,17 @@ pub struct ListTable<'a> {
 
 /// The mutable selection state a list view drives. Passed as separate borrows so
 /// callers can hand over disjoint `App` fields alongside the item slice.
+/// Project a view's backing data down to the rows a filter leaves visible.
+///
+/// Takes indices rather than the `App` so the borrow of the data is a plain
+/// field borrow, leaving the selection fields free to be borrowed mutably.
+pub fn visible_rows<'a, T>(indices: &[usize], items: &'a [T]) -> Vec<&'a T> {
+    indices
+        .iter()
+        .filter_map(|&index| items.get(index))
+        .collect()
+}
+
 pub struct ListSelection<'a> {
     pub selected_row: &'a mut usize,
     pub scroll_offset: &'a mut u16,

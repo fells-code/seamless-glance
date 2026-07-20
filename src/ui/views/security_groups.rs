@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
@@ -19,6 +19,9 @@ pub fn render_sg(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.security_groups);
 
     render_list_table(
         frame,
@@ -43,7 +46,7 @@ pub fn render_sg(frame: &mut Frame, area: Rect, app: &mut App) {
             empty_message: "No security groups found in this region.\n\
                             This is uncommon and may indicate a highly restricted account.",
         },
-        &app.security_groups,
+        &rows,
         |sg| {
             // Sensitive public ports and world-open both read as a subtle
             // warning rather than an alarm.

@@ -79,6 +79,11 @@ pub struct App {
     pub should_quit: bool,
     pub command_mode: bool,
     pub command_input: String,
+    // Narrows the active view's rows to those matching the query. Selection
+    // indexes the filtered rows, so everything that resolves a selection has to
+    // go through `visible_indices`.
+    pub filter_mode: bool,
+    pub row_filter: String,
     pub show_help: bool,
     pub scroll_offset: u16,
     pub selected_row: usize,
@@ -189,6 +194,8 @@ impl App {
             should_quit: false,
             command_mode: false,
             command_input: String::new(),
+            filter_mode: false,
+            row_filter: String::new(),
             active_view: ActiveView::Findings,
             budget: BudgetInfo {
                 monthly_budget: 0.0,
@@ -451,9 +458,11 @@ impl App {
     }
 
     pub async fn on_view_enter(&mut self) {
-        self.selected_row = 0;
-        self.scroll_offset = 0;
-        self.detail_scroll_offset = 0;
+        // The filter is scoped to the view it was typed in. Carrying it across
+        // would silently hide rows in a view the operator never filtered.
+        self.filter_mode = false;
+        self.row_filter.clear();
+        self.reset_row_selection();
 
         // Serve cached inventory when it is still fresh so navigation does not
         // re-hit AWS on every view switch. A manual refresh (`r`) and profile or
@@ -487,8 +496,93 @@ impl App {
         self.detail_scroll_offset = 0;
     }
 
+    /// Indices into the active view's backing data for the rows currently
+    /// shown, in display order.
+    ///
+    /// Every caller that turns a selection into a resource goes through this.
+    /// Resolving `selected_row` against the unfiltered data would act on a
+    /// different resource than the highlighted one.
+    /// Cost insights ranked by spend.
+    ///
+    /// The cost overview displays this order, so the registry has to match it:
+    /// a selection there indexes the ranking, not the fetch order.
+    pub fn sorted_cost_insights(&self) -> Vec<ServiceCostInsight> {
+        let mut sorted = self.service_cost_insights.clone();
+        sorted.sort_by(|a, b| {
+            b.monthly_cost
+                .partial_cmp(&a.monthly_cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        sorted
+    }
+
+    pub fn visible_indices(&self) -> Vec<usize> {
+        let row_text = (services::entry_for(self.active_view).row_text)(self);
+        let needle = self.row_filter.trim().to_lowercase();
+
+        if needle.is_empty() {
+            return (0..row_text.len()).collect();
+        }
+
+        row_text
+            .iter()
+            .enumerate()
+            .filter(|(_, text)| text.to_lowercase().contains(&needle))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// How many rows the active view has before filtering, for reporting how
+    /// much a filter is hiding.
+    pub fn total_row_count(&self) -> usize {
+        (services::entry_for(self.active_view).row_text)(self).len()
+    }
+
+    pub fn filter_is_active(&self) -> bool {
+        !self.row_filter.trim().is_empty()
+    }
+
     fn active_view_item_count(&self) -> usize {
-        (services::entry_for(self.active_view).item_count)(self)
+        self.visible_indices().len()
+    }
+
+    /// Put the cursor back at the top of the list.
+    ///
+    /// Called whenever the row set changes underneath the selection, since a
+    /// row index carries no meaning across a different set of rows.
+    pub fn reset_row_selection(&mut self) {
+        self.selected_row = 0;
+        self.scroll_offset = 0;
+        self.detail_scroll_offset = 0;
+    }
+
+    pub fn open_filter(&mut self) {
+        self.filter_mode = true;
+        self.footer_mode = FooterMode::Filter;
+    }
+
+    /// Leave filter entry, keeping the query and the rows it selected.
+    pub fn commit_filter(&mut self) {
+        self.filter_mode = false;
+        self.footer_mode = FooterMode::Normal;
+    }
+
+    /// Leave filter entry and restore the full row set.
+    pub fn clear_filter(&mut self) {
+        self.filter_mode = false;
+        self.row_filter.clear();
+        self.footer_mode = FooterMode::Normal;
+        self.reset_row_selection();
+    }
+
+    pub fn push_filter_char(&mut self, c: char) {
+        self.row_filter.push(c);
+        self.reset_row_selection();
+    }
+
+    pub fn pop_filter_char(&mut self) {
+        self.row_filter.pop();
+        self.reset_row_selection();
     }
 
     pub fn scroll_active_view_up(&mut self, lines: usize) {
@@ -979,7 +1073,8 @@ impl App {
     }
 
     pub fn selected_cost_savings_opportunity(&self) -> Option<&CostSavingsOpportunity> {
-        self.cost_savings_opportunities.get(self.selected_row)
+        let index = *self.visible_indices().get(self.selected_row)?;
+        self.cost_savings_opportunities.get(index)
     }
 
     pub async fn open_selected_cost_savings_opportunity(&mut self) {
@@ -999,11 +1094,14 @@ impl App {
         self.on_view_enter().await;
     }
 
+    /// The selected row of `items`, resolved through the active filter so it is
+    /// the row the operator can actually see.
     pub fn selected_resource<'a, T: DescribableResource>(
         &'a self,
         items: &'a [T],
     ) -> Option<&'a T> {
-        items.get(self.selected_row)
+        let index = *self.visible_indices().get(self.selected_row)?;
+        items.get(index)
     }
 
     /// The selected row of the active view, when that view is backed by
@@ -1016,7 +1114,8 @@ impl App {
     }
 
     pub fn selected_finding(&self) -> Option<&Finding> {
-        self.findings.get(self.selected_row)
+        let index = *self.visible_indices().get(self.selected_row)?;
+        self.findings.get(index)
     }
 
     fn action_region_for_resource<T: DescribableResource + ?Sized>(&self, resource: &T) -> String {

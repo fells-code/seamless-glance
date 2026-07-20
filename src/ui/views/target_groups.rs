@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Modifier, Style},
@@ -19,6 +19,9 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.target_groups);
 
     render_list_table(
         frame,
@@ -55,7 +58,7 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
             empty_message: "No target groups found in this region.\n\
                             This is normal if no load balancers or services are deployed.",
         },
-        &app.target_groups,
+        &rows,
         |tg| {
             let style = if tg.has_zero_healthy_targets() {
                 Style::default()

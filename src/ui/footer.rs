@@ -17,6 +17,7 @@ use crate::{
 pub enum FooterMode {
     Normal,
     Command,
+    Filter,
     Help,
     Overlay,
 }
@@ -34,6 +35,16 @@ fn normal_view_hints(app: &App) -> String {
     );
 
     let mut hints = vec![view_hint];
+
+    // Lead with the filter state: it changes what every other hint acts on.
+    if app.filter_is_active() {
+        hints.push(format!(
+            "Filter {:?}: {}/{} rows   [Esc] Clear",
+            app.row_filter.trim(),
+            app.visible_indices().len(),
+            app.total_row_count()
+        ));
+    }
 
     if opens_related {
         hints.push("[Enter] Open related view".into());
@@ -55,9 +66,37 @@ fn normal_view_hints(app: &App) -> String {
     hints.join("   ")
 }
 
+/// The filter prompt, shown while a query is being typed.
+fn draw_filter_input(frame: &mut Frame, area: Rect, app: &App) {
+    let matched = app.visible_indices().len();
+    let total = app.total_row_count();
+
+    let prompt = format!(
+        "/{}\n{matched}/{total} rows   [Enter] Keep filter   [Esc] Clear   [↑/↓] Move selection",
+        app.row_filter
+    );
+
+    let block = Block::default()
+        .title("Filter")
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(app.theme.primary));
+
+    frame.render_widget(
+        Paragraph::new(prompt)
+            .style(Style::default().fg(app.theme.accent))
+            .block(block),
+        area,
+    );
+}
+
 pub fn draw_footer(frame: &mut Frame, area: Rect, app: &App) {
     if app.command_mode {
         draw_command_palette(frame, area, app);
+        return;
+    }
+
+    if app.filter_mode {
+        draw_filter_input(frame, area, app);
         return;
     }
 
