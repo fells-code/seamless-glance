@@ -65,6 +65,8 @@ pub enum FindingRoute {
     Vpc,
 }
 
+use crate::models::cost_estimate::CostEstimate;
+
 #[derive(Debug, Clone)]
 pub struct Finding {
     /// Which rule produced this finding. Part of the stable key, so that two
@@ -83,9 +85,21 @@ pub struct Finding {
     pub summary: String,
     pub next_step: String,
     pub route: FindingRoute,
+    /// What this resource costs at list price, for waste findings where a
+    /// standing hourly charge is what makes the resource wasteful.
+    ///
+    /// `None` covers both "not a waste finding" and waste whose cost is
+    /// usage-driven rather than a standing charge, which a list price cannot
+    /// answer.
+    pub cost: Option<CostEstimate>,
 }
 
 impl Finding {
+    pub fn with_cost(mut self, cost: Option<CostEstimate>) -> Self {
+        self.cost = cost;
+        self
+    }
+
     /// Identity that survives a refresh, for deduplication and acknowledgement.
     ///
     /// `None` when the finding is not about one identifiable resource, which is
@@ -112,6 +126,7 @@ mod tests {
             summary: "summary".into(),
             next_step: "next".into(),
             route: FindingRoute::Ec2,
+            cost: None,
         }
     }
 

@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use crate::app::findings::{build_findings, FindingContext};
 use crate::aws::clients::AwsClients;
+use crate::aws::pricing::PriceBook;
 use crate::cache::cost::{load_if_fresh, save, CostCache};
 use crate::models::apigatway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
@@ -114,6 +115,9 @@ pub struct App {
     pub service_costs: Vec<(String, f64)>,
     pub service_cost_insights: Vec<ServiceCostInsight>,
     pub cost_savings_opportunities: Vec<CostSavingsOpportunity>,
+    // List prices for resource types the waste findings can cost. Loaded from
+    // disk at startup and topped up as unseen resource types appear.
+    pub prices: PriceBook,
 
     // ECS
     pub ecs_clusters: Vec<EcsClusterInfo>,
@@ -194,6 +198,7 @@ impl App {
             service_costs: vec![],
             service_cost_insights: vec![],
             cost_savings_opportunities: vec![],
+            prices: crate::cache::pricing::load_if_fresh().unwrap_or_default(),
             theme: Theme::autumn(),
             theme_name: ThemeName::Autumn,
             findings: vec![],
@@ -542,6 +547,7 @@ impl App {
             security_groups: &self.security_groups,
             vpcs: &self.vpcs,
             lambda_functions: &self.lambda_functions,
+            prices: &self.prices,
         };
 
         self.findings = build_findings(&ctx);

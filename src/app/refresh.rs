@@ -8,6 +8,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app::{ActiveView, App, RefreshPhase};
 use crate::aws;
+use crate::aws::pricing::PriceBook;
 use crate::models::apigatway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::ec2::Ec2InstanceInfo;
@@ -40,6 +41,7 @@ pub enum RefreshUpdate {
     Secrets(SecretsSummary, Vec<SecretInfo>),
     Rds(RdsSummary, Vec<RdsInstanceInfo>),
     CloudWatch(CloudWatchSummary, Vec<CloudWatchAlarm>),
+    Prices(PriceBook),
     Cost {
         budget: BudgetInfo,
         monthly_costs: Vec<f64>,
@@ -94,7 +96,10 @@ impl RefreshUpdate {
             RefreshUpdate::Rds(..) => InventoryKind::Rds,
             RefreshUpdate::CloudWatch(..) => InventoryKind::CloudWatch,
             RefreshUpdate::Cost { .. } => InventoryKind::Cost,
-            RefreshUpdate::Phase(_) | RefreshUpdate::Done => return None,
+            // List prices are not account inventory and have their own TTL.
+            RefreshUpdate::Prices(_) | RefreshUpdate::Phase(_) | RefreshUpdate::Done => {
+                return None
+            }
         })
     }
 }
@@ -151,6 +156,9 @@ impl App {
                     aws::vpc::fetch_vpcs(&self),
                 );
 
+                let ec2_for_pricing = ec2.clone();
+                let lbs_for_pricing = load_balancers.clone();
+
                 let _ = tx.send(RefreshUpdate::CloudWatch(cw_summary, cw_alarms));
                 let _ = tx.send(RefreshUpdate::Ec2(ec2, ec2_status));
                 let _ = tx.send(RefreshUpdate::Apigateway(apis, apigw_status));
@@ -161,6 +169,18 @@ impl App {
                 let _ = tx.send(RefreshUpdate::Sqs(queues, sqs_status));
                 let _ = tx.send(RefreshUpdate::Rds(rds_summary, rds_instances));
                 let _ = tx.send(RefreshUpdate::Lambda(functions, lambda_status));
+                // Priced after the inventories land, since which prices are
+                // needed depends on which resources look wasteful.
+                let keys = crate::app::findings::required_price_keys(
+                    &ec2_for_pricing,
+                    &lbs_for_pricing,
+                    &self.current_region_label(),
+                );
+                if !keys.is_empty() {
+                    aws::pricing::fill(&self.aws.pricing, &mut self.prices, keys).await;
+                    let _ = tx.send(RefreshUpdate::Prices(self.prices.clone()));
+                }
+
                 let _ = tx.send(RefreshUpdate::Vpc(vpcs, vpc_status));
             }
             ActiveView::CostSavings => {
@@ -369,6 +389,10 @@ impl App {
 
         match update {
             RefreshUpdate::Phase(phase) => self.refresh_phase = phase,
+            RefreshUpdate::Prices(prices) => {
+                crate::cache::pricing::save(&prices);
+                self.prices = prices;
+            }
             RefreshUpdate::AccountOverview(overview) => self.account_overview = Some(*overview),
             RefreshUpdate::Ec2(instances, status) => {
                 self.ec2_instances = instances;
