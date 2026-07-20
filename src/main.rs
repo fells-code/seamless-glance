@@ -198,7 +198,9 @@ async fn main() -> anyhow::Result<()> {
     )?;
 
     let backend = CrosstermBackend::new(stdout);
-    let cfg = config::load_config();
+    let loaded_config = config::load_config();
+    let config_warning = loaded_config.warning();
+    let cfg = loaded_config.config();
     let mut terminal = Terminal::new(backend)?;
 
     let profile = cli_profile.or_else(|| cfg.profile.clone());
@@ -252,9 +254,15 @@ async fn main() -> anyhow::Result<()> {
     app.load_cost_data().await;
     app.trigger_refresh();
 
-    // Raise the region-discovery warning last so its display window starts at
-    // the first draw rather than being consumed by startup fetches.
+    // Raise warnings last so their display window starts at the first draw
+    // rather than being consumed by startup fetches. A config problem outranks
+    // a region-discovery one: it is the only warning that names a file the
+    // operator may want to recover.
     if let Some(warning) = region_discovery_warning {
+        app.notify_warning(warning);
+    }
+
+    if let Some(warning) = config_warning {
         app.notify_warning(warning);
     }
 
