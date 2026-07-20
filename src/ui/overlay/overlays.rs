@@ -20,6 +20,11 @@ pub struct ConfirmCommandState {
     pub scroll: u16,
 }
 
+/// A fixed two-choice prompt: connect via the agent, or via a key path.
+///
+/// It holds no selection or scroll position because there is nothing to move
+/// through, which is why the scroll arms below do nothing for it and why the
+/// footer offers only `1`, `2`, and Esc.
 pub struct SelectSshKeyState {
     pub title: String,
     pub context: SshContext,
@@ -89,6 +94,9 @@ impl DescribeOverlayState {
 }
 
 impl OverlayState {
+    // Scrolling means different things per overlay: the text overlays move a
+    // line offset, the profile picker moves its selection, and the SSH prompt
+    // has neither. Its arms are deliberately empty, not unimplemented.
     pub fn scroll_up(&mut self) {
         match self {
             OverlayState::Describe(o) => o.scroll_up(),

@@ -309,4 +309,83 @@ mod tests {
         assert!(bindings_for_view(ActiveView::Findings, true).any(|b| b.key == 'w'));
         assert!(!bindings_for_view(ActiveView::Findings, false).any(|b| b.key == 'w'));
     }
+
+    /// Every view the app can be on, so scope coverage is checked against all
+    /// of them rather than a sample.
+    const EVERY_VIEW: &[ActiveView] = &[
+        ActiveView::Findings,
+        ActiveView::AccountOverview,
+        ActiveView::CostOverview,
+        ActiveView::CostSavings,
+        ActiveView::Ecs,
+        ActiveView::Ec2,
+        ActiveView::Rds,
+        ActiveView::Lambda,
+        ActiveView::Apigateway,
+        ActiveView::Sqs,
+        ActiveView::Vpc,
+        ActiveView::Secrets,
+        ActiveView::CloudWatch,
+        ActiveView::LoadBalancers,
+        ActiveView::TargetGroups,
+        ActiveView::SecurityGroups,
+    ];
+
+    /// The footer builds its hints from `bindings_for_view`, and the dispatcher
+    /// refuses a key whose scope does not apply. Both read the same scope, so a
+    /// key is advertised exactly where it runs.
+    ///
+    /// This is the invariant #41 was about: hints drifted from behavior because
+    /// each handler guarded itself and one could forget.
+    #[test]
+    fn a_key_is_advertised_exactly_where_it_runs() {
+        for view in EVERY_VIEW {
+            // Account overview is the one view with no selectable rows.
+            let supports_wrap = *view != ActiveView::AccountOverview;
+            let advertised = bindings_for_view(*view, supports_wrap)
+                .map(|binding| binding.key)
+                .collect::<Vec<_>>();
+
+            for binding in KEY_BINDINGS {
+                let runs = binding.scope.applies_to(*view, supports_wrap);
+                assert_eq!(
+                    advertised.contains(&binding.key),
+                    runs,
+                    "{:?}: key {:?} advertised and runnable must agree",
+                    view,
+                    binding.key
+                );
+            }
+        }
+    }
+
+    /// Filtering needs rows to narrow. Account overview paints a fixed layout,
+    /// so the prompt would open onto nothing.
+    #[test]
+    fn filtering_is_not_offered_where_there_are_no_rows() {
+        let filter = KEY_BINDINGS
+            .iter()
+            .find(|binding| binding.action == KeyAction::Filter)
+            .expect("filter is bound");
+
+        assert!(!filter.scope.applies_to(ActiveView::AccountOverview, false));
+        assert!(filter.scope.applies_to(ActiveView::Ec2, true));
+        assert!(filter.scope.applies_to(ActiveView::Findings, true));
+    }
+
+    #[test]
+    fn ssh_is_scoped_to_the_only_view_that_can_use_it() {
+        let ssh = KEY_BINDINGS
+            .iter()
+            .find(|binding| binding.action == KeyAction::Ssh)
+            .expect("ssh is bound");
+
+        for view in EVERY_VIEW {
+            assert_eq!(
+                ssh.scope.applies_to(*view, true),
+                *view == ActiveView::Ec2,
+                "{view:?}"
+            );
+        }
+    }
 }
