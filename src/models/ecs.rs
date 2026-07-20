@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     aws::clients::AwsClients,
     models::describable::{shell_quote, DescribableResource},
+    models::tags::Tags,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,6 +17,7 @@ pub struct EcsClusterInfo {
     pub registered_container_instances: i32,
     pub cpu: i32,
     pub memory: i32,
+    pub tags: Tags,
 }
 
 #[async_trait]

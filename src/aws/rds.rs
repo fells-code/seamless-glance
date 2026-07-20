@@ -1,5 +1,6 @@
 use crate::app::App;
 use crate::aws::clients::clients_for_region;
+use crate::aws::tags;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
 use crate::models::service_status::ServiceStatus;
 use crate::resources::region_aggregate::fetch_all_regions;
@@ -31,6 +32,7 @@ async fn fetch_rds_for_region(
         let status = db.db_instance_status().unwrap_or("unknown").to_string();
 
         instances.push(RdsInstanceInfo {
+            tags: tags::from_pairs(db.tag_list().iter().map(|t| (t.key(), t.value()))),
             identifier: db.db_instance_identifier().unwrap_or("unknown").to_string(),
             region: region.as_ref().to_string(),
             engine: db.engine().unwrap_or("unknown").to_string(),

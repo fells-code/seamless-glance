@@ -5,6 +5,7 @@ use crate::{
     models::{
         describable::{shell_quote, DescribableResource},
         service_status::ServiceStatus,
+        tags::Tags,
     },
 };
 
@@ -22,6 +23,7 @@ pub struct VpcInfo {
     pub state: String,
     pub is_default: bool,
     pub subnet_count: u32,
+    pub tags: Tags,
 }
 
 #[async_trait]

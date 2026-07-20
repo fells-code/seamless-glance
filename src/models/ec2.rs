@@ -3,14 +3,13 @@ use async_trait::async_trait;
 use crate::{
     aws::clients::AwsClients,
     models::describable::{shell_quote, DescribableResource},
+    models::tags::Tags,
 };
 
 #[derive(Debug, Clone)]
 pub struct Ec2InstanceInfo {
     pub id: String,
-    pub name: Option<String>,
-    pub owner: Option<String>,
-    pub environment: Option<String>,
+    pub tags: Tags,
     pub avg_cpu_utilization: Option<f64>,
     pub instance_type: String,
     pub state: String,
@@ -47,8 +46,31 @@ impl Ec2InstanceInfo {
         self.public_ip.is_some()
     }
 
+    /// Tags this view treats as required for ownership attribution.
+    pub const REQUIRED_TAGS: [&'static str; 3] = ["Name", "Owner", "Environment"];
+
+    pub fn name(&self) -> Option<&str> {
+        self.tags.value("Name")
+    }
+
+    pub fn owner(&self) -> Option<&str> {
+        self.tags.value("Owner")
+    }
+
+    pub fn environment(&self) -> Option<&str> {
+        self.tags.value("Environment")
+    }
+
+    /// How this instance is identified in lists and findings: its `Name` tag
+    /// when it has one, otherwise its instance id.
+    pub fn label(&self) -> String {
+        self.name()
+            .map(str::to_string)
+            .unwrap_or_else(|| self.id.clone())
+    }
+
     pub fn has_production_like_name(&self) -> bool {
-        let Some(name) = &self.name else {
+        let Some(name) = self.name() else {
             return false;
         };
 
@@ -62,41 +84,15 @@ impl Ec2InstanceInfo {
         self.is_stopped() && (self.has_public_ip() || self.has_production_like_name())
     }
 
-    pub fn missing_required_tags(&self) -> Vec<&'static str> {
-        let mut missing = Vec::new();
-
-        if self
-            .name
-            .as_deref()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true)
-        {
-            missing.push("Name");
-        }
-
-        if self
-            .owner
-            .as_deref()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true)
-        {
-            missing.push("Owner");
-        }
-
-        if self
-            .environment
-            .as_deref()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true)
-        {
-            missing.push("Environment");
-        }
-
-        missing
+    /// Required tags this instance lacks, or `None` when its tags could not be
+    /// read and coverage cannot be judged.
+    pub fn missing_required_tags(&self) -> Option<Vec<&'static str>> {
+        self.tags.missing(&Self::REQUIRED_TAGS)
     }
 
     pub fn has_tag_coverage_gap(&self) -> bool {
-        !self.missing_required_tags().is_empty()
+        self.missing_required_tags()
+            .is_some_and(|missing| !missing.is_empty())
     }
 
     pub fn has_sustained_low_cpu(&self) -> bool {
@@ -138,7 +134,7 @@ impl Ec2InstanceInfo {
 #[async_trait]
 impl DescribableResource for Ec2InstanceInfo {
     fn resource_name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| self.id.clone())
+        self.label()
     }
 
     fn action_region(&self) -> Option<&str> {

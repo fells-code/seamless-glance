@@ -10,6 +10,7 @@ use crate::models::rds::RdsInstanceInfo;
 use crate::models::secrets::SecretInfo;
 use crate::models::security_group::SecurityGroupInfo;
 use crate::models::sqs::SqsQueueInfo;
+use crate::models::tags::Tags;
 use crate::models::target_group::TargetGroupInfo;
 use crate::models::vpc::VpcInfo;
 use crate::models::AccountOverview;
@@ -397,7 +398,7 @@ fn ec2_stopped_instances_needing_review(ctx: &FindingContext) -> Vec<Finding> {
 
     let names = stopped_instances_needing_review
         .iter()
-        .map(|instance| instance.name.clone().unwrap_or_else(|| instance.id.clone()))
+        .map(|instance| instance.label())
         .collect::<Vec<_>>();
 
     vec![Finding {
@@ -434,8 +435,11 @@ fn ec2_tag_coverage_gaps(ctx: &FindingContext) -> Vec<Finding> {
     let labels = instances_with_tag_gaps
         .iter()
         .map(|instance| {
-            let label = instance.name.clone().unwrap_or_else(|| instance.id.clone());
-            let missing = instance.missing_required_tags().join("/");
+            let label = instance.label();
+            let missing = instance
+                .missing_required_tags()
+                .unwrap_or_default()
+                .join("/");
             format!("{label} ({missing})")
         })
         .collect::<Vec<_>>();
@@ -456,6 +460,91 @@ fn ec2_tag_coverage_gaps(ctx: &FindingContext) -> Vec<Finding> {
     }]
 }
 
+/// The tag that attributes a resource to a person or team.
+const OWNER_TAG: &str = "Owner";
+
+/// Resources with no `Owner` tag, across every service that carries tags.
+///
+/// EC2 has its own stricter rule covering Name/Owner/Environment, so it is not
+/// repeated here. Services whose tags could not be read are skipped rather than
+/// reported as unowned, since a failed tag lookup is not evidence of anything.
+fn resources_missing_owner_tag(ctx: &FindingContext) -> Vec<Finding> {
+    if ctx.account_overview.is_none() {
+        return Vec::new();
+    }
+
+    let unowned = |tags: &Tags| tags.is_available() && tags.value(OWNER_TAG).is_none();
+
+    let mut groups: Vec<(&str, FindingRoute, Vec<String>)> = vec![
+        (
+            "RDS",
+            FindingRoute::Rds,
+            ctx.rds_instances
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.identifier.clone())
+                .collect(),
+        ),
+        (
+            "Secrets Manager",
+            FindingRoute::Secrets,
+            ctx.secrets
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+        (
+            "API Gateway",
+            FindingRoute::Apigateway,
+            ctx.apigateway_apis
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+        (
+            "VPC",
+            FindingRoute::Vpc,
+            ctx.vpcs
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.vpc_id.clone())
+                .collect(),
+        ),
+        (
+            "Security Groups",
+            FindingRoute::SecurityGroups,
+            ctx.security_groups
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+    ];
+
+    groups.retain(|(_, _, labels)| !labels.is_empty());
+
+    groups
+        .into_iter()
+        .map(|(service, route, labels)| Finding {
+            severity: FindingSeverity::Medium,
+            category: FindingCategory::Hygiene,
+            service: service.into(),
+            region: ctx.region_label.to_string(),
+            summary: format!(
+                "{} {service} resource(s) have no {OWNER_TAG} tag: {}",
+                labels.len(),
+                sample_list(&labels)
+            ),
+            next_step: format!(
+                "Add an {OWNER_TAG} tag so these {service} resources can be attributed to a team"
+            ),
+            route,
+        })
+        .collect()
+}
+
 fn ec2_sustained_low_cpu(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
@@ -474,7 +563,7 @@ fn ec2_sustained_low_cpu(ctx: &FindingContext) -> Vec<Finding> {
     let labels = low_cpu_instances
         .iter()
         .map(|instance| {
-            let label = instance.name.clone().unwrap_or_else(|| instance.id.clone());
+            let label = instance.label();
             format!("{label} ({})", instance.formatted_avg_cpu())
         })
         .collect::<Vec<_>>();
@@ -885,6 +974,7 @@ pub const FINDING_RULES: &[fn(&FindingContext) -> Vec<Finding>] = &[
     secrets_stale_rotation,
     ec2_stopped_instances_needing_review,
     ec2_tag_coverage_gaps,
+    resources_missing_owner_tag,
     ec2_sustained_low_cpu,
     ec2_stopped_instances_unused,
     security_groups_sensitive_public_ports,
@@ -1023,6 +1113,7 @@ mod tests {
             outbound_rules: 1,
             open_to_world,
             sensitive_public_ports: sensitive_ports,
+            tags: Tags::loaded([("Owner", "platform")]),
         }
     }
 
@@ -1044,7 +1135,85 @@ mod tests {
             state: "available".into(),
             is_default,
             subnet_count: 3,
+            tags: Tags::loaded([("Owner", "platform")]),
         }
+    }
+
+    fn vpc_with_tags(vpc_id: &str, tags: Tags) -> VpcInfo {
+        VpcInfo {
+            vpc_id: vpc_id.into(),
+            cidr: "10.0.0.0/16".into(),
+            state: "available".into(),
+            is_default: false,
+            subnet_count: 1,
+            tags,
+        }
+    }
+
+    #[test]
+    fn a_resource_without_an_owner_tag_is_reported() {
+        let overview = overview();
+        let vpcs = vec![vpc_with_tags("vpc-unowned", Tags::empty())];
+        let mut context = ctx(Some(&overview));
+        context.vpcs = &vpcs;
+
+        let findings = resources_missing_owner_tag(&context);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].service, "VPC");
+        assert!(findings[0].summary.contains("vpc-unowned"));
+    }
+
+    #[test]
+    fn a_resource_with_an_owner_tag_is_not_reported() {
+        let overview = overview();
+        let vpcs = vec![vpc_with_tags(
+            "vpc-1",
+            Tags::loaded([("Owner", "platform")]),
+        )];
+        let mut context = ctx(Some(&overview));
+        context.vpcs = &vpcs;
+
+        assert!(resources_missing_owner_tag(&context).is_empty());
+    }
+
+    /// A failed tag lookup is not evidence that a resource is unowned, so it
+    /// must not be reported as such.
+    #[test]
+    fn a_resource_whose_tags_could_not_be_read_is_not_reported() {
+        let overview = overview();
+        let vpcs = vec![vpc_with_tags("vpc-unknown", Tags::Unavailable)];
+        let mut context = ctx(Some(&overview));
+        context.vpcs = &vpcs;
+
+        assert!(resources_missing_owner_tag(&context).is_empty());
+    }
+
+    /// A blank Owner value attributes the resource to nobody, so it counts as
+    /// missing rather than present.
+    #[test]
+    fn a_blank_owner_tag_counts_as_missing() {
+        let overview = overview();
+        let vpcs = vec![vpc_with_tags("vpc-blank", Tags::loaded([("Owner", "  ")]))];
+        let mut context = ctx(Some(&overview));
+        context.vpcs = &vpcs;
+
+        assert_eq!(resources_missing_owner_tag(&context).len(), 1);
+    }
+
+    #[test]
+    fn each_service_reports_its_own_finding() {
+        let overview = overview();
+        let vpcs = vec![vpc_with_tags("vpc-1", Tags::empty())];
+        let groups = vec![security_group(false, vec![])];
+        let mut context = ctx(Some(&overview));
+        context.vpcs = &vpcs;
+        context.security_groups = &groups;
+
+        // The security group fixture carries an Owner tag, so only VPC reports.
+        let findings = resources_missing_owner_tag(&context);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].service, "VPC");
     }
 
     #[test]

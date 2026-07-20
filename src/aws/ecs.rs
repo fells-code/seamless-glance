@@ -1,4 +1,5 @@
-use crate::{app::App, models::EcsClusterInfo};
+use crate::{app::App, aws::tags, models::EcsClusterInfo};
+use aws_sdk_ecs::types::ClusterField;
 
 pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
     // TODO(#16): surface throttle/denied errors in the UI instead of degrading
@@ -19,7 +20,9 @@ pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
     // describe_clusters accepts at most 100 cluster identifiers per call.
     let mut clusters = Vec::new();
     for chunk in arns.chunks(100) {
-        let mut builder = app.aws.ecs.describe_clusters();
+        // DescribeClusters omits tags unless they are explicitly included, at no
+        // extra request cost.
+        let mut builder = app.aws.ecs.describe_clusters().include(ClusterField::Tags);
         for arn in chunk {
             builder = builder.clusters(arn);
         }
@@ -31,6 +34,7 @@ pub async fn fetch_ecs_clusters(app: &App) -> Vec<EcsClusterInfo> {
 
         for c in resp.clusters() {
             clusters.push(EcsClusterInfo {
+                tags: tags::from_pairs(c.tags().iter().map(|t| (t.key(), t.value()))),
                 arn: c.cluster_arn().unwrap_or("").into(),
                 name: c.cluster_name().unwrap_or("").into(),
                 running_tasks: c.running_tasks_count(),

@@ -1,5 +1,6 @@
 use crate::{
     app::App,
+    aws::tags,
     models::{
         apigatway::{ApiGatewayInfo, ApiGatewaySummary},
         service_status::ServiceStatus,
@@ -100,6 +101,7 @@ pub async fn fetch_apigateway_apis(app: &App) -> (Vec<ApiGatewayInfo>, ServiceSt
                     .created_date()
                     .map(|d| d.to_string())
                     .unwrap_or("-".into()),
+                tags: tags::from_map(api.tags()),
             }),
             Err(err) => {
                 match ServiceStatus::from_sdk_error(&err) {
@@ -130,6 +132,7 @@ pub async fn fetch_apigateway_apis(app: &App) -> (Vec<ApiGatewayInfo>, ServiceSt
                             .protocol_type()
                             .map(|p| format!("{:?}", p))
                             .unwrap_or("HTTP".into()),
+                        tags: tags::from_map(api.tags()),
                         created_at: api
                             .created_date()
                             .map(|d| d.to_string())

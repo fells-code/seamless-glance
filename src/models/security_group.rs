@@ -1,5 +1,6 @@
 use crate::aws::clients::AwsClients;
 use crate::models::describable::{shell_quote, DescribableResource};
+use crate::models::tags::Tags;
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -12,6 +13,7 @@ pub struct SecurityGroupInfo {
     pub outbound_rules: usize,
     pub open_to_world: bool,
     pub sensitive_public_ports: Vec<i32>,
+    pub tags: Tags,
 }
 
 impl SecurityGroupInfo {
