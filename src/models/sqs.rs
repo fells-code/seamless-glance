@@ -5,6 +5,7 @@ use crate::{
     models::{
         describable::{shell_quote, DescribableResource},
         service_status::ServiceStatus,
+        tags::Tags,
     },
 };
 
@@ -23,6 +24,7 @@ pub struct SqsQueueInfo {
     pub messages_available: i64,
     pub messages_in_flight: i64,
     pub has_dlq: bool,
+    pub tags: Tags,
 }
 
 impl SqsQueueInfo {

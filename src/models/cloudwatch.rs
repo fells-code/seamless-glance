@@ -3,6 +3,7 @@ use crate::{
     models::{
         describable::{shell_quote, DescribableResource},
         service_status::ServiceStatus,
+        tags::Tags,
     },
 };
 use async_trait::async_trait;
@@ -20,6 +21,7 @@ pub struct CloudWatchAlarm {
     pub state: String,
     pub namespace: String,
     pub metric: String,
+    pub tags: Tags,
 }
 
 #[async_trait]

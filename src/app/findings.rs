@@ -521,6 +521,51 @@ fn resources_missing_owner_tag(ctx: &FindingContext) -> Vec<Finding> {
                 .map(|item| item.name.clone())
                 .collect(),
         ),
+        (
+            "Lambda",
+            FindingRoute::Lambda,
+            ctx.lambda_functions
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+        (
+            "SQS",
+            FindingRoute::Sqs,
+            ctx.sqs_queues_data
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+        (
+            "CloudWatch",
+            FindingRoute::CloudWatch,
+            ctx.cloudwatch_alarms
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+        (
+            "Load Balancers",
+            FindingRoute::LoadBalancers,
+            ctx.load_balancers
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
+        (
+            "Target Groups",
+            FindingRoute::TargetGroups,
+            ctx.target_groups
+                .iter()
+                .filter(|item| unowned(&item.tags))
+                .map(|item| item.name.clone())
+                .collect(),
+        ),
     ];
 
     groups.retain(|(_, _, labels)| !labels.is_empty());
@@ -1084,6 +1129,7 @@ mod tests {
             state: state.into(),
             namespace: namespace.into(),
             metric: "CPUUtilization".into(),
+            tags: Tags::loaded([("Owner", "platform")]),
         }
     }
 
@@ -1101,6 +1147,7 @@ mod tests {
             },
             total_targets: total,
             unhealthy_targets: unhealthy,
+            tags: Tags::loaded([("Owner", "platform")]),
         }
     }
 
@@ -1125,6 +1172,7 @@ mod tests {
             memory_mb,
             timeout_sec: 30,
             last_modified: "2026-07-01T00:00:00.000+0000".into(),
+            tags: Tags::loaded([("Owner", "platform")]),
         }
     }
 
@@ -1148,6 +1196,37 @@ mod tests {
             subnet_count: 1,
             tags,
         }
+    }
+
+    #[test]
+    fn services_needing_a_separate_tag_call_are_covered_by_the_owner_rule() {
+        let overview = overview();
+        let mut untagged_lambda = lambda(128);
+        untagged_lambda.tags = Tags::empty();
+        let functions = vec![untagged_lambda];
+
+        let mut context = ctx(Some(&overview));
+        context.lambda_functions = &functions;
+
+        let findings = resources_missing_owner_tag(&context);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].service, "Lambda");
+    }
+
+    /// Lambda, SQS, CloudWatch, ELB, and target groups look tags up in a
+    /// separate call that can fail on its own. A failure must not be reported
+    /// as missing ownership.
+    #[test]
+    fn a_failed_tag_lookup_is_not_reported_as_unowned() {
+        let overview = overview();
+        let mut unreadable_lambda = lambda(128);
+        unreadable_lambda.tags = Tags::Unavailable;
+        let functions = vec![unreadable_lambda];
+
+        let mut context = ctx(Some(&overview));
+        context.lambda_functions = &functions;
+
+        assert!(resources_missing_owner_tag(&context).is_empty());
     }
 
     #[test]

@@ -1,7 +1,8 @@
 use crate::{
     app::App,
+    aws::tags,
     aws::DESCRIBE_CONCURRENCY,
-    models::{service_status::ServiceStatus, target_group::TargetGroupInfo},
+    models::{service_status::ServiceStatus, tags::Tags, target_group::TargetGroupInfo},
 };
 use futures::StreamExt;
 
@@ -69,12 +70,21 @@ pub async fn fetch_target_groups(app: &App) -> (Vec<TargetGroupInfo>, ServiceSta
                     .collect(),
                 total_targets: total,
                 unhealthy_targets: unhealthy,
+                tags: Tags::Unavailable,
             })
         })
         .buffered(DESCRIBE_CONCURRENCY)
         .filter_map(|group| async move { group })
         .collect()
         .await;
+
+    let mut groups: Vec<TargetGroupInfo> = groups;
+    let arns = groups.iter().map(|tg| tg.arn.clone()).collect::<Vec<_>>();
+    let mut tags_by_arn = tags::for_elb_arns(&app.aws.elb, &arns).await;
+
+    for group in &mut groups {
+        group.tags = tags_by_arn.remove(&group.arn).unwrap_or(Tags::Unavailable);
+    }
 
     (groups, ServiceStatus::Ok)
 }

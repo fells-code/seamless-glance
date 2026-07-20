@@ -1,9 +1,11 @@
 use crate::{
     app::App,
+    aws::tags,
     aws::DESCRIBE_CONCURRENCY,
     models::{
         service_status::ServiceStatus,
         sqs::{SqsQueueInfo, SqsSummary},
+        tags::Tags,
     },
 };
 use aws_sdk_sqs::types::QueueAttributeName;
@@ -114,6 +116,13 @@ pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
 
             let has_dlq = map.contains_key(&QueueAttributeName::RedrivePolicy);
 
+            // Queue attributes do not include tags, so they need a second call
+            // per queue. It rides along inside this already-bounded fan-out.
+            let tags = match app.aws.sqs.list_queue_tags().queue_url(&url).send().await {
+                Ok(resp) => tags::from_map(resp.tags()),
+                Err(_) => Tags::Unavailable,
+            };
+
             Some(SqsQueueInfo {
                 name,
                 queue_url: url.clone(),
@@ -121,6 +130,7 @@ pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
                 messages_available,
                 messages_in_flight,
                 has_dlq,
+                tags,
             })
         })
         .buffered(DESCRIBE_CONCURRENCY)
