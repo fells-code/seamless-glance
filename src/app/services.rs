@@ -190,6 +190,7 @@ mod tests {
             messages_available: 0,
             messages_in_flight: 0,
             has_dlq: false,
+            dead_letter_target_arn: None,
             tags: Tags::empty(),
         }];
         app.selected_row = 0;

@@ -114,7 +114,15 @@ pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
                 .and_then(|v| v.parse::<i64>().ok())
                 .unwrap_or(0);
 
-            let has_dlq = map.contains_key(&QueueAttributeName::RedrivePolicy);
+            let redrive_policy = map.get(&QueueAttributeName::RedrivePolicy);
+            let has_dlq = redrive_policy.is_some();
+            let dead_letter_target_arn = redrive_policy.and_then(|policy| {
+                serde_json::from_str::<serde_json::Value>(policy)
+                    .ok()?
+                    .get("deadLetterTargetArn")?
+                    .as_str()
+                    .map(str::to_string)
+            });
 
             // Queue attributes do not include tags, so they need a second call
             // per queue. It rides along inside this already-bounded fan-out.
@@ -130,6 +138,7 @@ pub async fn fetch_sqs_queues(app: &App) -> (Vec<SqsQueueInfo>, ServiceStatus) {
                 messages_available,
                 messages_in_flight,
                 has_dlq,
+                dead_letter_target_arn,
                 tags,
             })
         })
