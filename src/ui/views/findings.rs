@@ -31,14 +31,14 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         &theme,
         ListTable {
             title: "Findings",
-            headers: &["SEV", "CATEGORY", "SERVICE", "REGION", "SUMMARY", "NEXT STEP"],
+            headers: &["SEV", "CATEGORY", "SERVICE", "REGION", "RESOURCE", "SUMMARY"],
             widths: &[
                 Constraint::Length(6),
                 Constraint::Length(10),
                 Constraint::Length(16),
                 Constraint::Length(12),
-                Constraint::Percentage(38),
-                Constraint::Percentage(34),
+                Constraint::Percentage(28),
+                Constraint::Percentage(44),
             ],
             empty_message: "No findings detected right now.\n\
                             This view will surface incidents, waste, and hygiene issues as they appear.",
@@ -48,6 +48,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             let severity_style = match finding.severity {
                 FindingSeverity::High => Style::default().fg(theme.primary),
                 FindingSeverity::Medium => Style::default().fg(theme.accent),
+                FindingSeverity::Low => Style::default().fg(theme.text),
             };
 
             let category = match finding.category {
@@ -61,8 +62,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(category),
                 Cell::from(finding.service.clone()),
                 Cell::from(finding.region.clone()),
+                // Aggregate findings have no single resource to name.
+                Cell::from(finding.resource_id.clone().unwrap_or_else(|| "-".into())),
                 Cell::from(finding.summary.clone()),
-                Cell::from(finding.next_step.clone()),
             ])
             .style(severity_style)
         },
@@ -81,13 +83,14 @@ fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App) {
         .split(area);
 
     let metadata = Paragraph::new(format!(
-        "Finding {}/{}\n{}  |  {}  |  {}  |  {}",
+        "Finding {}/{}\n{}  |  {}  |  {}  |  {}  |  {}",
         app.selected_row + 1,
         app.findings.len(),
         finding.severity.as_str(),
         finding.category.as_str(),
         finding.service,
-        finding.region
+        finding.region,
+        finding.resource_id.as_deref().unwrap_or("-")
     ))
     .style(Style::default().fg(app.theme.text))
     .wrap(Wrap { trim: true })
