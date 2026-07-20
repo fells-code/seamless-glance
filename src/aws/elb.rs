@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use crate::{
     app::App,
-    models::{elb::LoadBalancerInfo, service_status::ServiceStatus, target_group::TargetGroupInfo},
+    aws::tags,
+    models::{
+        elb::LoadBalancerInfo, service_status::ServiceStatus, tags::Tags,
+        target_group::TargetGroupInfo,
+    },
 };
 
 pub async fn fetch_load_balancers(app: &App) -> (Vec<LoadBalancerInfo>, ServiceStatus) {
@@ -42,7 +46,18 @@ pub async fn fetch_load_balancers(app: &App) -> (Vec<LoadBalancerInfo>, ServiceS
             attached_target_groups: 0,
             total_targets: 0,
             healthy_targets: 0,
+            tags: Tags::Unavailable,
         });
+    }
+
+    let arns = load_balancers
+        .iter()
+        .map(|lb| lb.arn.clone())
+        .collect::<Vec<_>>();
+    let mut tags_by_arn = tags::for_elb_arns(&app.aws.elb, &arns).await;
+
+    for lb in &mut load_balancers {
+        lb.tags = tags_by_arn.remove(&lb.arn).unwrap_or(Tags::Unavailable);
     }
 
     (load_balancers, ServiceStatus::Ok)

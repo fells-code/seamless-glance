@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use crate::aws::clients::AwsClients;
 use crate::models::describable::{shell_quote, DescribableResource};
 use crate::models::service_status::ServiceStatus;
+use crate::models::tags::Tags;
 
 #[derive(Debug, Clone)]
 pub struct LambdaSummary {
@@ -21,6 +22,7 @@ pub struct LambdaFunctionInfo {
     pub memory_mb: i32,
     pub timeout_sec: i32,
     pub last_modified: String,
+    pub tags: Tags,
 }
 
 impl LambdaFunctionInfo {

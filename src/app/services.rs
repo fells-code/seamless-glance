@@ -146,6 +146,7 @@ mod tests {
     use super::*;
     use crate::aws::clients::AwsClients;
     use crate::models::sqs::SqsQueueInfo;
+    use crate::models::tags::Tags;
 
     /// Mirrors `ActiveView` so a new variant fails here until it is registered,
     /// which is what keeps describe/open/CLI from drifting apart per service.
@@ -189,6 +190,7 @@ mod tests {
             messages_available: 0,
             messages_in_flight: 0,
             has_dlq: false,
+            tags: Tags::empty(),
         }];
         app.selected_row = 0;
 

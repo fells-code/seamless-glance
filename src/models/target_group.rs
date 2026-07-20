@@ -1,5 +1,6 @@
 use crate::aws::clients::AwsClients;
 use crate::models::describable::{shell_quote, DescribableResource};
+use crate::models::tags::Tags;
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -13,6 +14,7 @@ pub struct TargetGroupInfo {
     pub attached_load_balancer_arns: Vec<String>,
     pub total_targets: usize,
     pub unhealthy_targets: usize,
+    pub tags: Tags,
 }
 
 impl TargetGroupInfo {
