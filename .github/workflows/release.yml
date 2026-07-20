@@ -39,12 +39,22 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     needs: setup
+    # A cold build of this dependency tree runs long; the cap only trips a hung
+    # runner, which is what left the previous release stuck mid-matrix.
+    timeout-minutes: 45
     strategy:
+      # Let every target finish rather than cancelling siblings on the first
+      # failure, so one run surfaces all the failures and re-running failed jobs
+      # can complete the set. The release still requires all six binaries.
       fail-fast: false
       matrix:
         include:
+          # x86_64 macOS cross-compiles on the arm64 runner. Its own Intel
+          # runner (macos-13) is being retired, and a build there cancelled the
+          # last release; the cross-build is verified to produce an x86_64
+          # binary, aws-lc-sys and ring included.
           - { target: aarch64-apple-darwin,       os: macos-14,        profile: release }
-          - { target: x86_64-apple-darwin,        os: macos-13,        profile: release }
+          - { target: x86_64-apple-darwin,        os: macos-14,        profile: release }
           - { target: x86_64-unknown-linux-gnu,   os: ubuntu-latest,   profile: release-linux }
           - { target: aarch64-unknown-linux-gnu,  os: ubuntu-24.04-arm, profile: release-linux }
           - { target: x86_64-unknown-linux-musl,  os: ubuntu-latest,   profile: release-linux, musl: true }
@@ -91,6 +101,7 @@ jobs:
     name: Publish GitHub Release + Homebrew
     needs: [setup, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,6 +116,18 @@ jobs:
         run: |
           mkdir -p dist
           find artifacts -type f -exec cp {} dist/ \;
+
+          # Fail loudly on a missing platform rather than publishing a release
+          # that silently omits one, and rather than letting the Homebrew
+          # formula point at a binary that was never uploaded.
+          expected=6
+          found=$(find dist -type f -name 'seamless-glance-*' | wc -l | tr -d ' ')
+          if [[ "$found" -ne "$expected" ]]; then
+            echo "::error::expected $expected platform binaries, found $found"
+            ls -l dist
+            exit 1
+          fi
+
           (cd dist && sha256sum seamless-glance-* > SHA256SUMS.txt)
           ls -l dist
 
@@ -148,10 +171,15 @@ jobs:
 
   crates:
     name: Publish to crates.io
-    needs: [setup, build]
+    # Source-only, so it does not wait on the binary matrix. Gating it on the
+    # builds meant a single flaky binary runner skipped the crates.io publish
+    # entirely, which is part of why the crate has never shipped.
+    needs: [setup]
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     # A missing token, taken crate name, or already-published version should not
-    # fail the binary release.
+    # fail the release. cargo publish still compiles the crate first, so it will
+    # not push code that does not build.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
