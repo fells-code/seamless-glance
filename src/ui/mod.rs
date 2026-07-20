@@ -19,7 +19,7 @@ use crate::ui::overlay::render::render_describe_overlay;
 use crate::ui::overlay::select_profile::render_select_profile_overlay;
 use crate::ui::overlay::select_ssh_key::render_select_ssh_key_overlay;
 use crate::ui::views::account_overview;
-use crate::ui::views::apigateway::render_apigatway;
+use crate::ui::views::apigateway::render_apigateway;
 use crate::ui::views::cloudwatch::render_cw;
 use crate::ui::views::command::command_for_view;
 use crate::ui::views::cost_overview::render_cost_overview;
@@ -98,7 +98,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             render(frame, main_area, app);
         }
         ActiveView::Apigateway => {
-            render_apigatway(frame, main_area, app);
+            render_apigateway(frame, main_area, app);
         }
         ActiveView::Sqs => {
             render_sqs(frame, main_area, app);

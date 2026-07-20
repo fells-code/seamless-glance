@@ -1,5 +1,5 @@
 pub mod account_overview;
-pub mod apigatway;
+pub mod apigateway;
 pub mod cloudwatch;
 pub mod cost;
 pub mod cost_estimate;

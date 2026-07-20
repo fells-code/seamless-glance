@@ -61,10 +61,6 @@ macro_rules! row_text {
     };
 }
 
-/// Rows rendered by the account overview view. The view paints a fixed layout
-/// rather than a list, so the count is not derived from a collection.
-const ACCOUNT_OVERVIEW_ROWS: usize = 10;
-
 pub const SERVICES: &[ServiceEntry] = &[
     ServiceEntry {
         view: ActiveView::Findings,
@@ -80,7 +76,10 @@ pub const SERVICES: &[ServiceEntry] = &[
     },
     ServiceEntry {
         view: ActiveView::AccountOverview,
-        row_text: |_| vec![String::new(); ACCOUNT_OVERVIEW_ROWS],
+        // The only view with no selectable rows: it paints a fixed layout and
+        // free-scrolls it, clamping its own offset as it renders. A row count
+        // here would be a number nothing reads and everything could drift from.
+        row_text: |_| Vec::new(),
         rows: ViewRows::Summary,
     },
     ServiceEntry {
@@ -385,6 +384,31 @@ mod tests {
 
         assert_eq!(app.visible_indices().len(), 1);
         assert_eq!(app.total_row_count(), 3);
+    }
+
+    /// The account overview free-scrolls a fixed layout and clamps its own
+    /// offset while rendering, so it has no selectable rows and nothing should
+    /// read a row count for it.
+    #[test]
+    fn the_account_overview_reports_no_selectable_rows() {
+        let mut app = test_app();
+        app.active_view = ActiveView::AccountOverview;
+
+        assert!(app.visible_indices().is_empty());
+        assert_eq!(app.total_row_count(), 0);
+    }
+
+    /// Moving the selection on a view with no rows must not underflow the
+    /// index or leave it somewhere a later render would index with.
+    #[test]
+    fn scrolling_a_view_with_no_rows_is_harmless() {
+        let mut app = test_app();
+        app.active_view = ActiveView::AccountOverview;
+
+        app.scroll_active_view_down(5);
+        app.scroll_active_view_to_bottom();
+
+        assert_eq!(app.selected_row, 0);
     }
 
     #[test]

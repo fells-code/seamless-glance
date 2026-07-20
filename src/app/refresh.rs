@@ -9,7 +9,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::app::{ActiveView, App, RefreshPhase};
 use crate::aws;
 use crate::aws::pricing::PriceBook;
-use crate::models::apigatway::ApiGatewayInfo;
+use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::ec2::Ec2InstanceInfo;
 use crate::models::elb::LoadBalancerInfo;

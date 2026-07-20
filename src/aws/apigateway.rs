@@ -2,7 +2,7 @@ use crate::{
     app::App,
     aws::tags,
     models::{
-        apigatway::{ApiGatewayInfo, ApiGatewaySummary},
+        apigateway::{ApiGatewayInfo, ApiGatewaySummary},
         service_status::ServiceStatus,
     },
 };

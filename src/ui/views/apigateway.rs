@@ -5,7 +5,7 @@ use crate::ui::views::list_table::{
     filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
 };
 
-pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
+pub fn render_apigateway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(
         frame,
         area,
