@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
@@ -39,10 +39,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 
     // Wrap mode replaces the table with a detail pane, so it diverts before the
     // shared table renderer (and only with a row to describe).
-    if !app.cost_savings_opportunities.is_empty() && app.wrap_mode_active() {
-        app.selected_row = app
-            .selected_row
-            .min(app.cost_savings_opportunities.len() - 1);
+    // Guarded on the filtered rows: diverting with nothing to show would leave
+    // an empty pane, since the empty-state message lives on the table path.
+    let filtered_count = app.visible_indices().len();
+    if filtered_count > 0 && app.wrap_mode_active() {
+        app.selected_row = app.selected_row.min(filtered_count - 1);
         render_wrapped_detail(frame, area, app, &summary_text);
         return;
     }
@@ -65,6 +66,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(summary, layout[0]);
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.cost_savings_opportunities);
 
     render_list_table(
         frame,
@@ -97,7 +101,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             empty_message: "No concrete cost-savings opportunities are available yet.\n\
                             This view will highlight savings when spend and waste signals line up.",
         },
-        &app.cost_savings_opportunities,
+        &rows,
         |opportunity| {
             Row::new(vec![
                 Cell::from(format!("${:.2}", opportunity.estimated_monthly_savings)),
@@ -137,13 +141,22 @@ fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App, summary_t
 
     // Indexing here would panic if the selection ever outran the list, so read
     // it fallibly and bail rather than trusting an upstream clamp.
-    let Some(opportunity) = app.cost_savings_opportunities.get(app.selected_row) else {
+    let visible = app.visible_indices();
+    let Some(opportunity) = visible
+        .get(app.selected_row)
+        .and_then(|&index| app.cost_savings_opportunities.get(index))
+    else {
         return;
     };
     let metadata = Paragraph::new(format!(
-        "Opportunity {}/{}\n{}  |  Current ${:.2}  |  Estimated savings ${:.2}\n{}",
+        "Opportunity {}/{}{}\n{}  |  Current ${:.2}  |  Estimated savings ${:.2}\n{}",
         app.selected_row + 1,
-        app.cost_savings_opportunities.len(),
+        visible.len(),
+        if app.filter_is_active() {
+            format!(" (filtered from {})", app.cost_savings_opportunities.len())
+        } else {
+            String::new()
+        },
         opportunity.service,
         opportunity.monthly_cost,
         opportunity.estimated_monthly_savings,

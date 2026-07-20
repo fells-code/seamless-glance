@@ -6,7 +6,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 
 pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(frame, area, "VPC", &app.vpc_status, &app.theme)
@@ -15,6 +15,9 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.vpcs);
 
     render_list_table(
         frame,
@@ -36,7 +39,7 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No VPCs found in this region.",
         },
-        &app.vpcs,
+        &rows,
         |v| {
             let style = if v.is_default {
                 Style::default().fg(theme.primary)

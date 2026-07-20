@@ -21,6 +21,7 @@ pub enum KeyAction {
     Cli,
     OpenConsole,
     Ssh,
+    Filter,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -41,6 +42,9 @@ pub enum KeyScope {
     Ec2Only,
     /// Views that render a wrapped detail pane.
     WrappableViews,
+    /// Views that render a scrollable row list, so narrowing it means
+    /// something. Account overview paints a fixed layout instead.
+    ListViews,
 }
 
 impl KeyScope {
@@ -56,6 +60,7 @@ impl KeyScope {
             ),
             KeyScope::Ec2Only => view == ActiveView::Ec2,
             KeyScope::WrappableViews => supports_wrap,
+            KeyScope::ListViews => view != ActiveView::AccountOverview,
         }
     }
 }
@@ -87,6 +92,14 @@ pub const KEY_BINDINGS: &[KeyBinding] = &[
         help: "Open the command palette",
         group: KeyGroup::Navigation,
         scope: KeyScope::Everywhere,
+    },
+    KeyBinding {
+        key: 'm',
+        action: KeyAction::Filter,
+        label: "Filter rows",
+        help: "Narrow the current view to rows matching a query",
+        group: KeyGroup::Navigation,
+        scope: KeyScope::ListViews,
     },
     KeyBinding {
         key: 'g',
@@ -183,7 +196,10 @@ pub const KEY_BINDINGS: &[KeyBinding] = &[
 /// the table. Listed here so the help screen still describes them in one place.
 pub const CONTEXTUAL_KEYS: &[(&str, &str)] = &[
     ("Enter", "Open the related view, or confirm an overlay"),
-    ("Esc", "Close an overlay, help, or the command palette"),
+    (
+        "Esc",
+        "Close an overlay, help, or the command palette, or clear a row filter",
+    ),
     ("Tab / Shift+Tab", "Cycle through major views"),
     ("↑ / ↓", "Move the selection or scroll an overlay"),
     (

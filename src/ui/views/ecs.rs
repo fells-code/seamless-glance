@@ -6,10 +6,13 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 
 pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.ecs_clusters);
 
     render_list_table(
         frame,
@@ -41,7 +44,7 @@ pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No ECS clusters found in this region.",
         },
-        &app.ecs_clusters,
+        &rows,
         |c| {
             Row::new(vec![
                 Cell::from(c.name.clone()),

@@ -8,7 +8,7 @@ use ratatui::{
 use crate::{
     app::App,
     aws::cost::last_6_month_labels,
-    ui::views::list_table::{render_list_table, ListSelection, ListTable},
+    ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable},
 };
 
 fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
@@ -38,12 +38,9 @@ fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
     // Rows are ranked by spend, so the selection index refers to sort order.
-    let mut sorted = app.service_cost_insights.clone();
-    sorted.sort_by(|a, b| {
-        b.monthly_cost
-            .partial_cmp(&a.monthly_cost)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let sorted = app.sorted_cost_insights();
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &sorted);
 
     let total: f64 = sorted.iter().map(|insight| insight.monthly_cost).sum();
     let theme = app.theme;
@@ -67,7 +64,7 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No service cost insight is available yet.",
         },
-        &sorted,
+        &rows,
         |insight| {
             let pct = if total > 0.0 {
                 insight.monthly_cost / total
@@ -87,14 +84,11 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn render_service_cost_detail(frame: &mut Frame, area: Rect, app: &mut App) {
-    let mut sorted = app.service_cost_insights.clone();
-    sorted.sort_by(|a, b| {
-        b.monthly_cost
-            .partial_cmp(&a.monthly_cost)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let sorted = app.sorted_cost_insights();
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &sorted);
 
-    if sorted.is_empty() {
+    if rows.is_empty() {
         let empty = Paragraph::new("No selected service detail is available yet.")
             .style(Style::default().fg(app.theme.text))
             .block(
@@ -108,7 +102,8 @@ fn render_service_cost_detail(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    let selected = &sorted[app.selected_row.min(sorted.len() - 1)];
+    let selected = rows[app.selected_row.min(rows.len() - 1)];
+    // Share is of total spend, which the filter does not change.
     let total: f64 = sorted.iter().map(|insight| insight.monthly_cost).sum();
     let share = if total > 0.0 {
         selected.monthly_cost / total * 100.0

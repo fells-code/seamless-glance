@@ -6,7 +6,7 @@ use ratatui::{
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, ListSelection, ListTable};
+use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
 
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(
@@ -20,6 +20,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let theme = app.theme;
+
+    let visible = app.visible_indices();
+    let rows = visible_rows(&visible, &app.lambda_functions);
 
     render_list_table(
         frame,
@@ -49,7 +52,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No Lambda functions found in this region.",
         },
-        &app.lambda_functions,
+        &rows,
         |f| {
             let style = if f.has_high_memory() || f.is_stale() {
                 Style::default().fg(theme.primary)

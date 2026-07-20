@@ -122,6 +122,7 @@ async fn run_key_action(app: &mut App, action: KeyAction) {
             app.footer_mode = FooterMode::Help;
             app.scroll_offset = 0;
         }
+        A::Filter => app.open_filter(),
         A::Refresh => app.trigger_refresh(),
         A::Quit => {
             app.persist_region_selection();
@@ -290,7 +291,7 @@ async fn main() -> anyhow::Result<()> {
         };
 
         match key.code {
-            KeyCode::Char('v') if !app.command_mode => {
+            KeyCode::Char('v') if !app.command_mode && !app.filter_mode => {
                 if let Some(overlay) = &mut app.overlay {
                     if overlay.toggle_describe_mode() {
                         app.footer_mode = FooterMode::Overlay;
@@ -300,6 +301,14 @@ async fn main() -> anyhow::Result<()> {
             }
             KeyCode::Char(c) if app.command_mode => {
                 app.command_input.push(c);
+            }
+            // Ahead of the digit and binding arms below, so a query can contain
+            // any character without firing the key it is bound to.
+            KeyCode::Char(c) if app.filter_mode => {
+                app.push_filter_char(c);
+            }
+            KeyCode::Enter if app.filter_mode => {
+                app.commit_filter();
             }
             KeyCode::Enter => {
                 if let Some(OverlayState::SelectProfile(_)) = &app.overlay {
@@ -352,8 +361,16 @@ async fn main() -> anyhow::Result<()> {
                 app.footer_mode = FooterMode::Normal;
                 app.command_input.clear();
             }
+            // Esc clears the filter rather than only leaving the prompt, so a
+            // narrowed view is never left behind with no visible way out.
+            KeyCode::Esc if app.filter_mode || app.filter_is_active() => {
+                app.clear_filter();
+            }
             KeyCode::Backspace if app.command_mode => {
                 app.command_input.pop();
+            }
+            KeyCode::Backspace if app.filter_mode => {
+                app.pop_filter_char();
             }
             KeyCode::Tab => {
                 if !app.modal_open() {
