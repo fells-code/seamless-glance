@@ -54,56 +54,117 @@ fn sample_list<S: AsRef<str>>(items: &[S]) -> String {
     }
 }
 
+/// The fixed attributes every finding from one rule shares.
+///
+/// Rules emit one finding per offending resource, so this carries the parts
+/// that do not vary and leaves each finding to supply its own resource id and
+/// summary.
+struct Rule {
+    id: &'static str,
+    severity: FindingSeverity,
+    category: FindingCategory,
+    service: &'static str,
+    route: FindingRoute,
+}
+
+impl Rule {
+    fn resource(
+        &self,
+        region: &str,
+        resource_id: impl Into<String>,
+        summary: String,
+        next_step: impl Into<String>,
+    ) -> Finding {
+        Finding {
+            rule: self.id,
+            resource_id: Some(resource_id.into()),
+            severity: self.severity,
+            category: self.category,
+            service: self.service.into(),
+            region: region.to_string(),
+            summary,
+            next_step: next_step.into(),
+            route: self.route,
+        }
+    }
+
+    /// A finding with no single underlying resource.
+    ///
+    /// Used by the account-level rollups and by the overview fallbacks, which
+    /// fire from summary counters when the detail list could not be fetched and
+    /// so have no resources to point at.
+    fn aggregate(&self, region: &str, summary: String, next_step: impl Into<String>) -> Finding {
+        Finding {
+            rule: self.id,
+            resource_id: None,
+            severity: self.severity,
+            category: self.category,
+            service: self.service.into(),
+            region: region.to_string(),
+            summary,
+            next_step: next_step.into(),
+            route: self.route,
+        }
+    }
+}
+
+const CLOUDWATCH_ALARMS_IN_ALARM: Rule = Rule {
+    id: "cloudwatch_alarms_in_alarm",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Incident,
+    service: "CloudWatch",
+    route: FindingRoute::CloudWatch,
+};
+
 fn cloudwatch_alarms_in_alarm(ctx: &FindingContext) -> Vec<Finding> {
     let Some(overview) = ctx.account_overview else {
         return Vec::new();
     };
 
-    let alarming_alarms = ctx
+    let alarming = ctx
         .cloudwatch_alarms
         .iter()
         .filter(|alarm| alarm.state == "ALARM")
         .collect::<Vec<_>>();
 
-    if !alarming_alarms.is_empty() {
-        let names = alarming_alarms
+    if !alarming.is_empty() {
+        return alarming
             .iter()
-            .map(|alarm| alarm.name.clone())
-            .collect::<Vec<_>>();
-
-        return vec![Finding {
-            severity: FindingSeverity::High,
-            category: FindingCategory::Incident,
-            service: "CloudWatch".into(),
-            region: ctx.region_label.to_string(),
-            summary: format!(
-                "{} alarm(s) are in ALARM: {}",
-                alarming_alarms.len(),
-                sample_list(&names)
-            ),
-            next_step: "Open CloudWatch and inspect failing alarms".into(),
-            route: FindingRoute::CloudWatch,
-        }];
+            .map(|alarm| {
+                CLOUDWATCH_ALARMS_IN_ALARM.resource(
+                    ctx.region_label,
+                    &alarm.name,
+                    format!("Alarm {} is in ALARM ({})", alarm.name, alarm.metric),
+                    "Open CloudWatch and inspect this alarm",
+                )
+            })
+            .collect();
     }
 
     if overview.alarms.alarms_in_alarm > 0 {
-        return vec![Finding {
-            severity: FindingSeverity::High,
-            category: FindingCategory::Incident,
-            service: "CloudWatch".into(),
-            region: overview.region.clone(),
-            summary: format!(
+        return vec![CLOUDWATCH_ALARMS_IN_ALARM.aggregate(
+            &overview.region,
+            format!(
                 "{} alarm(s) are currently in ALARM",
                 overview.alarms.alarms_in_alarm
             ),
-            next_step: "Open CloudWatch and inspect failing alarms".into(),
-            route: FindingRoute::CloudWatch,
-        }];
+            "Open CloudWatch and inspect failing alarms",
+        )];
     }
 
     Vec::new()
 }
 
+const CLOUDWATCH_ALARM_COVERAGE_GAPS: Rule = Rule {
+    id: "cloudwatch_alarm_coverage_gaps",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "CloudWatch",
+    route: FindingRoute::CloudWatch,
+};
+
+/// Stays aggregate: its subjects are service areas derived from account
+/// counters, not resources with ids of their own.
 fn cloudwatch_alarm_coverage_gaps(ctx: &FindingContext) -> Vec<Finding> {
     let Some(overview) = ctx.account_overview else {
         return Vec::new();
@@ -146,160 +207,164 @@ fn cloudwatch_alarm_coverage_gaps(ctx: &FindingContext) -> Vec<Finding> {
         return Vec::new();
     }
 
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "CloudWatch".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
+    vec![CLOUDWATCH_ALARM_COVERAGE_GAPS.aggregate(
+        ctx.region_label,
+        format!(
             "{} deployed service area(s) appear to have no CloudWatch alarm coverage: {}",
             coverage_gaps.len(),
             sample_list(&coverage_gaps)
         ),
-        next_step:
-            "Open CloudWatch and add alarms for deployed services without namespace coverage".into(),
-        route: FindingRoute::CloudWatch,
-    }]
+        "Open CloudWatch and add alarms for deployed services without namespace coverage",
+    )]
 }
+
+const TARGET_GROUPS_ZERO_HEALTHY: Rule = Rule {
+    id: "target_groups_zero_healthy_targets",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Incident,
+    service: "Target Groups",
+    route: FindingRoute::TargetGroups,
+};
 
 fn target_groups_zero_healthy_targets(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let zero_healthy_target_groups = ctx
-        .target_groups
+    ctx.target_groups
         .iter()
         .filter(|tg| tg.has_zero_healthy_targets())
-        .count();
-
-    if zero_healthy_target_groups == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::High,
-        category: FindingCategory::Incident,
-        service: "Target Groups".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!("{zero_healthy_target_groups} target group(s) have zero healthy targets"),
-        next_step: "Open target groups and restore at least one healthy target".into(),
-        route: FindingRoute::TargetGroups,
-    }]
+        .map(|tg| {
+            TARGET_GROUPS_ZERO_HEALTHY.resource(
+                ctx.region_label,
+                &tg.arn,
+                format!(
+                    "Target group {} has zero healthy targets ({} registered)",
+                    tg.name, tg.total_targets
+                ),
+                "Open target groups and restore at least one healthy target",
+            )
+        })
+        .collect()
 }
+
+const TARGET_GROUPS_UNHEALTHY: Rule = Rule {
+    id: "target_groups_unhealthy_targets",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Incident,
+    service: "Target Groups",
+    route: FindingRoute::TargetGroups,
+};
 
 fn target_groups_unhealthy_targets(ctx: &FindingContext) -> Vec<Finding> {
     let Some(overview) = ctx.account_overview else {
         return Vec::new();
     };
 
-    let partially_unhealthy_target_groups = ctx
+    let partially_unhealthy = ctx
         .target_groups
         .iter()
         .filter(|tg| tg.unhealthy_targets > 0 && !tg.has_zero_healthy_targets())
-        .count();
+        .collect::<Vec<_>>();
 
-    if partially_unhealthy_target_groups > 0 {
-        return vec![Finding {
-            severity: FindingSeverity::High,
-            category: FindingCategory::Incident,
-            service: "Target Groups".into(),
-            region: ctx.region_label.to_string(),
-            summary: format!(
-                "{partially_unhealthy_target_groups} target group(s) have unhealthy targets"
-            ),
-            next_step: "Open target groups and inspect unhealthy target health".into(),
-            route: FindingRoute::TargetGroups,
-        }];
+    if !partially_unhealthy.is_empty() {
+        return partially_unhealthy
+            .iter()
+            .map(|tg| {
+                TARGET_GROUPS_UNHEALTHY.resource(
+                    ctx.region_label,
+                    &tg.arn,
+                    format!(
+                        "Target group {} has {} unhealthy target(s) of {}",
+                        tg.name, tg.unhealthy_targets, tg.total_targets
+                    ),
+                    "Open target groups and inspect unhealthy target health",
+                )
+            })
+            .collect();
     }
 
     if overview.target_groups_unhealthy > 0 && ctx.target_groups.is_empty() {
-        return vec![Finding {
-            severity: FindingSeverity::High,
-            category: FindingCategory::Incident,
-            service: "Target Groups".into(),
-            region: overview.region.clone(),
-            summary: format!(
+        return vec![TARGET_GROUPS_UNHEALTHY.aggregate(
+            &overview.region,
+            format!(
                 "{} target group(s) have unhealthy targets",
                 overview.target_groups_unhealthy
             ),
-            next_step: "Open target groups and inspect target health".into(),
-            route: FindingRoute::TargetGroups,
-        }];
+            "Open target groups and inspect target health",
+        )];
     }
 
     Vec::new()
 }
+
+const TARGET_GROUPS_ORPHANED: Rule = Rule {
+    id: "target_groups_orphaned",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Waste,
+    service: "Target Groups",
+    route: FindingRoute::TargetGroups,
+};
 
 fn target_groups_orphaned(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let orphan_target_groups = ctx
-        .target_groups
+    ctx.target_groups
         .iter()
         .filter(|tg| tg.is_orphan_candidate())
-        .collect::<Vec<_>>();
-
-    if orphan_target_groups.is_empty() {
-        return Vec::new();
-    }
-
-    let names = orphan_target_groups
-        .iter()
-        .map(|tg| tg.name.clone())
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Waste,
-        service: "Target Groups".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} target group(s) have no load balancer attachment and no registered targets: {}",
-            orphan_target_groups.len(),
-            sample_list(&names)
-        ),
-        next_step: "Open target groups and review orphan groups for cleanup or reattachment".into(),
-        route: FindingRoute::TargetGroups,
-    }]
+        .map(|tg| {
+            TARGET_GROUPS_ORPHANED.resource(
+                ctx.region_label,
+                &tg.arn,
+                format!(
+                    "Target group {} has no load balancer attachment and no registered targets",
+                    tg.name
+                ),
+                "Open target groups and review orphan groups for cleanup or reattachment",
+            )
+        })
+        .collect()
 }
+
+const SECRETS_PRODUCTION_ROTATION_DISABLED: Rule = Rule {
+    id: "secrets_production_rotation_disabled",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Hygiene,
+    service: "Secrets Manager",
+    route: FindingRoute::Secrets,
+};
 
 fn secrets_production_rotation_disabled(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let production_like_rotation_disabled = ctx
-        .secrets
+    ctx.secrets
         .iter()
         .filter(|secret| secret.needs_rotation_review())
-        .collect::<Vec<_>>();
-
-    if production_like_rotation_disabled.is_empty() {
-        return Vec::new();
-    }
-
-    let names = production_like_rotation_disabled
-        .iter()
-        .map(|secret| secret.name.clone())
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::High,
-        category: FindingCategory::Hygiene,
-        service: "Secrets Manager".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} production-like secret(s) do not have rotation enabled: {}",
-            production_like_rotation_disabled.len(),
-            sample_list(&names)
-        ),
-        next_step: "Open Secrets Manager and enable rotation on production-like secrets".into(),
-        route: FindingRoute::Secrets,
-    }]
+        .map(|secret| {
+            SECRETS_PRODUCTION_ROTATION_DISABLED.resource(
+                ctx.region_label,
+                &secret.name,
+                format!(
+                    "Production-like secret {} does not have rotation enabled",
+                    secret.name
+                ),
+                "Open Secrets Manager and enable rotation on production-like secrets",
+            )
+        })
+        .collect()
 }
+
+const SECRETS_ROTATION_DISABLED: Rule = Rule {
+    id: "secrets_rotation_disabled",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "Secrets Manager",
+    route: FindingRoute::Secrets,
+};
 
 fn secrets_rotation_disabled(ctx: &FindingContext) -> Vec<Finding> {
     let Some(overview) = ctx.account_overview else {
@@ -310,158 +375,143 @@ fn secrets_rotation_disabled(ctx: &FindingContext) -> Vec<Finding> {
         .secrets
         .iter()
         .filter(|secret| secret.rotation_disabled() && !secret.needs_rotation_review())
-        .count();
+        .collect::<Vec<_>>();
 
-    if rotation_disabled > 0 {
-        return vec![Finding {
-            severity: FindingSeverity::Medium,
-            category: FindingCategory::Hygiene,
-            service: "Secrets Manager".into(),
-            region: ctx.region_label.to_string(),
-            summary: format!("{rotation_disabled} secret(s) do not have rotation enabled"),
-            next_step: "Review secrets that should rotate automatically".into(),
-            route: FindingRoute::Secrets,
-        }];
+    if !rotation_disabled.is_empty() {
+        return rotation_disabled
+            .iter()
+            .map(|secret| {
+                SECRETS_ROTATION_DISABLED.resource(
+                    ctx.region_label,
+                    &secret.name,
+                    format!("Secret {} does not have rotation enabled", secret.name),
+                    "Review secrets that should rotate automatically",
+                )
+            })
+            .collect();
     }
 
     if overview.secrets.rotation_disabled > 0 && ctx.secrets.is_empty() {
-        return vec![Finding {
-            severity: FindingSeverity::Medium,
-            category: FindingCategory::Hygiene,
-            service: "Secrets Manager".into(),
-            region: overview.region.clone(),
-            summary: format!(
+        return vec![SECRETS_ROTATION_DISABLED.aggregate(
+            &overview.region,
+            format!(
                 "{} secret(s) do not have rotation enabled",
                 overview.secrets.rotation_disabled
             ),
-            next_step: "Review secrets that should rotate automatically".into(),
-            route: FindingRoute::Secrets,
-        }];
+            "Review secrets that should rotate automatically",
+        )];
     }
 
     Vec::new()
 }
+
+const SECRETS_STALE_ROTATION: Rule = Rule {
+    id: "secrets_stale_rotation",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "Secrets Manager",
+    route: FindingRoute::Secrets,
+};
 
 fn secrets_stale_rotation(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let stale_rotation_secrets = ctx
-        .secrets
+    ctx.secrets
         .iter()
         .filter(|secret| secret.has_stale_rotation())
-        .collect::<Vec<_>>();
-
-    if stale_rotation_secrets.is_empty() {
-        return Vec::new();
-    }
-
-    let names = stale_rotation_secrets
-        .iter()
-        .map(|secret| secret.name.clone())
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "Secrets Manager".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} secret(s) have not rotated in {}+ days: {}",
-            stale_rotation_secrets.len(),
-            SecretInfo::STALE_ROTATION_DAYS,
-            sample_list(&names)
-        ),
-        next_step: format!(
-            "Open Secrets Manager and review secrets that have not rotated in {}+ days",
-            SecretInfo::STALE_ROTATION_DAYS
-        ),
-        route: FindingRoute::Secrets,
-    }]
+        .map(|secret| {
+            SECRETS_STALE_ROTATION.resource(
+                ctx.region_label,
+                &secret.name,
+                format!(
+                    "Secret {} has not rotated in {}+ days",
+                    secret.name,
+                    SecretInfo::STALE_ROTATION_DAYS
+                ),
+                format!(
+                    "Open Secrets Manager and review secrets that have not rotated in {}+ days",
+                    SecretInfo::STALE_ROTATION_DAYS
+                ),
+            )
+        })
+        .collect()
 }
+
+const EC2_STOPPED_NEEDING_REVIEW: Rule = Rule {
+    id: "ec2_stopped_instances_needing_review",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "EC2",
+    route: FindingRoute::Ec2,
+};
 
 fn ec2_stopped_instances_needing_review(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let stopped_instances_needing_review = ctx
-        .ec2_instances
+    ctx.ec2_instances
         .iter()
         .filter(|instance| instance.needs_stopped_review())
-        .collect::<Vec<_>>();
-
-    if stopped_instances_needing_review.is_empty() {
-        return Vec::new();
-    }
-
-    let names = stopped_instances_needing_review
-        .iter()
-        .map(|instance| instance.label())
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "EC2".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} stopped instance(s) still look important: {}",
-            stopped_instances_needing_review.len(),
-            sample_list(&names)
-        ),
-        next_step: "Open EC2 and review stopped instances with public IPs or production-like names"
-            .into(),
-        route: FindingRoute::Ec2,
-    }]
+        .map(|instance| {
+            EC2_STOPPED_NEEDING_REVIEW.resource(
+                &instance.region,
+                &instance.id,
+                format!(
+                    "Stopped instance {} still looks important ({})",
+                    instance.label(),
+                    instance.review_signals().join("/")
+                ),
+                "Open EC2 and review stopped instances with public IPs or production-like names",
+            )
+        })
+        .collect()
 }
+
+const EC2_TAG_COVERAGE_GAPS: Rule = Rule {
+    id: "ec2_tag_coverage_gaps",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Hygiene,
+    service: "EC2",
+    route: FindingRoute::Ec2,
+};
 
 fn ec2_tag_coverage_gaps(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let instances_with_tag_gaps = ctx
-        .ec2_instances
+    ctx.ec2_instances
         .iter()
         .filter(|instance| instance.has_tag_coverage_gap())
-        .collect::<Vec<_>>();
-
-    if instances_with_tag_gaps.is_empty() {
-        return Vec::new();
-    }
-
-    let labels = instances_with_tag_gaps
-        .iter()
         .map(|instance| {
-            let label = instance.label();
             let missing = instance
                 .missing_required_tags()
                 .unwrap_or_default()
-                .join("/");
-            format!("{label} ({missing})")
-        })
-        .collect::<Vec<_>>();
+                .join(", ");
 
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "EC2".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} EC2 instance(s) are missing Name, Owner, or Environment tags: {}",
-            instances_with_tag_gaps.len(),
-            sample_list(&labels)
-        ),
-        next_step: "Open EC2 and add Name, Owner, or Environment tags to unmanaged instances"
-            .into(),
-        route: FindingRoute::Ec2,
-    }]
+            EC2_TAG_COVERAGE_GAPS.resource(
+                &instance.region,
+                &instance.id,
+                format!("Instance {} is missing tags: {missing}", instance.label()),
+                "Open EC2 and add Name, Owner, or Environment tags to unmanaged instances",
+            )
+        })
+        .collect()
 }
 
 /// The tag that attributes a resource to a person or team.
 const OWNER_TAG: &str = "Owner";
+
+const RESOURCES_MISSING_OWNER_TAG: Rule = Rule {
+    id: "resources_missing_owner_tag",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Hygiene,
+    service: "",
+    route: FindingRoute::Ec2,
+};
 
 /// Resources with no `Owner` tag, across every service that carries tags.
 ///
@@ -475,534 +525,498 @@ fn resources_missing_owner_tag(ctx: &FindingContext) -> Vec<Finding> {
 
     let unowned = |tags: &Tags| tags.is_available() && tags.value(OWNER_TAG).is_none();
 
-    let mut groups: Vec<(&str, FindingRoute, Vec<String>)> = vec![
-        (
+    // (service label, route, resource id, display name) per unowned resource.
+    let mut subjects: Vec<(&'static str, FindingRoute, String, String)> = Vec::new();
+
+    for item in ctx.rds_instances.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "RDS",
             FindingRoute::Rds,
-            ctx.rds_instances
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.identifier.clone())
-                .collect(),
-        ),
-        (
+            item.identifier.clone(),
+            item.identifier.clone(),
+        ));
+    }
+
+    for item in ctx.secrets.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "Secrets Manager",
             FindingRoute::Secrets,
-            ctx.secrets
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.name.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.apigateway_apis.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "API Gateway",
             FindingRoute::Apigateway,
-            ctx.apigateway_apis
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.id.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.vpcs.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "VPC",
             FindingRoute::Vpc,
-            ctx.vpcs
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.vpc_id.clone())
-                .collect(),
-        ),
-        (
+            item.vpc_id.clone(),
+            item.vpc_id.clone(),
+        ));
+    }
+
+    for item in ctx.security_groups.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "Security Groups",
             FindingRoute::SecurityGroups,
-            ctx.security_groups
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.id.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.lambda_functions.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "Lambda",
             FindingRoute::Lambda,
-            ctx.lambda_functions
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.name.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.sqs_queues_data.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "SQS",
             FindingRoute::Sqs,
-            ctx.sqs_queues_data
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.queue_url.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.cloudwatch_alarms.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "CloudWatch",
             FindingRoute::CloudWatch,
-            ctx.cloudwatch_alarms
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.name.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.load_balancers.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "Load Balancers",
             FindingRoute::LoadBalancers,
-            ctx.load_balancers
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-        (
+            item.arn.clone(),
+            item.name.clone(),
+        ));
+    }
+
+    for item in ctx.target_groups.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
             "Target Groups",
             FindingRoute::TargetGroups,
-            ctx.target_groups
-                .iter()
-                .filter(|item| unowned(&item.tags))
-                .map(|item| item.name.clone())
-                .collect(),
-        ),
-    ];
+            item.arn.clone(),
+            item.name.clone(),
+        ));
+    }
 
-    groups.retain(|(_, _, labels)| !labels.is_empty());
-
-    groups
+    subjects
         .into_iter()
-        .map(|(service, route, labels)| Finding {
-            severity: FindingSeverity::Medium,
-            category: FindingCategory::Hygiene,
+        .map(|(service, route, resource_id, display)| Finding {
             service: service.into(),
-            region: ctx.region_label.to_string(),
-            summary: format!(
-                "{} {service} resource(s) have no {OWNER_TAG} tag: {}",
-                labels.len(),
-                sample_list(&labels)
-            ),
-            next_step: format!(
-                "Add an {OWNER_TAG} tag so these {service} resources can be attributed to a team"
-            ),
             route,
+            ..RESOURCES_MISSING_OWNER_TAG.resource(
+                ctx.region_label,
+                resource_id,
+                format!("{service} resource {display} has no {OWNER_TAG} tag"),
+                format!("Add an {OWNER_TAG} tag so this resource can be attributed to a team"),
+            )
         })
         .collect()
 }
+
+const EC2_SUSTAINED_LOW_CPU: Rule = Rule {
+    id: "ec2_sustained_low_cpu",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Waste,
+    service: "EC2",
+    route: FindingRoute::Ec2,
+};
 
 fn ec2_sustained_low_cpu(ctx: &FindingContext) -> Vec<Finding> {
     if ctx.account_overview.is_none() {
         return Vec::new();
     }
 
-    let low_cpu_instances = ctx
-        .ec2_instances
+    ctx.ec2_instances
         .iter()
         .filter(|instance| instance.has_sustained_low_cpu())
-        .collect::<Vec<_>>();
-
-    if low_cpu_instances.is_empty() {
-        return Vec::new();
-    }
-
-    let labels = low_cpu_instances
-        .iter()
         .map(|instance| {
-            let label = instance.label();
-            format!("{label} ({})", instance.formatted_avg_cpu())
+            EC2_SUSTAINED_LOW_CPU.resource(
+                &instance.region,
+                &instance.id,
+                format!(
+                    "Instance {} averaged {} CPU over the last {} days",
+                    instance.label(),
+                    instance.formatted_avg_cpu(),
+                    Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS
+                ),
+                format!(
+                    "Open EC2 and review running instances averaging below {:.1}% CPU over the last {} days",
+                    Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
+                    Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS
+                ),
+            )
         })
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Waste,
-        service: "EC2".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} running EC2 instance(s) averaged below {:.1}% CPU over the last {} days: {}",
-            low_cpu_instances.len(),
-            Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
-            Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS,
-            sample_list(&labels)
-        ),
-        next_step: format!(
-            "Open EC2 and review running instances averaging below {:.1}% CPU over the last {} days",
-            Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT,
-            Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS
-        ),
-        route: FindingRoute::Ec2,
-    }]
+        .collect()
 }
+
+const EC2_STOPPED_UNUSED: Rule = Rule {
+    id: "ec2_stopped_instances_unused",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Waste,
+    service: "EC2",
+    route: FindingRoute::Ec2,
+};
 
 fn ec2_stopped_instances_unused(ctx: &FindingContext) -> Vec<Finding> {
     let Some(overview) = ctx.account_overview else {
         return Vec::new();
     };
 
-    let plain_stopped_instances = ctx
+    let plain_stopped = ctx
         .ec2_instances
         .iter()
         .filter(|instance| instance.is_stopped() && !instance.needs_stopped_review())
-        .count();
+        .collect::<Vec<_>>();
 
-    if plain_stopped_instances > 0 {
-        return vec![Finding {
-            severity: FindingSeverity::Medium,
-            category: FindingCategory::Waste,
-            service: "EC2".into(),
-            region: ctx.region_label.to_string(),
-            summary: format!("{plain_stopped_instances} stopped instance(s) may be unused"),
-            next_step: "Review stopped instances for cleanup or restart".into(),
-            route: FindingRoute::Ec2,
-        }];
+    if !plain_stopped.is_empty() {
+        return plain_stopped
+            .iter()
+            .map(|instance| {
+                EC2_STOPPED_UNUSED.resource(
+                    &instance.region,
+                    &instance.id,
+                    format!("Stopped instance {} may be unused", instance.label()),
+                    "Review stopped instances for cleanup or restart",
+                )
+            })
+            .collect();
     }
 
     if overview.ec2_stopped > 0 && ctx.ec2_instances.is_empty() {
-        return vec![Finding {
-            severity: FindingSeverity::Medium,
-            category: FindingCategory::Waste,
-            service: "EC2".into(),
-            region: overview.region.clone(),
-            summary: format!("{} stopped instance(s) may be unused", overview.ec2_stopped),
-            next_step: "Review stopped instances for cleanup or restart".into(),
-            route: FindingRoute::Ec2,
-        }];
+        return vec![EC2_STOPPED_UNUSED.aggregate(
+            &overview.region,
+            format!("{} stopped instance(s) may be unused", overview.ec2_stopped),
+            "Review stopped instances for cleanup or restart",
+        )];
     }
 
     Vec::new()
 }
 
+const SECURITY_GROUPS_SENSITIVE_PORTS: Rule = Rule {
+    id: "security_groups_sensitive_public_ports",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Hygiene,
+    service: "Security Groups",
+    route: FindingRoute::SecurityGroups,
+};
+
 fn security_groups_sensitive_public_ports(ctx: &FindingContext) -> Vec<Finding> {
-    let sensitive_port_groups = ctx
-        .security_groups
+    ctx.security_groups
         .iter()
         .filter(|sg| !sg.sensitive_public_ports.is_empty())
-        .count();
-
-    if sensitive_port_groups == 0 {
-        return Vec::new();
-    }
-
-    let sensitive_ports = ctx
-        .security_groups
-        .iter()
-        .flat_map(|sg| sg.sensitive_public_ports.iter().copied())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .map(|port| port.to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    vec![Finding {
-        severity: FindingSeverity::High,
-        category: FindingCategory::Hygiene,
-        service: "Security Groups".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{sensitive_port_groups} security group(s) expose sensitive ports publicly ({sensitive_ports})"
-        ),
-        next_step: "Review public access on sensitive ports and narrow ingress".into(),
-        route: FindingRoute::SecurityGroups,
-    }]
+        .map(|sg| {
+            SECURITY_GROUPS_SENSITIVE_PORTS.resource(
+                ctx.region_label,
+                &sg.id,
+                format!(
+                    "Security group {} exposes sensitive port(s) publicly: {}",
+                    sg.name,
+                    sg.sensitive_ports_label()
+                ),
+                "Review public access on sensitive ports and narrow ingress",
+            )
+        })
+        .collect()
 }
+
+const SECURITY_GROUPS_OPEN_TO_WORLD: Rule = Rule {
+    id: "security_groups_open_to_world",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "Security Groups",
+    route: FindingRoute::SecurityGroups,
+};
 
 fn security_groups_open_to_world(ctx: &FindingContext) -> Vec<Finding> {
-    let open_to_world = ctx
-        .security_groups
+    ctx.security_groups
         .iter()
         .filter(|sg| sg.open_to_world && sg.sensitive_public_ports.is_empty())
-        .count();
-
-    if open_to_world == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "Security Groups".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!("{open_to_world} security group(s) are open to the world"),
-        next_step: "Review public ingress rules and narrow access".into(),
-        route: FindingRoute::SecurityGroups,
-    }]
+        .map(|sg| {
+            SECURITY_GROUPS_OPEN_TO_WORLD.resource(
+                ctx.region_label,
+                &sg.id,
+                format!("Security group {} is open to the world", sg.name),
+                "Review public ingress rules and narrow access",
+            )
+        })
+        .collect()
 }
+
+const APIGATEWAY_GENERIC_OR_STALE: Rule = Rule {
+    id: "apigateway_generic_or_stale_apis",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Waste,
+    service: "API Gateway",
+    route: FindingRoute::Apigateway,
+};
 
 fn apigateway_generic_or_stale_apis(ctx: &FindingContext) -> Vec<Finding> {
-    let apis_needing_review = ctx
-        .apigateway_apis
+    ctx.apigateway_apis
         .iter()
         .filter(|api| api.needs_review())
-        .collect::<Vec<_>>();
-
-    if apis_needing_review.is_empty() {
-        return Vec::new();
-    }
-
-    let labels = apis_needing_review
-        .iter()
         .map(|api| {
-            let signals = api.review_signals().join("/");
-            format!("{} ({signals})", api.name)
+            APIGATEWAY_GENERIC_OR_STALE.resource(
+                ctx.region_label,
+                &api.id,
+                format!(
+                    "API {} looks generic or stale ({})",
+                    api.name,
+                    api.review_signals().join("/")
+                ),
+                "Open API Gateway and review generic or year-old APIs for ownership and cleanup",
+            )
         })
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Waste,
-        service: "API Gateway".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} API Gateway API(s) look generic or stale: {}",
-            apis_needing_review.len(),
-            sample_list(&labels)
-        ),
-        next_step: "Open API Gateway and review generic or year-old APIs for ownership and cleanup"
-            .into(),
-        route: FindingRoute::Apigateway,
-    }]
+        .collect()
 }
+
+const SQS_QUEUES_WITHOUT_DLQ: Rule = Rule {
+    id: "sqs_queues_without_dlq",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "SQS",
+    route: FindingRoute::Sqs,
+};
 
 fn sqs_queues_without_dlq(ctx: &FindingContext) -> Vec<Finding> {
-    let queues_without_dlq = ctx.sqs_queues_data.iter().filter(|q| !q.has_dlq).count();
-
-    if queues_without_dlq == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "SQS".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!("{queues_without_dlq} queue(s) do not have a DLQ configured"),
-        next_step: "Review queues without DLQs and add redrive policies where needed".into(),
-        route: FindingRoute::Sqs,
-    }]
+    ctx.sqs_queues_data
+        .iter()
+        .filter(|queue| !queue.has_dlq)
+        .map(|queue| {
+            SQS_QUEUES_WITHOUT_DLQ.resource(
+                ctx.region_label,
+                &queue.queue_url,
+                format!("Queue {} does not have a DLQ configured", queue.name),
+                "Review queues without DLQs and add redrive policies where needed",
+            )
+        })
+        .collect()
 }
+
+const SQS_QUEUE_BACKLOG: Rule = Rule {
+    id: "sqs_queue_backlog",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Incident,
+    service: "SQS",
+    route: FindingRoute::Sqs,
+};
 
 fn sqs_queue_backlog(ctx: &FindingContext) -> Vec<Finding> {
-    let backlog_queues = ctx
-        .sqs_queues_data
+    ctx.sqs_queues_data
         .iter()
         .filter(|queue| queue.has_backlog_incident())
-        .collect::<Vec<_>>();
-
-    if backlog_queues.is_empty() {
-        return Vec::new();
-    }
-
-    let labels = backlog_queues
-        .iter()
         .map(|queue| {
-            let signals = queue.backlog_signals().join("/");
-            format!("{} ({signals})", queue.name)
+            SQS_QUEUE_BACKLOG.resource(
+                ctx.region_label,
+                &queue.queue_url,
+                format!(
+                    "Queue {} has high backlog or stuck work ({})",
+                    queue.name,
+                    queue.backlog_signals().join("/")
+                ),
+                format!(
+                    "Open SQS and inspect queues with >= {} visible or >= {} in-flight messages",
+                    SqsQueueInfo::HIGH_VISIBLE_THRESHOLD,
+                    SqsQueueInfo::HIGH_IN_FLIGHT_THRESHOLD
+                ),
+            )
         })
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::High,
-        category: FindingCategory::Incident,
-        service: "SQS".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} queue(s) have high backlog or stuck work: {}",
-            backlog_queues.len(),
-            sample_list(&labels)
-        ),
-        next_step: format!(
-            "Open SQS and inspect queues with >= {} visible or >= {} in-flight messages",
-            SqsQueueInfo::HIGH_VISIBLE_THRESHOLD,
-            SqsQueueInfo::HIGH_IN_FLIGHT_THRESHOLD
-        ),
-        route: FindingRoute::Sqs,
-    }]
+        .collect()
 }
+
+const RDS_NOT_AVAILABLE: Rule = Rule {
+    id: "rds_instances_not_available",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Incident,
+    service: "RDS",
+    route: FindingRoute::Rds,
+};
 
 fn rds_instances_not_available(ctx: &FindingContext) -> Vec<Finding> {
-    let rds_not_available = ctx
-        .rds_instances
+    ctx.rds_instances
         .iter()
         .filter(|db| db.status != "available")
-        .count();
-
-    if rds_not_available == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::High,
-        category: FindingCategory::Incident,
-        service: "RDS".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!("{rds_not_available} RDS instance(s) are not available"),
-        next_step: "Open RDS and investigate instance status and recovery path".into(),
-        route: FindingRoute::Rds,
-    }]
+        .map(|db| {
+            RDS_NOT_AVAILABLE.resource(
+                &db.region,
+                &db.identifier,
+                format!("RDS instance {} is {}", db.identifier, db.status),
+                "Open RDS and investigate instance status and recovery path",
+            )
+        })
+        .collect()
 }
+
+const RDS_SINGLE_AZ_PRODUCTION_LIKE: Rule = Rule {
+    id: "rds_single_az_production_like",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Hygiene,
+    service: "RDS",
+    route: FindingRoute::Rds,
+};
 
 fn rds_single_az_production_like(ctx: &FindingContext) -> Vec<Finding> {
-    let single_az_review_instances = ctx
-        .rds_instances
+    ctx.rds_instances
         .iter()
         .filter(|db| db.needs_single_az_review())
-        .collect::<Vec<_>>();
-
-    if single_az_review_instances.is_empty() {
-        return Vec::new();
-    }
-
-    let identifiers = single_az_review_instances
-        .iter()
-        .map(|db| db.identifier.clone())
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "RDS".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} single-AZ RDS instance(s) look production-like: {}",
-            single_az_review_instances.len(),
-            sample_list(&identifiers)
-        ),
-        next_step: "Open RDS and review production-like single-AZ databases for Multi-AZ coverage"
-            .into(),
-        route: FindingRoute::Rds,
-    }]
+        .map(|db| {
+            RDS_SINGLE_AZ_PRODUCTION_LIKE.resource(
+                &db.region,
+                &db.identifier,
+                format!(
+                    "Single-AZ RDS instance {} looks production-like",
+                    db.identifier
+                ),
+                "Open RDS and review production-like single-AZ databases for Multi-AZ coverage",
+            )
+        })
+        .collect()
 }
+
+const VPC_DEFAULT_PRESENT: Rule = Rule {
+    id: "vpc_default_vpcs_present",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Hygiene,
+    service: "VPC",
+    route: FindingRoute::Vpc,
+};
 
 fn vpc_default_vpcs_present(ctx: &FindingContext) -> Vec<Finding> {
-    let default_vpcs = ctx.vpcs.iter().filter(|vpc| vpc.is_default).count();
-
-    if default_vpcs == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Hygiene,
-        service: "VPC".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!("{default_vpcs} default VPC(s) are still present"),
-        next_step: "Review default VPC usage and remove or restrict it if unnecessary".into(),
-        route: FindingRoute::Vpc,
-    }]
+    ctx.vpcs
+        .iter()
+        .filter(|vpc| vpc.is_default)
+        .map(|vpc| {
+            VPC_DEFAULT_PRESENT.resource(
+                ctx.region_label,
+                &vpc.vpc_id,
+                format!("Default VPC {} is still present", vpc.vpc_id),
+                "Review default VPC usage and remove or restrict it if unnecessary",
+            )
+        })
+        .collect()
 }
+
+const LOAD_BALANCERS_ZERO_HEALTHY: Rule = Rule {
+    id: "load_balancers_zero_healthy_targets",
+    severity: FindingSeverity::High,
+    category: FindingCategory::Incident,
+    service: "Load Balancers",
+    route: FindingRoute::LoadBalancers,
+};
 
 fn load_balancers_zero_healthy_targets(ctx: &FindingContext) -> Vec<Finding> {
-    let load_balancers_with_zero_healthy_targets = ctx
-        .load_balancers
+    ctx.load_balancers
         .iter()
         .filter(|lb| lb.has_zero_healthy_targets())
-        .collect::<Vec<_>>();
-
-    if load_balancers_with_zero_healthy_targets.is_empty() {
-        return Vec::new();
-    }
-
-    let names = load_balancers_with_zero_healthy_targets
-        .iter()
-        .map(|lb| lb.name.clone())
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::High,
-        category: FindingCategory::Incident,
-        service: "Load Balancers".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} load balancer(s) have target groups but zero healthy targets: {}",
-            load_balancers_with_zero_healthy_targets.len(),
-            sample_list(&names)
-        ),
-        next_step: "Open load balancers and restore healthy registered targets behind the listener"
-            .into(),
-        route: FindingRoute::LoadBalancers,
-    }]
+        .map(|lb| {
+            LOAD_BALANCERS_ZERO_HEALTHY.resource(
+                ctx.region_label,
+                &lb.arn,
+                format!(
+                    "Load balancer {} has target groups but zero healthy targets",
+                    lb.name
+                ),
+                "Open load balancers and restore healthy registered targets behind the listener",
+            )
+        })
+        .collect()
 }
+
+const LOAD_BALANCERS_NO_ACTIVE_TARGETS: Rule = Rule {
+    id: "load_balancers_no_active_targets",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Waste,
+    service: "Load Balancers",
+    route: FindingRoute::LoadBalancers,
+};
 
 fn load_balancers_no_active_targets(ctx: &FindingContext) -> Vec<Finding> {
-    let load_balancers_with_no_active_targets = ctx
-        .load_balancers
+    ctx.load_balancers
         .iter()
         .filter(|lb| lb.has_no_active_targets() && !lb.has_zero_healthy_targets())
-        .collect::<Vec<_>>();
-
-    if load_balancers_with_no_active_targets.is_empty() {
-        return Vec::new();
-    }
-
-    let labels = load_balancers_with_no_active_targets
-        .iter()
         .map(|lb| {
-            let signals = lb.review_signals().join("/");
-            format!("{} ({signals})", lb.name)
+            LOAD_BALANCERS_NO_ACTIVE_TARGETS.resource(
+                ctx.region_label,
+                &lb.arn,
+                format!(
+                    "Load balancer {} has no active target path ({})",
+                    lb.name,
+                    lb.review_signals().join("/")
+                ),
+                "Open load balancers and review listeners with no target groups or no registered targets",
+            )
         })
-        .collect::<Vec<_>>();
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Waste,
-        service: "Load Balancers".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{} load balancer(s) have no active target path: {}",
-            load_balancers_with_no_active_targets.len(),
-            sample_list(&labels)
-        ),
-        next_step:
-            "Open load balancers and review listeners with no target groups or no registered targets"
-                .into(),
-        route: FindingRoute::LoadBalancers,
-    }]
+        .collect()
 }
+
+const LAMBDA_HIGH_MEMORY: Rule = Rule {
+    id: "lambda_high_memory_functions",
+    severity: FindingSeverity::Medium,
+    category: FindingCategory::Waste,
+    service: "Lambda",
+    route: FindingRoute::Lambda,
+};
 
 fn lambda_high_memory_functions(ctx: &FindingContext) -> Vec<Finding> {
-    let high_memory_functions = ctx
-        .lambda_functions
+    ctx.lambda_functions
         .iter()
         .filter(|f| f.has_high_memory())
-        .count();
-
-    if high_memory_functions == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Waste,
-        service: "Lambda".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{high_memory_functions} function(s) have memory >= {} MB",
-            LambdaFunctionInfo::HIGH_MEMORY_THRESHOLD_MB
-        ),
-        next_step: "Review high-memory Lambda functions for right-sizing".into(),
-        route: FindingRoute::Lambda,
-    }]
+        .map(|f| {
+            LAMBDA_HIGH_MEMORY.resource(
+                &f.region,
+                &f.name,
+                format!("Function {} is configured with {} MB", f.name, f.memory_mb),
+                "Review high-memory Lambda functions for right-sizing",
+            )
+        })
+        .collect()
 }
 
+const LAMBDA_STALE: Rule = Rule {
+    id: "lambda_stale_functions",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Waste,
+    service: "Lambda",
+    route: FindingRoute::Lambda,
+};
+
 fn lambda_stale_functions(ctx: &FindingContext) -> Vec<Finding> {
-    let stale_functions = ctx.lambda_functions.iter().filter(|f| f.is_stale()).count();
-
-    if stale_functions == 0 {
-        return Vec::new();
-    }
-
-    vec![Finding {
-        severity: FindingSeverity::Medium,
-        category: FindingCategory::Waste,
-        service: "Lambda".into(),
-        region: ctx.region_label.to_string(),
-        summary: format!(
-            "{stale_functions} function(s) have not been modified in {}+ days",
-            LambdaFunctionInfo::STALE_DEPLOY_DAYS
-        ),
-        next_step: "Review stale Lambda functions for ownership or cleanup".into(),
-        route: FindingRoute::Lambda,
-    }]
+    ctx.lambda_functions
+        .iter()
+        .filter(|f| f.is_stale())
+        .map(|f| {
+            LAMBDA_STALE.resource(
+                &f.region,
+                &f.name,
+                format!(
+                    "Function {} has not been modified in {}+ days",
+                    f.name,
+                    LambdaFunctionInfo::STALE_DEPLOY_DAYS
+                ),
+                "Review stale Lambda functions for ownership or cleanup",
+            )
+        })
+        .collect()
 }
 
 /// Every finding rule, in evaluation order. The order matters: the final sort
@@ -1044,12 +1058,22 @@ pub fn build_findings(ctx: &FindingContext) -> Vec<Finding> {
         .flat_map(|rule| rule(ctx))
         .collect::<Vec<_>>();
 
+    // One rule reporting the same resource twice is the same finding, not two.
+    // Findings with no resource id are never collapsed, since they have no
+    // identity to compare and each one is a distinct rollup.
+    let mut seen = std::collections::HashSet::new();
+    findings.retain(|finding| match finding.key() {
+        Some(key) => seen.insert(key),
+        None => true,
+    });
+
     findings.sort_by(|a, b| {
         a.severity
             .rank()
             .cmp(&b.severity.rank())
-            .then_with(|| a.category.as_str().cmp(b.category.as_str()))
+            .then_with(|| a.category.rank().cmp(&b.category.rank()))
             .then_with(|| a.service.cmp(&b.service))
+            .then_with(|| a.resource_id.cmp(&b.resource_id))
     });
 
     findings
@@ -1331,7 +1355,45 @@ mod tests {
         assert_eq!(found[0].severity, FindingSeverity::High);
         assert_eq!(found[0].category, FindingCategory::Incident);
         assert_eq!(found[0].route, FindingRoute::CloudWatch);
-        assert_eq!(found[0].summary, "1 alarm(s) are in ALARM: cpu-high");
+        assert_eq!(
+            found[0].summary,
+            "Alarm cpu-high is in ALARM (CPUUtilization)"
+        );
+        assert_eq!(found[0].resource_id.as_deref(), Some("cpu-high"));
+    }
+
+    /// One finding per offending resource, each independently identifiable.
+    #[test]
+    fn a_rule_emits_one_finding_per_offending_resource() {
+        let ov = overview();
+        let alarms = vec![
+            alarm("cpu-high", "ALARM", "AWS/EC2"),
+            alarm("mem-high", "ALARM", "AWS/EC2"),
+            alarm("disk-ok", "OK", "AWS/EC2"),
+        ];
+        let mut c = ctx(Some(&ov));
+        c.cloudwatch_alarms = &alarms;
+
+        let found = cloudwatch_alarms_in_alarm(&c);
+        assert_eq!(found.len(), 2);
+
+        let keys = found.iter().filter_map(|f| f.key()).collect::<Vec<_>>();
+        assert_eq!(keys.len(), 2, "every per-resource finding has a key");
+        assert_ne!(keys[0], keys[1], "keys distinguish the two alarms");
+    }
+
+    /// The overview fallback has no resources in hand, so it cannot carry an
+    /// id and must not pretend to.
+    #[test]
+    fn an_overview_fallback_finding_has_no_resource_id() {
+        let mut ov = overview();
+        ov.alarms.alarms_in_alarm = 4;
+        let c = ctx(Some(&ov));
+
+        let found = cloudwatch_alarms_in_alarm(&c);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].resource_id, None);
+        assert_eq!(found[0].key(), None);
     }
 
     #[test]
@@ -1390,14 +1452,15 @@ mod tests {
         assert_eq!(zero[0].route, FindingRoute::TargetGroups);
         assert_eq!(
             zero[0].summary,
-            "1 target group(s) have zero healthy targets"
+            "Target group all-down has zero healthy targets (2 registered)"
         );
+        assert!(zero[0].resource_id.as_deref().unwrap().contains("all-down"));
 
         let unhealthy = target_groups_unhealthy_targets(&c);
         assert_eq!(unhealthy.len(), 1);
         assert_eq!(
             unhealthy[0].summary,
-            "1 target group(s) have unhealthy targets"
+            "Target group degraded has 1 unhealthy target(s) of 4"
         );
     }
 
@@ -1413,7 +1476,7 @@ mod tests {
         assert_eq!(sensitive[0].route, FindingRoute::SecurityGroups);
         assert_eq!(
             sensitive[0].summary,
-            "1 security group(s) expose sensitive ports publicly (22, 3389)"
+            "Security group web exposes sensitive port(s) publicly: 22,3389"
         );
 
         assert!(security_groups_open_to_world(&c).is_empty());
@@ -1444,7 +1507,7 @@ mod tests {
         let found = vpc_default_vpcs_present(&c);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].route, FindingRoute::Vpc);
-        assert_eq!(found[0].summary, "1 default VPC(s) are still present");
+        assert_eq!(found[0].summary, "Default VPC vpc-1 is still present");
 
         let empty = ctx(None);
         assert!(vpc_default_vpcs_present(&empty).is_empty());
@@ -1462,7 +1525,83 @@ mod tests {
         let found = build_findings(&c);
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].severity, FindingSeverity::High);
-        assert_eq!(found[1].severity, FindingSeverity::Medium);
+        assert_eq!(found[1].severity, FindingSeverity::Low);
+    }
+
+    /// Alphabetical ordering on the category label would put Hygiene ahead of
+    /// Incident, burying the urgent findings.
+    #[test]
+    fn incidents_sort_ahead_of_hygiene_at_equal_severity() {
+        let ov = overview();
+        let groups = vec![security_group(true, vec![22])];
+        let alarms = vec![alarm("cpu-high", "ALARM", "AWS/EC2")];
+        let mut c = ctx(Some(&ov));
+        c.security_groups = &groups;
+        c.cloudwatch_alarms = &alarms;
+
+        let found = build_findings(&c);
+        let high = found
+            .iter()
+            .filter(|f| f.severity == FindingSeverity::High)
+            .collect::<Vec<_>>();
+
+        assert!(high.len() >= 2);
+        assert_eq!(high[0].category, FindingCategory::Incident);
+        assert_eq!(high.last().unwrap().category, FindingCategory::Hygiene);
+    }
+
+    /// In global mode the view label is the same for every region, so a
+    /// name-keyed resource must take its region from the resource itself or
+    /// two different functions would collapse into one finding.
+    #[test]
+    fn same_named_resources_in_different_regions_stay_distinct() {
+        let mut east = lambda(LambdaFunctionInfo::HIGH_MEMORY_THRESHOLD_MB);
+        east.region = "us-east-1".into();
+        let mut west = lambda(LambdaFunctionInfo::HIGH_MEMORY_THRESHOLD_MB);
+        west.region = "eu-west-1".into();
+        assert_eq!(east.name, west.name, "same function name in both regions");
+
+        let functions = vec![east, west];
+        let mut c = ctx(None);
+        c.lambda_functions = &functions;
+
+        let found = lambda_high_memory_functions(&c);
+        assert_eq!(found.len(), 2);
+        assert_ne!(found[0].key(), found[1].key());
+        assert_eq!(found[0].region, "us-east-1");
+        assert_eq!(found[1].region, "eu-west-1");
+    }
+
+    #[test]
+    fn build_findings_collapses_a_repeated_resource() {
+        let ov = overview();
+        let duplicated = vec![vpc(true), vpc(true)];
+        let mut c = ctx(Some(&ov));
+        c.vpcs = &duplicated;
+
+        // Both entries are the same VPC id, so they are one finding.
+        let found = build_findings(&c);
+        let vpc_findings = found
+            .iter()
+            .filter(|f| f.rule == "vpc_default_vpcs_present")
+            .count();
+        assert_eq!(vpc_findings, 1);
+    }
+
+    /// Rollups have no identity to compare, so they must survive dedup.
+    #[test]
+    fn build_findings_keeps_every_finding_without_a_resource_id() {
+        let mut ov = overview();
+        ov.alarms.alarms_in_alarm = 2;
+        ov.ec2_stopped = 3;
+        let c = ctx(Some(&ov));
+
+        let found = build_findings(&c);
+        let rollups = found.iter().filter(|f| f.resource_id.is_none()).count();
+        assert!(
+            rollups >= 2,
+            "expected both overview fallbacks, got {rollups}"
+        );
     }
 
     #[test]
