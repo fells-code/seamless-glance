@@ -32,9 +32,9 @@ pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &mut App) {
                 "Services",
                 "Tasks (R/P)",
                 "EC2s",
-                "CPU",
-                "Memory",
-                "Health",
+                "CPU Used",
+                "Mem Used",
+                "Status",
             ],
             widths: &[
                 Constraint::Percentage(30),
@@ -57,12 +57,16 @@ pub fn render_ecs_clusters(frame: &mut Frame, area: Rect, app: &mut App) {
                     c.active_services.to_string(),
                     format!("{} / {}", c.running_tasks, c.pending_tasks),
                     c.registered_container_instances.to_string(),
-                    c.cpu.to_string(),
-                    c.memory.to_string(),
-                    // TODO(#43): cluster health is a placeholder, not yet computed.
-                    "OK".to_string(),
+                    c.cpu_label(),
+                    c.memory_label(),
+                    c.status_label(),
                 ],
-                style: Style::default().fg(theme.text),
+                style: if c.is_active() {
+                    Style::default().fg(theme.text)
+                } else {
+                    // Anything other than ACTIVE is worth noticing.
+                    Style::default().fg(theme.primary)
+                },
             }
         },
     );
