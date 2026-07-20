@@ -10,7 +10,7 @@ use crate::models::lambda::LambdaFunctionInfo;
 use crate::models::rds::RdsInstanceInfo;
 use crate::models::secrets::SecretInfo;
 use crate::models::security_group::SecurityGroupInfo;
-use crate::models::sqs::SqsQueueInfo;
+use crate::models::sqs::{dead_letter_queue_names, SqsQueueInfo};
 use crate::models::tags::Tags;
 use crate::models::target_group::TargetGroupInfo;
 use crate::models::vpc::VpcInfo;
@@ -810,9 +810,13 @@ const SQS_QUEUES_WITHOUT_DLQ: Rule = Rule {
 };
 
 fn sqs_queues_without_dlq(ctx: &FindingContext) -> Vec<Finding> {
+    // A dead-letter queue does not need a DLQ of its own, so queues that another
+    // queue redrives to are not gaps.
+    let dlq_names = dead_letter_queue_names(ctx.sqs_queues_data);
+
     ctx.sqs_queues_data
         .iter()
-        .filter(|queue| !queue.has_dlq)
+        .filter(|queue| !queue.has_dlq && !dlq_names.contains(queue.name.as_str()))
         .map(|queue| {
             SQS_QUEUES_WITHOUT_DLQ.resource(
                 ctx.region_label,
@@ -1272,6 +1276,47 @@ mod tests {
             subnet_count: 3,
             tags: Tags::loaded([("Owner", "platform")]),
         }
+    }
+
+    fn sqs_queue(name: &str, redrives_to: Option<&str>) -> SqsQueueInfo {
+        SqsQueueInfo {
+            name: name.into(),
+            queue_url: format!("https://sqs.us-east-1.amazonaws.com/1/{name}"),
+            is_fifo: false,
+            messages_available: 0,
+            messages_in_flight: 0,
+            has_dlq: redrives_to.is_some(),
+            dead_letter_target_arn: redrives_to
+                .map(|target| format!("arn:aws:sqs:us-east-1:1:{target}")),
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    /// A dead-letter queue has no redrive policy of its own, so the rule used to
+    /// report every DLQ in the account as a queue missing a DLQ.
+    #[test]
+    fn the_dlq_rule_skips_queues_that_are_themselves_dead_letter_targets() {
+        let overview = overview();
+        let queues = vec![
+            sqs_queue("orders", Some("orders-dlq")),
+            sqs_queue("orders-dlq", None),
+            sqs_queue("payments", None),
+        ];
+
+        let mut context = ctx(Some(&overview));
+        context.sqs_queues_data = &queues;
+
+        let findings = sqs_queues_without_dlq(&context);
+
+        let flagged = findings
+            .iter()
+            .map(|finding| finding.resource_id.as_deref().unwrap_or(""))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            flagged,
+            vec!["https://sqs.us-east-1.amazonaws.com/1/payments"]
+        );
     }
 
     fn vpc_with_tags(vpc_id: &str, tags: Tags) -> VpcInfo {

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 
 use crate::{
@@ -24,7 +26,20 @@ pub struct SqsQueueInfo {
     pub messages_available: i64,
     pub messages_in_flight: i64,
     pub has_dlq: bool,
+    /// ARN of the queue this one redrives to, from its RedrivePolicy. Collecting
+    /// these across a region gives the exact set of queues acting as DLQs.
+    pub dead_letter_target_arn: Option<String>,
     pub tags: Tags,
+}
+
+/// Names of every queue that another queue redrives to.
+pub fn dead_letter_queue_names(queues: &[SqsQueueInfo]) -> HashSet<&str> {
+    queues
+        .iter()
+        .filter_map(|queue| queue.dead_letter_target_arn.as_deref())
+        .filter_map(|arn| arn.rsplit(':').next())
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 impl SqsQueueInfo {
