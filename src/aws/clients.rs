@@ -9,6 +9,7 @@ use aws_sdk_ec2::Client as Ec2Client;
 use aws_sdk_ecs::Client as EcsClient;
 use aws_sdk_elasticloadbalancingv2::Client as ElbClient;
 use aws_sdk_lambda::Client as LambdaClient;
+use aws_sdk_pricing::Client as PricingClient;
 use aws_sdk_rds::Client as RdsClient;
 use aws_sdk_secretsmanager::Client as SecretsClient;
 use aws_sdk_sqs::Client as SqsClient;
@@ -75,6 +76,9 @@ pub struct AwsClients {
     pub sts: StsClient,
     pub sqs: SqsClient,
     pub ce: CeClient,
+    /// Pinned to the Price List API endpoint region rather than the active
+    /// region, since prices for every region are served from there.
+    pub pricing: PricingClient,
 }
 
 impl AwsClients {
@@ -92,6 +96,11 @@ impl AwsClients {
             sts: StsClient::new(config),
             sqs: SqsClient::new(config),
             ce: CeClient::new(config),
+            pricing: PricingClient::from_conf(
+                aws_sdk_pricing::config::Builder::from(config)
+                    .region(Region::new(crate::aws::pricing::PRICING_ENDPOINT_REGION))
+                    .build(),
+            ),
         }
     }
 }

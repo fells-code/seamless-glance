@@ -31,14 +31,15 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
         &theme,
         ListTable {
             title: "Findings",
-            headers: &["SEV", "CATEGORY", "SERVICE", "REGION", "RESOURCE", "SUMMARY"],
+            headers: &["SEV", "CATEGORY", "SERVICE", "REGION", "RESOURCE", "COST", "SUMMARY"],
             widths: &[
                 Constraint::Length(6),
                 Constraint::Length(10),
                 Constraint::Length(16),
                 Constraint::Length(12),
-                Constraint::Percentage(28),
-                Constraint::Percentage(44),
+                Constraint::Percentage(26),
+                Constraint::Length(16),
+                Constraint::Percentage(38),
             ],
             empty_message: "No findings detected right now.\n\
                             This view will surface incidents, waste, and hygiene issues as they appear.",
@@ -64,6 +65,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
                 Cell::from(finding.region.clone()),
                 // Aggregate findings have no single resource to name.
                 Cell::from(finding.resource_id.clone().unwrap_or_else(|| "-".into())),
+                Cell::from(
+                    finding
+                        .cost
+                        .map(|cost| cost.label())
+                        .unwrap_or_else(|| "-".into()),
+                ),
                 Cell::from(finding.summary.clone()),
             ])
             .style(severity_style)
@@ -103,8 +110,17 @@ fn render_wrapped_detail(frame: &mut Frame, area: Rect, app: &mut App) {
 
     frame.render_widget(metadata, layout[0]);
 
+    let cost_line = match finding.cost {
+        Some(cost) => format!(
+            "\n\nEstimated Cost\n{} at AWS public list price. Not billed spend: discounts, \
+             Savings Plans, and Reserved Instances are not reflected.",
+            cost.label()
+        ),
+        None => String::new(),
+    };
+
     let detail = Paragraph::new(format!(
-        "Summary\n{}\n\nNext Step\n{}",
+        "Summary\n{}\n\nNext Step\n{}{cost_line}",
         finding.summary, finding.next_step
     ))
     .style(Style::default().fg(app.theme.text))

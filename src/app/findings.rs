@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use crate::aws::pricing::{LoadBalancerKind, PriceBook, PriceKey};
 use crate::models::apigatway::ApiGatewayInfo;
 use crate::models::cloudwatch::CloudWatchAlarm;
 use crate::models::ec2::Ec2InstanceInfo;
@@ -34,6 +35,8 @@ pub struct FindingContext<'a> {
     pub security_groups: &'a [SecurityGroupInfo],
     pub vpcs: &'a [VpcInfo],
     pub lambda_functions: &'a [LambdaFunctionInfo],
+    /// List prices for the resource types the waste rules can cost.
+    pub prices: &'a PriceBook,
 }
 
 /// Render up to [`SAMPLE_LIMIT`] labels as `a, b, c`, appending `(+N more)`
@@ -85,6 +88,7 @@ impl Rule {
             summary,
             next_step: next_step.into(),
             route: self.route,
+            cost: None,
         }
     }
 
@@ -104,6 +108,7 @@ impl Rule {
             summary,
             next_step: next_step.into(),
             route: self.route,
+            cost: None,
         }
     }
 }
@@ -650,6 +655,11 @@ fn ec2_sustained_low_cpu(ctx: &FindingContext) -> Vec<Finding> {
         .iter()
         .filter(|instance| instance.has_sustained_low_cpu())
         .map(|instance| {
+            let cost = ctx.prices.estimate(&PriceKey::Ec2Instance {
+                region: instance.region.clone(),
+                instance_type: instance.instance_type.clone(),
+            });
+
             EC2_SUSTAINED_LOW_CPU.resource(
                 &instance.region,
                 &instance.id,
@@ -665,6 +675,7 @@ fn ec2_sustained_low_cpu(ctx: &FindingContext) -> Vec<Finding> {
                     Ec2InstanceInfo::LOW_CPU_LOOKBACK_DAYS
                 ),
             )
+            .with_cost(cost)
         })
         .collect()
 }
@@ -955,6 +966,13 @@ fn load_balancers_no_active_targets(ctx: &FindingContext) -> Vec<Finding> {
         .iter()
         .filter(|lb| lb.has_no_active_targets() && !lb.has_zero_healthy_targets())
         .map(|lb| {
+            let cost = LoadBalancerKind::from_lb_type(&lb.lb_type).and_then(|kind| {
+                ctx.prices.estimate(&PriceKey::LoadBalancer {
+                    region: ctx.region_label.to_string(),
+                    kind,
+                })
+            });
+
             LOAD_BALANCERS_NO_ACTIVE_TARGETS.resource(
                 ctx.region_label,
                 &lb.arn,
@@ -965,6 +983,7 @@ fn load_balancers_no_active_targets(ctx: &FindingContext) -> Vec<Finding> {
                 ),
                 "Open load balancers and review listeners with no target groups or no registered targets",
             )
+            .with_cost(cost)
         })
         .collect()
 }
@@ -1017,6 +1036,42 @@ fn lambda_stale_functions(ctx: &FindingContext) -> Vec<Finding> {
             )
         })
         .collect()
+}
+
+/// The prices the waste rules will need for this inventory.
+///
+/// Derived with the same predicates the rules use, so the prefetch cannot drift
+/// from what actually gets costed, and so only resources that will produce a
+/// finding are ever looked up.
+pub fn required_price_keys(
+    ec2_instances: &[Ec2InstanceInfo],
+    load_balancers: &[LoadBalancerInfo],
+    region_label: &str,
+) -> Vec<PriceKey> {
+    let mut keys = ec2_instances
+        .iter()
+        .filter(|instance| instance.has_sustained_low_cpu())
+        .map(|instance| PriceKey::Ec2Instance {
+            region: instance.region.clone(),
+            instance_type: instance.instance_type.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    keys.extend(
+        load_balancers
+            .iter()
+            .filter(|lb| lb.has_no_active_targets() && !lb.has_zero_healthy_targets())
+            .filter_map(|lb| {
+                Some(PriceKey::LoadBalancer {
+                    region: region_label.to_string(),
+                    kind: LoadBalancerKind::from_lb_type(&lb.lb_type)?,
+                })
+            }),
+    );
+
+    keys.sort_by_key(|key| format!("{key:?}"));
+    keys.dedup();
+    keys
 }
 
 /// Every finding rule, in evaluation order. The order matters: the final sort
@@ -1129,8 +1184,16 @@ mod tests {
         }
     }
 
+    /// A rule that costs a resource must be given prices explicitly, so an
+    /// unpriced book is the tested-by-default case.
+    fn empty_prices() -> &'static PriceBook {
+        static EMPTY: std::sync::OnceLock<PriceBook> = std::sync::OnceLock::new();
+        EMPTY.get_or_init(PriceBook::default)
+    }
+
     fn ctx<'a>(account_overview: Option<&'a AccountOverview>) -> FindingContext<'a> {
         FindingContext {
+            prices: empty_prices(),
             account_overview,
             region_label: "us-east-1",
             cloudwatch_alarms: &[],
@@ -1601,6 +1664,102 @@ mod tests {
         assert!(
             rollups >= 2,
             "expected both overview fallbacks, got {rollups}"
+        );
+    }
+
+    fn low_cpu_instance(instance_type: &str, region: &str) -> Ec2InstanceInfo {
+        Ec2InstanceInfo {
+            id: "i-1".into(),
+            tags: Tags::loaded([("Name", "idle-1"), ("Owner", "platform")]),
+            avg_cpu_utilization: Some(1.0),
+            instance_type: instance_type.into(),
+            state: "running".into(),
+            region: region.into(),
+            az: format!("{region}a"),
+            private_ip: None,
+            public_ip: None,
+            key_name: None,
+        }
+    }
+
+    #[test]
+    fn a_low_cpu_instance_carries_a_list_price_estimate() {
+        let ov = overview();
+        let instances = vec![low_cpu_instance("t3.medium", "us-east-1")];
+        let mut prices = PriceBook::default();
+        prices.insert(
+            PriceKey::Ec2Instance {
+                region: "us-east-1".into(),
+                instance_type: "t3.medium".into(),
+            },
+            Some(0.0416),
+        );
+
+        let mut c = ctx(Some(&ov));
+        c.ec2_instances = &instances;
+        c.prices = &prices;
+
+        let found = ec2_sustained_low_cpu(&c);
+        assert_eq!(found.len(), 1);
+        let cost = found[0].cost.expect("priced instance type");
+        assert!((cost.monthly_usd - 30.368).abs() < 0.001);
+        assert!(found[0].cost.unwrap().label().contains("list"));
+    }
+
+    /// An unknown instance type must leave the estimate absent rather than
+    /// guessing, since a wrong number is worse than none.
+    #[test]
+    fn an_unpriced_instance_type_yields_no_estimate() {
+        let ov = overview();
+        let instances = vec![low_cpu_instance("t3.medium", "us-east-1")];
+
+        let mut c = ctx(Some(&ov));
+        c.ec2_instances = &instances;
+
+        let found = ec2_sustained_low_cpu(&c);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].cost, None);
+    }
+
+    /// The same instance type prices differently per region, so the lookup is
+    /// keyed by the resource's own region.
+    #[test]
+    fn a_price_from_another_region_is_not_reused() {
+        let ov = overview();
+        let instances = vec![low_cpu_instance("t3.medium", "eu-west-1")];
+        let mut prices = PriceBook::default();
+        prices.insert(
+            PriceKey::Ec2Instance {
+                region: "us-east-1".into(),
+                instance_type: "t3.medium".into(),
+            },
+            Some(0.0416),
+        );
+
+        let mut c = ctx(Some(&ov));
+        c.ec2_instances = &instances;
+        c.prices = &prices;
+
+        assert_eq!(ec2_sustained_low_cpu(&c)[0].cost, None);
+    }
+
+    #[test]
+    fn only_resources_that_will_be_reported_are_priced() {
+        let busy = Ec2InstanceInfo {
+            avg_cpu_utilization: Some(90.0),
+            ..low_cpu_instance("m5.large", "us-east-1")
+        };
+        let instances = vec![low_cpu_instance("t3.medium", "us-east-1"), busy];
+
+        let keys = required_price_keys(&instances, &[], "us-east-1");
+
+        assert_eq!(
+            keys,
+            vec![PriceKey::Ec2Instance {
+                region: "us-east-1".into(),
+                instance_type: "t3.medium".into(),
+            }],
+            "the busy instance produces no finding, so it needs no price"
         );
     }
 
