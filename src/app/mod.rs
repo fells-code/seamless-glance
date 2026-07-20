@@ -101,6 +101,10 @@ pub struct App {
     // from a prior region or profile and mislabeled with the new one.
     data_context: Option<(Option<String>, String)>,
 
+    // Set when the config on disk is unreadable and could not be backed up.
+    // Saving would overwrite it, so preference writes stop for the session.
+    config_writes_blocked: bool,
+
     pub footer_mode: FooterMode,
     pub notification: Option<Notification>,
 
@@ -244,6 +248,7 @@ impl App {
             in_flight_refresh: None,
             inventory_fetched_at: HashMap::new(),
             data_context: None,
+            config_writes_blocked: false,
             footer_mode: FooterMode::Normal,
             notification: None,
             show_help: false,
@@ -318,16 +323,35 @@ impl App {
         self.current_region_index = self.regions.len();
     }
 
-    pub fn persist_region_selection(&self) {
+    pub fn persist_region_selection(&mut self) {
         self.persist_preferences();
     }
 
-    pub fn persist_preferences(&self) {
-        let mut cfg = config::load_config();
+    pub fn persist_preferences(&mut self) {
+        // The config on disk could not be read and could not be moved aside,
+        // so writing would destroy preferences that are still recoverable by
+        // hand. Better to lose this session's change than the whole file.
+        if self.config_writes_blocked {
+            return;
+        }
+
+        let loaded = config::load_config();
+        if loaded.blocks_saving() {
+            self.config_writes_blocked = true;
+            if let Some(warning) = loaded.warning() {
+                self.notify_error(warning);
+            }
+            return;
+        }
+
+        let mut cfg = loaded.config();
         cfg.region = Some(self.current_region_label());
         cfg.theme = Some(self.theme_name.as_str().to_string());
         cfg.profile = self.current_profile.clone();
-        config::save_config(&cfg);
+
+        if let Err(err) = config::save_config(&cfg) {
+            self.notify_error(format!("Could not save preferences: {err}"));
+        }
     }
 
     /// Rebuild every AWS client for the current region and profile. Region and
