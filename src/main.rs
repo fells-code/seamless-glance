@@ -101,13 +101,25 @@ async fn handle_command(app: &mut App) {
 
 /// Run the action a bound key maps to. Every key in `keys::KEY_BINDINGS`
 /// resolves here, so adding a binding is one registry entry plus one arm.
-async fn run_key_action(app: &mut App, action: KeyAction) {
+async fn run_key_action(app: &mut App, binding: &keys::KeyBinding) {
     use KeyAction as A;
+
+    let action = binding.action;
 
     // The palette, help, refresh, and quit stay reachable with a modal open;
     // everything else requires a normal view (the guard from #23).
     let modal_safe = matches!(action, A::CommandPalette | A::Help | A::Refresh | A::Quit);
     if !modal_safe && app.modal_open() {
+        return;
+    }
+
+    // A key does nothing on a view where the footer does not advertise it. The
+    // footer builds its hints from the same scope, so enforcing it here is what
+    // makes the two unable to drift: a handler cannot forget its own guard.
+    if !binding
+        .scope
+        .applies_to(app.active_view, app.active_view_supports_wrap())
+    {
         return;
     }
 
@@ -494,7 +506,7 @@ async fn main() -> anyhow::Result<()> {
             // keys that actually do something.
             KeyCode::Char(c) => {
                 if let Some(binding) = keys::binding_for(c) {
-                    run_key_action(&mut app, binding.action).await;
+                    run_key_action(&mut app, binding).await;
                 }
             }
             _ => {}
@@ -505,4 +517,67 @@ async fn main() -> anyhow::Result<()> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
     terminal.show_cursor()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod scope_verification {
+    use crate::app::{ActiveView, App};
+    use crate::aws::clients::AwsClients;
+    use crate::ui::keys;
+
+    fn test_app() -> App {
+        let config = aws_config::SdkConfig::builder()
+            .region(aws_config::Region::new("us-east-1"))
+            .behavior_version(aws_config::BehaviorVersion::latest())
+            .build();
+        App::new(AwsClients::new(&config))
+    }
+
+    async fn press(app: &mut App, key: char) {
+        let binding = keys::binding_for(key).expect("key is bound");
+        super::run_key_action(app, binding).await;
+    }
+
+    #[tokio::test]
+    async fn filter_does_not_open_where_it_is_not_advertised() {
+        let mut app = test_app();
+        app.active_view = ActiveView::AccountOverview;
+
+        press(&mut app, 'm').await;
+
+        assert!(
+            !app.filter_mode,
+            "account overview has no rows to filter, and the footer does not offer it"
+        );
+    }
+
+    #[tokio::test]
+    async fn filter_opens_where_it_is_advertised() {
+        let mut app = test_app();
+        app.active_view = ActiveView::Ec2;
+
+        press(&mut app, 'm').await;
+
+        assert!(app.filter_mode);
+    }
+
+    #[tokio::test]
+    async fn wrap_does_not_toggle_on_account_overview() {
+        let mut app = test_app();
+        app.active_view = ActiveView::AccountOverview;
+
+        press(&mut app, 'w').await;
+
+        assert!(!app.wrap_text);
+    }
+
+    #[tokio::test]
+    async fn keys_that_apply_everywhere_still_run() {
+        let mut app = test_app();
+        app.active_view = ActiveView::AccountOverview;
+
+        press(&mut app, '?').await;
+
+        assert!(app.show_help, "help is scoped Everywhere");
+    }
 }
