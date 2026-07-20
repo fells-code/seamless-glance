@@ -1,12 +1,9 @@
-use ratatui::{
-    layout::Constraint,
-    style::Style,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Constraint, style::Style, Frame};
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 
 pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(frame, area, "SQS", &app.sqs_status, &app.theme)
@@ -16,6 +13,8 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.sqs_queues_data);
 
@@ -39,6 +38,8 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
                 Constraint::Percentage(15),
             ],
             empty_message: "No SQS queues found in this region.",
+            filter,
+            wrapped,
         },
         &rows,
         |q| {
@@ -50,22 +51,24 @@ pub fn render_sqs(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App)
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(q.name.clone()),
-                Cell::from(if q.is_fifo { "FIFO" } else { "Standard" }),
-                Cell::from(q.messages_available.to_string()),
-                Cell::from(q.messages_in_flight.to_string()),
-                Cell::from(if q.has_dlq { "Yes" } else { "No" }),
-                Cell::from({
-                    let signals = q.backlog_signals();
-                    if signals.is_empty() {
-                        "-".into()
-                    } else {
-                        signals.join(",")
-                    }
-                }),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    q.name.clone(),
+                    if q.is_fifo { "FIFO" } else { "Standard" }.to_string(),
+                    q.messages_available.to_string(),
+                    q.messages_in_flight.to_string(),
+                    if q.has_dlq { "Yes" } else { "No" }.to_string(),
+                    {
+                        let signals = q.backlog_signals();
+                        if signals.is_empty() {
+                            "-".into()
+                        } else {
+                            signals.join(",")
+                        }
+                    },
+                ],
+                style,
+            }
         },
     );
 }

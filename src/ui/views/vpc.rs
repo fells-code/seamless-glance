@@ -1,12 +1,13 @@
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
-    widgets::{Cell, Row},
     Frame,
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 
 pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(frame, area, "VPC", &app.vpc_status, &app.theme)
@@ -16,6 +17,8 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.vpcs);
 
@@ -38,6 +41,8 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
                 Constraint::Percentage(10),
             ],
             empty_message: "No VPCs found in this region.",
+            filter,
+            wrapped,
         },
         &rows,
         |v| {
@@ -47,14 +52,16 @@ pub fn render_vpc(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(v.vpc_id.clone()),
-                Cell::from(v.cidr.clone()),
-                Cell::from(v.state.clone()),
-                Cell::from(if v.is_default { "Yes" } else { "No" }),
-                Cell::from(v.subnet_count.to_string()),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    v.vpc_id.clone(),
+                    v.cidr.clone(),
+                    v.state.clone(),
+                    if v.is_default { "Yes" } else { "No" }.to_string(),
+                    v.subnet_count.to_string(),
+                ],
+                style,
+            }
         },
     );
 }

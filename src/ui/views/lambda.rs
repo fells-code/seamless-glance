@@ -1,12 +1,13 @@
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
-    widgets::{Cell, Row},
     Frame,
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 
 pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(
@@ -21,6 +22,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.lambda_functions);
 
@@ -51,6 +54,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
                 Constraint::Percentage(28),
             ],
             empty_message: "No Lambda functions found in this region.",
+            filter,
+            wrapped,
         },
         &rows,
         |f| {
@@ -60,15 +65,17 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(f.name.clone()),
-                Cell::from(f.region.clone()),
-                Cell::from(f.runtime.clone()),
-                Cell::from(f.memory_mb.to_string()),
-                Cell::from(f.timeout_sec.to_string()),
-                Cell::from(f.last_modified.clone()),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    f.name.clone(),
+                    f.region.clone(),
+                    f.runtime.clone(),
+                    f.memory_mb.to_string(),
+                    f.timeout_sec.to_string(),
+                    f.last_modified.clone(),
+                ],
+                style,
+            }
         },
     );
 }

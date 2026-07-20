@@ -476,11 +476,13 @@ impl App {
         matches!(self.active_view, ActiveView::AccountOverview)
     }
 
+    /// Whether this view can show a selected row in full.
+    ///
+    /// Every list view can: the table shortens values to their column width, so
+    /// wrap mode is how a value too long to fit is read. Account overview paints
+    /// a fixed layout with no row to expand.
     pub fn active_view_supports_wrap(&self) -> bool {
-        matches!(
-            self.active_view,
-            ActiveView::Findings | ActiveView::CostOverview | ActiveView::CostSavings
-        )
+        self.active_view != ActiveView::AccountOverview
     }
 
     pub fn wrap_mode_active(&self) -> bool {

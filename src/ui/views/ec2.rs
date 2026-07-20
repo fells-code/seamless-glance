@@ -1,12 +1,13 @@
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
-    widgets::{Cell, Row},
     Frame,
 };
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 
 pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(frame, area, "EC2", &app.ec2_status, &app.theme)
@@ -16,6 +17,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.ec2_instances);
 
@@ -58,6 +61,8 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Constraint::Percentage(12),
             ],
             empty_message: "No EC2 instances found in this region.",
+            filter,
+            wrapped,
         },
         &rows,
         |inst| {
@@ -69,28 +74,30 @@ pub fn render_ec2(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(inst.id.clone()),
-                Cell::from(inst.name().unwrap_or("-").to_string()),
-                Cell::from(inst.region.clone()),
-                Cell::from(inst.state.clone()),
-                Cell::from(inst.instance_type.clone()),
-                Cell::from(inst.formatted_avg_cpu()),
-                Cell::from(inst.owner().unwrap_or("-").to_string()),
-                Cell::from(inst.environment().unwrap_or("-").to_string()),
-                Cell::from(inst.public_ip.clone().unwrap_or("-".into())),
-                Cell::from(inst.private_ip.clone().unwrap_or("-".into())),
-                Cell::from(inst.az.clone()),
-                Cell::from({
-                    let signals = inst.review_signals();
-                    if signals.is_empty() {
-                        "-".into()
-                    } else {
-                        signals.join(",")
-                    }
-                }),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    inst.id.clone(),
+                    inst.name().unwrap_or("-").to_string(),
+                    inst.region.clone(),
+                    inst.state.clone(),
+                    inst.instance_type.clone(),
+                    inst.formatted_avg_cpu(),
+                    inst.owner().unwrap_or("-").to_string(),
+                    inst.environment().unwrap_or("-").to_string(),
+                    inst.public_ip.clone().unwrap_or("-".into()),
+                    inst.private_ip.clone().unwrap_or("-".into()),
+                    inst.az.clone(),
+                    {
+                        let signals = inst.review_signals();
+                        if signals.is_empty() {
+                            "-".into()
+                        } else {
+                            signals.join(",")
+                        }
+                    },
+                ],
+                style,
+            }
         },
     );
 }

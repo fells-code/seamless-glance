@@ -1,9 +1,10 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Modifier, Style},
-    widgets::{Cell, Row},
     Frame,
 };
 
@@ -20,6 +21,8 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.target_groups);
 
@@ -57,6 +60,8 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No target groups found in this region.\n\
                             This is normal if no load balancers or services are deployed.",
+            filter,
+            wrapped,
         },
         &rows,
         |tg| {
@@ -72,25 +77,27 @@ pub fn render_tg(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(tg.name.clone()),
-                Cell::from(tg.protocol.clone()),
-                Cell::from(tg.target_type.clone()),
-                Cell::from(tg.port.to_string()),
-                Cell::from(tg.attached_load_balancer_count().to_string()),
-                Cell::from(tg.total_targets.to_string()),
-                Cell::from(tg.healthy_targets().to_string()),
-                Cell::from(tg.unhealthy_targets.to_string()),
-                Cell::from({
-                    let signals = tg.review_signals();
-                    if signals.is_empty() {
-                        "-".into()
-                    } else {
-                        signals.join(",")
-                    }
-                }),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    tg.name.clone(),
+                    tg.protocol.clone(),
+                    tg.target_type.clone(),
+                    tg.port.to_string(),
+                    tg.attached_load_balancer_count().to_string(),
+                    tg.total_targets.to_string(),
+                    tg.healthy_targets().to_string(),
+                    tg.unhealthy_targets.to_string(),
+                    {
+                        let signals = tg.review_signals();
+                        if signals.is_empty() {
+                            "-".into()
+                        } else {
+                            signals.join(",")
+                        }
+                    },
+                ],
+                style,
+            }
         },
     );
 }
