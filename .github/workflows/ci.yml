@@ -39,3 +39,46 @@ jobs:
 
       - name: Build (release)
         run: cargo build --release
+
+  coverage:
+    name: coverage (logic layer)
+    runs-on: ubuntu-latest
+    # Line coverage of the pure decision logic in src/models and src/app.
+    # Rendering (src/ui), AWS SDK I/O (src/aws), and the terminal event loop
+    # are excluded: they are verified by live-render and live-API checks, not
+    # unit tests, so counting them would measure how much is untestable rather
+    # than how much is untested. Keep this regex in step with codecov.yml.
+    env:
+      COVERAGE_IGNORE: '(src/ui/|src/aws/|src/main\.rs|src/app/refresh\.rs|src/resources/ssh\.rs)'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Coverage summary
+        run: cargo llvm-cov --all --ignore-filename-regex "$COVERAGE_IGNORE" --summary-only
+
+      # A floor well below the current figure (~74%): it catches a large
+      # regression without blocking routine PRs. Raise it as coverage climbs.
+      - name: Enforce a coverage floor
+        run: cargo llvm-cov --all --ignore-filename-regex "$COVERAGE_IGNORE" --summary-only --fail-under-lines 65
+
+      # Uploaded so the eventual badge can consume it without re-running the
+      # suite; wiring a coverage service is a separate, owner-authorized step.
+      - name: Generate lcov report
+        run: cargo llvm-cov --all --ignore-filename-regex "$COVERAGE_IGNORE" --lcov --output-path lcov.info
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
