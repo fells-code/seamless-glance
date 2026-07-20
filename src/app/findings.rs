@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::aws::pricing::{LoadBalancerKind, PriceBook, PriceKey};
-use crate::models::apigatway::ApiGatewayInfo;
+use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::CloudWatchAlarm;
 use crate::models::ec2::Ec2InstanceInfo;
 use crate::models::elb::LoadBalancerInfo;

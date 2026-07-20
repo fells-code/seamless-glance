@@ -7,7 +7,7 @@ use crate::app::findings::{build_findings, FindingContext};
 use crate::aws::clients::AwsClients;
 use crate::aws::pricing::PriceBook;
 use crate::cache::cost::{load_if_fresh, save, CostCache};
-use crate::models::apigatway::ApiGatewayInfo;
+use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::describable::DescribableResource;
 use crate::models::ec2::Ec2InstanceInfo;
