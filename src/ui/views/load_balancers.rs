@@ -1,9 +1,10 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Modifier, Style},
-    widgets::{Cell, Row},
     Frame,
 };
 
@@ -20,6 +21,8 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.load_balancers);
 
@@ -48,6 +51,8 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
                 Constraint::Length(18),
             ],
             empty_message: "No load balancers found in this region.",
+            filter,
+            wrapped,
         },
         &rows,
         |lb| {
@@ -61,25 +66,27 @@ pub fn render_lbs(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(lb.name.clone()),
-                Cell::from(lb.lb_type.clone()),
-                Cell::from(lb.scheme.clone()),
-                Cell::from(lb.state.clone()),
-                Cell::from(lb.az_count.to_string()),
-                Cell::from(lb.attached_target_groups.to_string()),
-                Cell::from(lb.total_targets.to_string()),
-                Cell::from(lb.healthy_targets.to_string()),
-                Cell::from({
-                    let signals = lb.review_signals();
-                    if signals.is_empty() {
-                        "-".into()
-                    } else {
-                        signals.join(",")
-                    }
-                }),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    lb.name.clone(),
+                    lb.lb_type.clone(),
+                    lb.scheme.clone(),
+                    lb.state.clone(),
+                    lb.az_count.to_string(),
+                    lb.attached_target_groups.to_string(),
+                    lb.total_targets.to_string(),
+                    lb.healthy_targets.to_string(),
+                    {
+                        let signals = lb.review_signals();
+                        if signals.is_empty() {
+                            "-".into()
+                        } else {
+                            signals.join(",")
+                        }
+                    },
+                ],
+                style,
+            }
         },
     );
 }

@@ -1,9 +1,11 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{Block, Borders, Cell, Paragraph, Row, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
 
@@ -67,6 +69,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.cost_savings_opportunities);
 
@@ -100,19 +103,22 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No concrete cost-savings opportunities are available yet.\n\
                             This view will highlight savings when spend and waste signals line up.",
+            filter,
+            // This view renders its own wrapped detail before reaching here.
+            wrapped: false,
         },
         &rows,
-        |opportunity| {
-            Row::new(vec![
-                Cell::from(format!("${:.2}", opportunity.estimated_monthly_savings)),
-                Cell::from(opportunity.service.clone()),
-                Cell::from(format!("${:.2}", opportunity.monthly_cost)),
-                Cell::from(opportunity.title.clone()),
-                Cell::from(opportunity.evidence.clone()),
-                Cell::from(opportunity.usage_context.clone()),
-                Cell::from(opportunity.recommendation.clone()),
-            ])
-            .style(Style::default().fg(theme.text))
+        |opportunity| RowCells {
+            cells: vec![
+                format!("${:.2}", opportunity.estimated_monthly_savings),
+                opportunity.service.clone(),
+                format!("${:.2}", opportunity.monthly_cost),
+                opportunity.title.clone(),
+                opportunity.evidence.clone(),
+                opportunity.usage_context.clone(),
+                opportunity.recommendation.clone(),
+            ],
+            style: Style::default().fg(theme.text),
         },
     );
 }

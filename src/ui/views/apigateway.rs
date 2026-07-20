@@ -1,12 +1,9 @@
-use ratatui::{
-    layout::Constraint,
-    style::Style,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Constraint, style::Style, Frame};
 
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 
 pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mut App) {
     if crate::ui::views::status::render_unavailable(
@@ -21,6 +18,8 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.apigateway_apis);
 
@@ -43,6 +42,8 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
                 Constraint::Percentage(15),
             ],
             empty_message: "No API Gateway APIs found in this region.",
+            filter,
+            wrapped,
         },
         &rows,
         |api| {
@@ -52,21 +53,23 @@ pub fn render_apigatway(frame: &mut Frame, area: ratatui::layout::Rect, app: &mu
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(api.name.clone()),
-                Cell::from(api.api_type.clone()),
-                Cell::from(api.id.clone()),
-                Cell::from(api.created_at.clone()),
-                Cell::from({
-                    let signals = api.review_signals();
-                    if signals.is_empty() {
-                        "-".into()
-                    } else {
-                        signals.join(",")
-                    }
-                }),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    api.name.clone(),
+                    api.api_type.clone(),
+                    api.id.clone(),
+                    api.created_at.clone(),
+                    {
+                        let signals = api.review_signals();
+                        if signals.is_empty() {
+                            "-".into()
+                        } else {
+                            signals.join(",")
+                        }
+                    },
+                ],
+                style,
+            }
         },
     );
 }

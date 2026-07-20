@@ -1,12 +1,14 @@
 use crate::{
     app::App,
     models::finding::{FindingCategory, FindingSeverity},
-    ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable},
+    ui::views::list_table::{
+        filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+    },
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{Block, Borders, Cell, Paragraph, Row, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
 
@@ -24,6 +26,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.findings);
 
@@ -49,6 +52,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No findings detected right now.\n\
                             This view will surface incidents, waste, and hygiene issues as they appear.",
+            filter,
+            // This view renders its own wrapped detail before reaching here.
+            wrapped: false,
         },
         &rows,
         |finding| {
@@ -64,22 +70,22 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App) {
                 FindingCategory::Hygiene => "Hygiene",
             };
 
-            Row::new(vec![
-                Cell::from(finding.severity.as_str()),
-                Cell::from(category),
-                Cell::from(finding.service.clone()),
-                Cell::from(finding.region.clone()),
-                // Aggregate findings have no single resource to name.
-                Cell::from(finding.resource_id.clone().unwrap_or_else(|| "-".into())),
-                Cell::from(
+            RowCells {
+                cells: vec![
+                    finding.severity.as_str().to_string(),
+                    category.to_string(),
+                    finding.service.clone(),
+                    finding.region.clone(),
+                    // Aggregate findings have no single resource to name.
+                    finding.resource_id.clone().unwrap_or_else(|| "-".into()),
                     finding
                         .cost
                         .map(|cost| cost.label())
                         .unwrap_or_else(|| "-".into()),
-                ),
-                Cell::from(finding.summary.clone()),
-            ])
-            .style(severity_style)
+                    finding.summary.clone(),
+                ],
+                style: severity_style,
+            }
         },
     );
 }

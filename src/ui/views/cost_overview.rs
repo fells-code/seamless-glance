@@ -1,14 +1,16 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{BarChart, Block, Borders, Cell, Paragraph, Row, Wrap},
+    widgets::{BarChart, Block, Borders, Paragraph, Wrap},
     Frame,
 };
 
 use crate::{
     app::App,
     aws::cost::last_6_month_labels,
-    ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable},
+    ui::views::list_table::{
+        filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+    },
 };
 
 fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
@@ -39,6 +41,7 @@ fn render_cost_6mo_chart(frame: &mut Frame, area: Rect, app: &App) {
 fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
     // Rows are ranked by spend, so the selection index refers to sort order.
     let sorted = app.sorted_cost_insights();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &sorted);
 
@@ -63,6 +66,9 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
                 Constraint::Percentage(58),
             ],
             empty_message: "No service cost insight is available yet.",
+            filter,
+            // Wrap mode restacks this view's charts and adds its own detail pane.
+            wrapped: false,
         },
         &rows,
         |insight| {
@@ -72,13 +78,15 @@ fn render_service_cost_chart(frame: &mut Frame, area: Rect, app: &mut App) {
                 0.0
             };
 
-            Row::new(vec![
-                Cell::from(insight.service.clone()),
-                Cell::from(format!("${:.2}", insight.monthly_cost)),
-                Cell::from(format!("{:.1}%", pct * 100.0)),
-                Cell::from(insight.primary_usage_summary()),
-            ])
-            .style(Style::default().fg(theme.text))
+            RowCells {
+                cells: vec![
+                    insight.service.clone(),
+                    format!("${:.2}", insight.monthly_cost),
+                    format!("{:.1}%", pct * 100.0),
+                    insight.primary_usage_summary(),
+                ],
+                style: Style::default().fg(theme.text),
+            }
         },
     );
 }

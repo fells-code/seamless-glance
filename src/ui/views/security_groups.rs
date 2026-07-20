@@ -1,9 +1,10 @@
 use crate::app::App;
-use crate::ui::views::list_table::{render_list_table, visible_rows, ListSelection, ListTable};
+use crate::ui::views::list_table::{
+    filter_query, render_list_table, visible_rows, ListSelection, ListTable, RowCells,
+};
 use ratatui::{
     layout::{Constraint, Rect},
     style::Style,
-    widgets::{Cell, Row},
     Frame,
 };
 
@@ -20,6 +21,8 @@ pub fn render_sg(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let theme = app.theme;
 
+    let wrapped = app.wrap_mode_active();
+    let filter = filter_query(&app.row_filter);
     let visible = app.visible_indices();
     let rows = visible_rows(&visible, &app.security_groups);
 
@@ -45,6 +48,8 @@ pub fn render_sg(frame: &mut Frame, area: Rect, app: &mut App) {
             ],
             empty_message: "No security groups found in this region.\n\
                             This is uncommon and may indicate a highly restricted account.",
+            filter,
+            wrapped,
         },
         &rows,
         |sg| {
@@ -56,16 +61,18 @@ pub fn render_sg(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(theme.text)
             };
 
-            Row::new(vec![
-                Cell::from(sg.id.clone()),
-                Cell::from(sg.name.clone()),
-                Cell::from(sg.inbound_rules.to_string()),
-                Cell::from(sg.outbound_rules.to_string()),
-                Cell::from(if sg.open_to_world { "yes" } else { "no" }),
-                Cell::from(sg.sensitive_ports_label()),
-                Cell::from(sg.vpc_id.clone()),
-            ])
-            .style(style)
+            RowCells {
+                cells: vec![
+                    sg.id.clone(),
+                    sg.name.clone(),
+                    sg.inbound_rules.to_string(),
+                    sg.outbound_rules.to_string(),
+                    if sg.open_to_world { "yes" } else { "no" }.to_string(),
+                    sg.sensitive_ports_label(),
+                    sg.vpc_id.clone(),
+                ],
+                style,
+            }
         },
     );
 }
