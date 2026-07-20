@@ -106,3 +106,72 @@ impl DescribableResource for SqsQueueInfo {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queue(name: &str, visible: i64, in_flight: i64) -> SqsQueueInfo {
+        SqsQueueInfo {
+            name: name.into(),
+            queue_url: format!("https://sqs.us-east-1.amazonaws.com/1/{name}"),
+            is_fifo: false,
+            messages_available: visible,
+            messages_in_flight: in_flight,
+            has_dlq: false,
+            dead_letter_target_arn: None,
+            tags: Tags::empty(),
+        }
+    }
+
+    #[test]
+    fn backlog_thresholds_are_inclusive() {
+        assert!(queue("a", SqsQueueInfo::HIGH_VISIBLE_THRESHOLD, 0).has_high_visible_messages());
+        assert!(
+            !queue("a", SqsQueueInfo::HIGH_VISIBLE_THRESHOLD - 1, 0).has_high_visible_messages()
+        );
+
+        assert!(queue("a", 0, SqsQueueInfo::HIGH_IN_FLIGHT_THRESHOLD).has_high_in_flight_messages());
+        assert!(!queue("a", 0, SqsQueueInfo::HIGH_IN_FLIGHT_THRESHOLD - 1)
+            .has_high_in_flight_messages());
+    }
+
+    #[test]
+    fn either_kind_of_backlog_is_an_incident() {
+        assert!(queue("a", 500, 0).has_backlog_incident());
+        assert!(queue("a", 0, 500).has_backlog_incident());
+        assert!(!queue("a", 0, 0).has_backlog_incident());
+    }
+
+    #[test]
+    fn signals_name_every_kind_of_backlog_present() {
+        assert_eq!(
+            queue("a", 500, 500).backlog_signals(),
+            vec!["visible", "in-flight"]
+        );
+        assert_eq!(queue("a", 500, 0).backlog_signals(), vec!["visible"]);
+        assert!(queue("a", 0, 0).backlog_signals().is_empty());
+    }
+
+    /// A dead-letter queue is identified by another queue redriving to it, not
+    /// by its name, so a queue merely called "-dlq" is not exempt.
+    #[test]
+    fn dead_letter_queues_are_found_through_redrive_targets() {
+        let mut source = queue("orders", 0, 0);
+        source.dead_letter_target_arn = Some("arn:aws:sqs:us-east-1:1:orders-dlq".into());
+        let queues = vec![source, queue("orders-dlq", 0, 0), queue("billing", 0, 0)];
+
+        let names = dead_letter_queue_names(&queues);
+
+        assert!(names.contains("orders-dlq"));
+        assert!(!names.contains("billing"));
+        assert_eq!(names.len(), 1);
+    }
+
+    #[test]
+    fn a_region_with_no_redrive_policies_has_no_dead_letter_queues() {
+        let queues = vec![queue("orders", 0, 0), queue("billing", 0, 0)];
+
+        assert!(dead_letter_queue_names(&queues).is_empty());
+    }
+}

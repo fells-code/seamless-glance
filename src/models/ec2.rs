@@ -167,3 +167,172 @@ impl DescribableResource for Ec2InstanceInfo {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn instance(state: &str, tags: Tags) -> Ec2InstanceInfo {
+        Ec2InstanceInfo {
+            id: "i-0abc".into(),
+            tags,
+            avg_cpu_utilization: None,
+            instance_type: "t3.medium".into(),
+            state: state.into(),
+            region: "us-east-1".into(),
+            az: "us-east-1a".into(),
+            private_ip: Some("10.0.0.5".into()),
+            public_ip: None,
+            key_name: None,
+        }
+    }
+
+    fn tagged(name: &str) -> Tags {
+        Tags::loaded([
+            ("Name", name),
+            ("Owner", "platform"),
+            ("Environment", "dev"),
+        ])
+    }
+
+    #[test]
+    fn an_instance_falls_back_to_its_id_when_it_has_no_name() {
+        assert_eq!(instance("running", Tags::empty()).label(), "i-0abc");
+        assert_eq!(instance("running", tagged("web-1")).label(), "web-1");
+    }
+
+    #[test]
+    fn a_production_like_name_is_matched_case_insensitively_anywhere_in_the_name() {
+        for name in ["prod-api", "API-PROD", "customer-db", "Main-Gateway"] {
+            assert!(
+                instance("running", tagged(name)).has_production_like_name(),
+                "{name} should read as production-like"
+            );
+        }
+
+        for name in ["dev-api", "staging-web", "sandbox"] {
+            assert!(
+                !instance("running", tagged(name)).has_production_like_name(),
+                "{name} should not read as production-like"
+            );
+        }
+    }
+
+    /// An untagged instance has no name to judge, which is not the same as
+    /// having a name that looks non-production.
+    #[test]
+    fn an_unnamed_instance_is_not_production_like() {
+        assert!(!instance("running", Tags::empty()).has_production_like_name());
+        assert!(!instance("running", Tags::Unavailable).has_production_like_name());
+    }
+
+    #[test]
+    fn a_stopped_instance_needs_review_only_with_a_reason() {
+        let plain = instance("stopped", tagged("dev-box"));
+        assert!(!plain.needs_stopped_review());
+
+        let mut public = instance("stopped", tagged("dev-box"));
+        public.public_ip = Some("54.1.2.3".into());
+        assert!(public.needs_stopped_review());
+
+        assert!(instance("stopped", tagged("prod-api")).needs_stopped_review());
+    }
+
+    /// The reasons only matter while the instance is stopped: a running
+    /// instance with a public IP is normal.
+    #[test]
+    fn a_running_instance_never_needs_stopped_review() {
+        let mut running = instance("running", tagged("prod-api"));
+        running.public_ip = Some("54.1.2.3".into());
+
+        assert!(!running.needs_stopped_review());
+    }
+
+    #[test]
+    fn low_cpu_is_judged_only_on_running_instances_with_a_reading() {
+        let below = Ec2InstanceInfo {
+            avg_cpu_utilization: Some(Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT - 0.1),
+            ..instance("running", tagged("web"))
+        };
+        assert!(below.has_sustained_low_cpu());
+
+        let at_threshold = Ec2InstanceInfo {
+            avg_cpu_utilization: Some(Ec2InstanceInfo::LOW_CPU_THRESHOLD_PERCENT),
+            ..instance("running", tagged("web"))
+        };
+        assert!(
+            !at_threshold.has_sustained_low_cpu(),
+            "the threshold itself is not below it"
+        );
+
+        let stopped = Ec2InstanceInfo {
+            avg_cpu_utilization: Some(0.0),
+            ..instance("stopped", tagged("web"))
+        };
+        assert!(
+            !stopped.has_sustained_low_cpu(),
+            "a stopped instance idles by definition"
+        );
+
+        let no_reading = instance("running", tagged("web"));
+        assert!(!no_reading.has_sustained_low_cpu(), "no metric is not zero");
+    }
+
+    #[test]
+    fn a_missing_cpu_reading_renders_as_a_dash_not_zero() {
+        assert_eq!(instance("running", tagged("web")).formatted_avg_cpu(), "-");
+
+        let measured = Ec2InstanceInfo {
+            avg_cpu_utilization: Some(2.345),
+            ..instance("running", tagged("web"))
+        };
+        assert_eq!(measured.formatted_avg_cpu(), "2.3%");
+    }
+
+    #[test]
+    fn tag_coverage_names_only_the_missing_tags() {
+        let partial = instance("running", Tags::loaded([("Name", "web")]));
+
+        assert_eq!(
+            partial.missing_required_tags(),
+            Some(vec!["Owner", "Environment"])
+        );
+        assert!(partial.has_tag_coverage_gap());
+
+        let complete = instance("running", tagged("web"));
+        assert_eq!(complete.missing_required_tags(), Some(Vec::new()));
+        assert!(!complete.has_tag_coverage_gap());
+    }
+
+    /// Unreadable tags are not evidence of a gap. Reporting one would blame an
+    /// instance for a failed lookup.
+    #[test]
+    fn unreadable_tags_are_not_a_coverage_gap() {
+        let unknown = instance("running", Tags::Unavailable);
+
+        assert_eq!(unknown.missing_required_tags(), None);
+        assert!(!unknown.has_tag_coverage_gap());
+        assert!(!unknown.review_signals().contains(&"missing-tags"));
+    }
+
+    #[test]
+    fn review_signals_report_every_reason_at_once() {
+        let mut bad = Ec2InstanceInfo {
+            avg_cpu_utilization: Some(0.5),
+            ..instance("running", Tags::loaded([("Name", "prod-api")]))
+        };
+        bad.public_ip = Some("54.1.2.3".into());
+
+        assert_eq!(
+            bad.review_signals(),
+            vec!["public-ip", "prod-name", "missing-tags", "low-cpu"]
+        );
+    }
+
+    #[test]
+    fn a_clean_instance_has_no_signals() {
+        assert!(instance("running", tagged("dev-box"))
+            .review_signals()
+            .is_empty());
+    }
+}

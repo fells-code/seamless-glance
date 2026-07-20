@@ -86,3 +86,57 @@ impl DescribableResource for LoadBalancerInfo {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn balancer(groups: usize, total: usize, healthy: usize) -> LoadBalancerInfo {
+        LoadBalancerInfo {
+            arn: "arn:aws:elasticloadbalancing:::loadbalancer/app".into(),
+            name: "app".into(),
+            lb_type: "Application".into(),
+            scheme: "internet-facing".into(),
+            state: "active".into(),
+            az_count: 2,
+            attached_target_groups: groups,
+            total_targets: total,
+            healthy_targets: healthy,
+            tags: Tags::empty(),
+        }
+    }
+
+    #[test]
+    fn a_balancer_with_no_path_to_a_target_is_inactive() {
+        assert!(balancer(0, 0, 0).has_no_active_targets());
+        assert!(
+            balancer(2, 0, 0).has_no_active_targets(),
+            "groups attached but nothing registered is still no path"
+        );
+        assert!(!balancer(2, 4, 4).has_no_active_targets());
+    }
+
+    /// A balancer serving nothing is waste; one whose targets are all failing
+    /// is an incident. Keeping them apart is what stops one rule reporting both.
+    #[test]
+    fn serving_nothing_is_distinct_from_serving_unhealthy_targets() {
+        let empty = balancer(0, 0, 0);
+        assert!(empty.has_no_active_targets());
+        assert!(
+            !empty.has_zero_healthy_targets(),
+            "nothing registered is not an outage"
+        );
+
+        let failing = balancer(2, 4, 0);
+        assert!(failing.has_zero_healthy_targets());
+        assert!(!failing.has_no_active_targets());
+    }
+
+    #[test]
+    fn signals_distinguish_no_groups_from_no_targets() {
+        assert_eq!(balancer(0, 0, 0).review_signals(), vec!["no-target-groups"]);
+        assert_eq!(balancer(2, 0, 0).review_signals(), vec!["no-targets"]);
+        assert_eq!(balancer(2, 4, 0).review_signals(), vec!["zero-healthy"]);
+        assert!(balancer(2, 4, 4).review_signals().is_empty());
+    }
+}

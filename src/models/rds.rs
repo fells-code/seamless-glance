@@ -105,3 +105,71 @@ impl DescribableResource for RdsInstanceInfo {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn db(identifier: &str, status: &str, multi_az: bool) -> RdsInstanceInfo {
+        RdsInstanceInfo {
+            identifier: identifier.into(),
+            region: "us-east-1".into(),
+            engine: "postgres".into(),
+            instance_class: "db.t3.medium".into(),
+            status: status.into(),
+            az: "us-east-1a".into(),
+            multi_az,
+            tags: Tags::empty(),
+        }
+    }
+
+    #[test]
+    fn single_az_review_needs_all_three_conditions() {
+        assert!(db("prod-orders", "available", false).needs_single_az_review());
+
+        assert!(
+            !db("prod-orders", "available", true).needs_single_az_review(),
+            "multi-AZ is already covered"
+        );
+        assert!(
+            !db("dev-orders", "available", false).needs_single_az_review(),
+            "a non-production name is not worth flagging"
+        );
+        assert!(
+            !db("prod-orders", "creating", false).needs_single_az_review(),
+            "an instance that is not available yet is not a coverage gap"
+        );
+    }
+
+    #[test]
+    fn a_production_like_identifier_matches_a_hint_anywhere() {
+        for identifier in ["prod-db", "DB-PRODUCTION", "customer-data", "main-writer"] {
+            assert!(
+                db(identifier, "available", false).has_production_like_identifier(),
+                "{identifier} should read as production-like"
+            );
+        }
+
+        for identifier in ["dev-db", "test-writer", "sandbox"] {
+            assert!(
+                !db(identifier, "available", false).has_production_like_identifier(),
+                "{identifier} should not read as production-like"
+            );
+        }
+    }
+
+    #[test]
+    fn review_signals_report_each_reason() {
+        assert_eq!(
+            db("prod-orders", "available", false).review_signals(),
+            vec!["single-az", "prod-name"]
+        );
+        assert_eq!(
+            db("dev-orders", "available", false).review_signals(),
+            vec!["single-az"]
+        );
+        assert!(db("dev-orders", "available", true)
+            .review_signals()
+            .is_empty());
+    }
+}

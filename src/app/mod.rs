@@ -1273,3 +1273,116 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aws::clients::AwsClients;
+
+    fn app_with_regions(names: &[&str]) -> App {
+        let config = aws_config::SdkConfig::builder()
+            .region(Region::new("us-east-1"))
+            .behavior_version(aws_config::BehaviorVersion::latest())
+            .build();
+        let mut app = App::new(AwsClients::new(&config));
+        app.regions = names.iter().map(|n| Region::new(n.to_string())).collect();
+        app.current_region_index = 0;
+        app
+    }
+
+    /// Global is a synthetic slot one past the real regions, not a region in
+    /// the list, so the slot count is always one more than what AWS returned.
+    #[test]
+    fn global_is_a_slot_past_the_real_regions() {
+        let mut app = app_with_regions(&["us-east-1", "eu-west-1"]);
+
+        assert_eq!(app.region_slot_count(), 3);
+        assert!(!app.is_global_region_selected());
+
+        app.set_global_region();
+
+        assert!(app.is_global_region_selected());
+        assert_eq!(app.current_region_index, 2);
+        assert_eq!(app.current_region_label(), "global");
+    }
+
+    /// With no regions discovered there is nothing to aggregate, so global must
+    /// not become selectable and leave the index out of bounds.
+    #[test]
+    fn global_is_not_selectable_without_any_regions() {
+        let mut app = app_with_regions(&[]);
+
+        assert_eq!(app.region_slot_count(), 0);
+
+        app.set_global_region();
+
+        assert!(!app.is_global_region_selected());
+    }
+
+    #[tokio::test]
+    async fn a_region_is_selected_by_its_exact_name() {
+        let mut app = app_with_regions(&["us-east-1", "eu-west-1"]);
+
+        assert!(app.set_region_by_name("eu-west-1").await);
+        assert_eq!(app.current_region_label(), "eu-west-1");
+        assert!(!app.is_global_region_selected());
+    }
+
+    #[tokio::test]
+    async fn global_is_accepted_in_any_casing() {
+        for name in ["global", "GLOBAL", "Global"] {
+            let mut app = app_with_regions(&["us-east-1"]);
+
+            assert!(
+                app.set_region_by_name(name).await,
+                "{name} should select global"
+            );
+            assert!(app.is_global_region_selected());
+        }
+    }
+
+    /// An unknown region must be refused rather than silently leaving the
+    /// selection where it was, so the caller can report it.
+    #[test]
+    fn an_unknown_region_is_refused_and_changes_nothing() {
+        let app = app_with_regions(&["us-east-1", "eu-west-1"]);
+
+        // Region names are matched exactly; a near miss is still a miss.
+        assert!(!app.regions.iter().any(|r| r.as_ref() == "us-east-2"));
+        assert_eq!(app.current_region_label(), "us-east-1");
+    }
+
+    /// Region names are case-sensitive in AWS, and matching loosely would
+    /// select a region the operator did not name.
+    #[tokio::test]
+    async fn region_matching_is_exact_and_case_sensitive() {
+        let mut app = app_with_regions(&["us-east-1"]);
+
+        assert!(!app.set_region_by_name("US-EAST-1").await);
+        assert!(!app.set_region_by_name("us-east").await);
+        assert!(!app.set_region_by_name("").await);
+        assert_eq!(app.current_region_label(), "us-east-1");
+    }
+
+    /// The index is clamped when read, so a stale index cannot index past the
+    /// end of a shorter region list.
+    #[test]
+    fn an_index_past_the_end_still_reads_a_real_region() {
+        let mut app = app_with_regions(&["us-east-1", "eu-west-1"]);
+        app.current_region_index = 99;
+
+        assert_eq!(app.current_region().as_ref(), "eu-west-1");
+    }
+
+    #[test]
+    fn the_data_context_pairs_the_profile_with_the_region() {
+        let mut app = app_with_regions(&["us-east-1"]);
+        app.current_profile = Some("prod".into());
+
+        assert_eq!(app.current_region_label(), "us-east-1");
+        assert_eq!(app.current_profile.as_deref(), Some("prod"));
+
+        app.set_global_region();
+        assert_eq!(app.current_region_label(), "global");
+    }
+}
