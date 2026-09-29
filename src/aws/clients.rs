@@ -6,6 +6,7 @@ use aws_sdk_apigatewayv2::Client as V2Client;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
 use aws_sdk_costexplorer::Client as CeClient;
 use aws_sdk_ec2::Client as Ec2Client;
+use aws_sdk_ecr::Client as EcrClient;
 use aws_sdk_ecs::Client as EcsClient;
 use aws_sdk_elasticloadbalancingv2::Client as ElbClient;
 use aws_sdk_lambda::Client as LambdaClient;
@@ -68,6 +69,7 @@ pub struct AwsClients {
     pub rds: RdsClient,
     pub lambda: LambdaClient,
     pub ecs: EcsClient,
+    pub ecr: EcrClient,
     pub cw: CloudWatchClient,
     pub apigw: RestClient,
     pub apigwv2: V2Client,
@@ -86,6 +88,7 @@ impl AwsClients {
         Self {
             ec2: Ec2Client::new(config),
             ecs: EcsClient::new(config),
+            ecr: EcrClient::new(config),
             rds: RdsClient::new(config),
             lambda: LambdaClient::new(config),
             cw: CloudWatchClient::new(config),

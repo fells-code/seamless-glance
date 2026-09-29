@@ -20,6 +20,7 @@ Current service coverage includes:
 - CloudWatch
 - EC2
 - ECS
+- ECR
 - Lambda
 - API Gateway
 - RDS
@@ -89,6 +90,7 @@ These are the best next services because they strongly support the waste-catalog
 
 ### 6. ECR
 
+- Status: implemented. The ECR view and its untagged-buildup, stale-repository, and missing-lifecycle-policy findings shipped; per-image staleness within an active repository is still open
 - Why first: image sprawl and stale repositories are common cleanup targets
 - High-value findings:
   - stale images
@@ -226,7 +228,7 @@ If the team is implementing one service at a time, the preferred next sequence i
 3. CloudWatch Logs
 4. S3
 5. IAM
-6. ECR
+6. ECR (implemented)
 7. Auto Scaling
 8. ElastiCache
 9. NAT Gateways

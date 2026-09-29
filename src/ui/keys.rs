@@ -318,6 +318,7 @@ mod tests {
         ActiveView::CostOverview,
         ActiveView::CostSavings,
         ActiveView::Ecs,
+        ActiveView::Ecr,
         ActiveView::Ec2,
         ActiveView::Rds,
         ActiveView::Lambda,

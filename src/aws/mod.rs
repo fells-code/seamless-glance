@@ -28,6 +28,7 @@ pub mod clients;
 pub mod cloudwatch;
 pub mod cost;
 pub mod ec2;
+pub mod ecr;
 pub mod ecs;
 pub mod elb;
 pub mod lambda;

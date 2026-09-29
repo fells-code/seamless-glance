@@ -71,7 +71,7 @@ Today the app provides:
 - a triage-oriented Findings view
 - AWS account overview data
 - cost overview data with cache-backed loading
-- service inventory views for ECS, EC2, RDS, Lambda, API Gateway, SQS, VPC, CloudWatch, Secrets Manager, Load Balancers, Target Groups, and Security Groups
+- service inventory views for ECS, ECR, EC2, RDS, Lambda, API Gateway, SQS, VPC, CloudWatch, Secrets Manager, Load Balancers, Target Groups, and Security Groups
 - resource actions such as describe overlays, AWS console deep links, region switching, in-app AWS profile switching, and EC2 SSH command generation
 
 Current gap to keep in mind:

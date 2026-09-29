@@ -164,7 +164,6 @@ These are especially valuable for the waste-catalog direction and probably deser
 ### Compute And Platform Drift
 
 - ECS services with desired count `0` but lingering infrastructure
-- ECR repositories with stale images
 - Auto Scaling groups with drift between desired and healthy capacity
 - EventBridge rules targeting outdated or missing resources
 
@@ -190,6 +189,8 @@ Current implemented thresholds that should stay explainable:
 - SQS backlog incident when a queue has `>= 100` visible messages
 - SQS backlog incident when a queue has `>= 50` in-flight messages
 - Secrets stale-rotation review when a secret has rotation enabled but `last_rotated` is at least `180` days old
+- ECR untagged-buildup waste review when a repository holds `>= 20` untagged images
+- ECR stale-repository waste review when a repository still stores images but its newest push is at least `180` days old and it has no recorded pull in the last `90` days
 
 Current implemented heuristics that should stay explainable:
 
@@ -201,6 +202,7 @@ Current implemented heuristics that should stay explainable:
 - Target group orphan review when a target group has no attached load balancer and zero registered targets
 - Load balancer no-active-target-path review when a load balancer has no attached target groups or zero registered targets behind them
 - Load balancer incident review when registered targets exist but healthy targets total zero
+- ECR lifecycle hygiene review when a repository stores images but has no lifecycle policy, skipped for repositories already reported for untagged buildup since that finding points to the same fix
 
 ## Future Direction
 

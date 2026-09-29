@@ -5,6 +5,7 @@ pub mod command;
 pub mod cost_overview;
 pub mod cost_savings;
 pub mod ec2;
+pub mod ecr;
 pub mod ecs;
 pub mod findings;
 pub mod lambda;
