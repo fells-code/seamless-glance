@@ -38,6 +38,7 @@ Current first-class views:
 - Lambda
 - Secrets Manager
 - ECS
+- ECR
 - API Gateway
 - RDS
 - SQS
@@ -159,7 +160,7 @@ Current resource-action model:
 Findings view behavior:
 
 - `Enter` opens the related service view for the selected finding
-- the initial finding set includes named CloudWatch alarms in `ALARM`, CloudWatch coverage gaps for deployed services without matching alarm namespaces, running EC2 instances averaging below 5 percent CPU over the last 7 days, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, EC2 instances missing `Name`, `Owner`, or `Environment` tags, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, target groups with no load balancer attachment and no registered targets, load balancers with no active target path, load balancers with zero healthy targets, SQS queues without DLQs, security groups open to the world, and security groups exposing sensitive ports publicly
+- the initial finding set includes named CloudWatch alarms in `ALARM`, CloudWatch coverage gaps for deployed services without matching alarm namespaces, running EC2 instances averaging below 5 percent CPU over the last 7 days, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, EC2 instances missing `Name`, `Owner`, or `Environment` tags, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, target groups with no load balancer attachment and no registered targets, load balancers with no active target path, load balancers with zero healthy targets, SQS queues without DLQs, security groups open to the world, security groups exposing sensitive ports publicly, ECR repositories holding 20 or more untagged images, ECR repositories with no push in 180 days and no pull in 90 days, and ECR repositories with images but no lifecycle policy
 
 Command palette shortcuts currently include:
 
@@ -167,6 +168,7 @@ Command palette shortcuts currently include:
 - `account`
 - `savings`
 - `ecs`
+- `ecr`
 - `ec2`
 - `rds`
 - `cost`
@@ -179,7 +181,7 @@ Command palette shortcuts currently include:
 - `lb`
 - `tg`
 - `sg`
-- aliases such as `overview`, `billing`, `api`, `queues`, `secrets`, and `alarms`
+- aliases such as `overview`, `billing`, `api`, `queues`, `registry`, `secrets`, and `alarms`
 - `theme <name>` with `autumn`, `winter`, `summer`, `spring`, or `developer`
 - `region <name>`
 - `rg <name>`

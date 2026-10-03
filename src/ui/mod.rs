@@ -25,6 +25,7 @@ use crate::ui::views::command::command_for_view;
 use crate::ui::views::cost_overview::render_cost_overview;
 use crate::ui::views::cost_savings::render as render_cost_savings;
 use crate::ui::views::ec2::render_ec2;
+use crate::ui::views::ecr::render_ecr;
 use crate::ui::views::ecs::render_ecs_clusters;
 use crate::ui::views::findings::render as render_findings;
 use crate::ui::views::lambda::render;
@@ -126,6 +127,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         ActiveView::SecurityGroups => {
             render_sg(frame, main_area, app);
+        }
+        ActiveView::Ecr => {
+            render_ecr(frame, main_area, app);
         }
     }
 

@@ -5,6 +5,7 @@ pub mod cost;
 pub mod cost_estimate;
 pub mod describable;
 pub mod ec2;
+pub mod ecr;
 pub mod ecs;
 pub mod elb;
 pub mod finding;

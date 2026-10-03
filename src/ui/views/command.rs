@@ -103,6 +103,14 @@ pub const COMMANDS: &[Command] = &[
         aliases: &["containers", "cluster"],
     },
     Command {
+        name: "ecr",
+        description: "ECR repositories",
+        view: ActiveView::Ecr,
+        group: CommandGroup::Compute,
+        shortcut: None,
+        aliases: &["registry", "images", "repositories"],
+    },
+    Command {
         name: "rds",
         description: "RDS instances",
         view: ActiveView::Rds,

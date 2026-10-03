@@ -106,6 +106,15 @@ pub const SERVICES: &[ServiceEntry] = &[
         rows: resources!(ecs_clusters),
     },
     ServiceEntry {
+        view: ActiveView::Ecr,
+        row_text: row_text!(ecr_repositories, |r| format!(
+            "{} {}",
+            r.name,
+            r.review_signals().join(" ")
+        )),
+        rows: resources!(ecr_repositories),
+    },
+    ServiceEntry {
         view: ActiveView::Ec2,
         row_text: row_text!(ec2_instances, |i| format!(
             "{} {} {} {} {}",
@@ -212,6 +221,7 @@ mod tests {
         ActiveView::CostOverview,
         ActiveView::CostSavings,
         ActiveView::Ecs,
+        ActiveView::Ecr,
         ActiveView::Ec2,
         ActiveView::Rds,
         ActiveView::Lambda,

@@ -4,6 +4,7 @@ use crate::aws::pricing::{LoadBalancerKind, PriceBook, PriceKey};
 use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::CloudWatchAlarm;
 use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::ecr::EcrRepositoryInfo;
 use crate::models::elb::LoadBalancerInfo;
 use crate::models::finding::{Finding, FindingCategory, FindingRoute, FindingSeverity};
 use crate::models::lambda::LambdaFunctionInfo;
@@ -35,6 +36,7 @@ pub struct FindingContext<'a> {
     pub security_groups: &'a [SecurityGroupInfo],
     pub vpcs: &'a [VpcInfo],
     pub lambda_functions: &'a [LambdaFunctionInfo],
+    pub ecr_repositories: &'a [EcrRepositoryInfo],
     /// List prices for the resource types the waste rules can cost.
     pub prices: &'a PriceBook,
 }
@@ -596,6 +598,15 @@ fn resources_missing_owner_tag(ctx: &FindingContext) -> Vec<Finding> {
         ));
     }
 
+    for item in ctx.ecr_repositories.iter().filter(|i| unowned(&i.tags)) {
+        subjects.push((
+            "ECR",
+            FindingRoute::Ecr,
+            item.name.clone(),
+            item.name.clone(),
+        ));
+    }
+
     for item in ctx.cloudwatch_alarms.iter().filter(|i| unowned(&i.tags)) {
         subjects.push((
             "CloudWatch",
@@ -823,6 +834,94 @@ fn sqs_queues_without_dlq(ctx: &FindingContext) -> Vec<Finding> {
                 &queue.queue_url,
                 format!("Queue {} does not have a DLQ configured", queue.name),
                 "Review queues without DLQs and add redrive policies where needed",
+            )
+        })
+        .collect()
+}
+
+const ECR_UNTAGGED_IMAGE_BUILDUP: Rule = Rule {
+    id: "ecr_untagged_image_buildup",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Waste,
+    service: "ECR",
+    route: FindingRoute::Ecr,
+};
+
+fn ecr_untagged_image_buildup(ctx: &FindingContext) -> Vec<Finding> {
+    ctx.ecr_repositories
+        .iter()
+        .filter(|repository| repository.has_untagged_buildup())
+        .map(|repository| {
+            let untagged = repository
+                .images
+                .as_ref()
+                .map_or(0, |images| images.untagged);
+
+            ECR_UNTAGGED_IMAGE_BUILDUP.resource(
+                ctx.region_label,
+                &repository.name,
+                format!(
+                    "Repository {} holds {untagged} untagged images",
+                    repository.name
+                ),
+                "Add or tighten a lifecycle policy that expires untagged images",
+            )
+        })
+        .collect()
+}
+
+const ECR_STALE_REPOSITORIES: Rule = Rule {
+    id: "ecr_stale_repositories",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Waste,
+    service: "ECR",
+    route: FindingRoute::Ecr,
+};
+
+fn ecr_stale_repositories(ctx: &FindingContext) -> Vec<Finding> {
+    ctx.ecr_repositories
+        .iter()
+        .filter(|repository| repository.is_stale())
+        .map(|repository| {
+            ECR_STALE_REPOSITORIES.resource(
+                ctx.region_label,
+                &repository.name,
+                format!(
+                    "Repository {} ({}) has no push in {}+ days and no pull in {}+ days",
+                    repository.name,
+                    repository.size_label(),
+                    EcrRepositoryInfo::STALE_PUSH_DAYS,
+                    EcrRepositoryInfo::STALE_PULL_DAYS
+                ),
+                "Confirm nothing deploys from this repository, then expire its images or delete it",
+            )
+        })
+        .collect()
+}
+
+const ECR_NO_LIFECYCLE_POLICY: Rule = Rule {
+    id: "ecr_no_lifecycle_policy",
+    severity: FindingSeverity::Low,
+    category: FindingCategory::Hygiene,
+    service: "ECR",
+    route: FindingRoute::Ecr,
+};
+
+/// Repositories already reported for untagged buildup are skipped: that
+/// finding's next step is the same lifecycle policy, so a second finding would
+/// only repeat it.
+fn ecr_no_lifecycle_policy(ctx: &FindingContext) -> Vec<Finding> {
+    ctx.ecr_repositories
+        .iter()
+        .filter(|repository| {
+            repository.lacks_lifecycle_policy() && !repository.has_untagged_buildup()
+        })
+        .map(|repository| {
+            ECR_NO_LIFECYCLE_POLICY.resource(
+                ctx.region_label,
+                &repository.name,
+                format!("Repository {} has no lifecycle policy", repository.name),
+                "Add a lifecycle policy so old and untagged images expire automatically",
             )
         })
         .collect()
@@ -1107,6 +1206,9 @@ pub const FINDING_RULES: &[fn(&FindingContext) -> Vec<Finding>] = &[
     load_balancers_no_active_targets,
     lambda_high_memory_functions,
     lambda_stale_functions,
+    ecr_untagged_image_buildup,
+    ecr_stale_repositories,
+    ecr_no_lifecycle_policy,
 ];
 
 /// Run every rule and return the findings ordered by severity, then category,
@@ -1211,6 +1313,7 @@ mod tests {
             security_groups: &[],
             vpcs: &[],
             lambda_functions: &[],
+            ecr_repositories: &[],
         }
     }
 
@@ -2108,5 +2211,93 @@ mod tests {
     #[test]
     fn build_findings_is_empty_without_data() {
         assert!(build_findings(&ctx(None)).is_empty());
+    }
+
+    fn ecr_repository(
+        name: &str,
+        untagged: usize,
+        has_lifecycle_policy: Option<bool>,
+    ) -> EcrRepositoryInfo {
+        use crate::models::ecr::EcrImageStats;
+
+        EcrRepositoryInfo {
+            name: name.into(),
+            registry_id: "123456789012".into(),
+            has_lifecycle_policy,
+            images: Some(EcrImageStats {
+                count: untagged + 1,
+                untagged,
+                last_pushed: Some(chrono::Utc::now()),
+                last_pulled: Some(chrono::Utc::now()),
+                ..EcrImageStats::default()
+            }),
+            tags: Tags::loaded([("Owner", "platform")]),
+        }
+    }
+
+    /// Untagged buildup already tells the operator to add a lifecycle policy,
+    /// so the same repository is not reported again for lacking one.
+    #[test]
+    fn ecr_lifecycle_rules_do_not_double_report() {
+        let buildup = EcrRepositoryInfo::UNTAGGED_BUILDUP_THRESHOLD;
+        let repositories = vec![
+            ecr_repository("piling-up", buildup, Some(false)),
+            ecr_repository("no-policy", 0, Some(false)),
+            ecr_repository("managed", 0, Some(true)),
+        ];
+        let mut c = ctx(None);
+        c.ecr_repositories = &repositories;
+
+        let untagged = ecr_untagged_image_buildup(&c);
+        assert_eq!(untagged.len(), 1);
+        assert_eq!(untagged[0].resource_id.as_deref(), Some("piling-up"));
+        assert_eq!(untagged[0].route, FindingRoute::Ecr);
+
+        let no_policy = ecr_no_lifecycle_policy(&c);
+        assert_eq!(no_policy.len(), 1);
+        assert_eq!(no_policy[0].resource_id.as_deref(), Some("no-policy"));
+    }
+
+    #[test]
+    fn an_ecr_repository_whose_policy_could_not_be_read_is_not_reported() {
+        let repositories = vec![ecr_repository("unknown", 0, None)];
+        let mut c = ctx(None);
+        c.ecr_repositories = &repositories;
+
+        assert!(ecr_no_lifecycle_policy(&c).is_empty());
+    }
+
+    #[test]
+    fn an_ecr_repository_with_no_recent_push_or_pull_is_reported_as_stale() {
+        let long_ago =
+            chrono::Utc::now() - chrono::Duration::days(EcrRepositoryInfo::STALE_PUSH_DAYS + 1);
+        let mut stale = ecr_repository("old-service", 0, Some(true));
+        if let Some(images) = stale.images.as_mut() {
+            images.last_pushed = Some(long_ago);
+            images.last_pulled = None;
+        }
+        let repositories = vec![stale, ecr_repository("active", 0, Some(true))];
+        let mut c = ctx(None);
+        c.ecr_repositories = &repositories;
+
+        let found = ecr_stale_repositories(&c);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].resource_id.as_deref(), Some("old-service"));
+    }
+
+    #[test]
+    fn an_unowned_ecr_repository_is_reported_as_missing_an_owner() {
+        let overview = overview();
+        let repositories = vec![EcrRepositoryInfo {
+            tags: Tags::empty(),
+            ..ecr_repository("orphan", 0, Some(true))
+        }];
+        let mut c = ctx(Some(&overview));
+        c.ecr_repositories = &repositories;
+
+        let found = resources_missing_owner_tag(&c);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].service, "ECR");
+        assert_eq!(found[0].route, FindingRoute::Ecr);
     }
 }

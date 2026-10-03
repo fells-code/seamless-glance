@@ -12,6 +12,7 @@ use crate::aws::pricing::PriceBook;
 use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::ecr::EcrRepositoryInfo;
 use crate::models::elb::LoadBalancerInfo;
 use crate::models::lambda::LambdaFunctionInfo;
 use crate::models::rds::{RdsInstanceInfo, RdsSummary};
@@ -37,6 +38,7 @@ pub enum RefreshUpdate {
     LoadBalancers(Vec<LoadBalancerInfo>, ServiceStatus),
     TargetGroups(Vec<TargetGroupInfo>, ServiceStatus),
     SecurityGroups(Vec<SecurityGroupInfo>, ServiceStatus),
+    Ecr(Vec<EcrRepositoryInfo>, ServiceStatus),
     Ecs(Vec<EcsClusterInfo>),
     Secrets(SecretsSummary, Vec<SecretInfo>),
     Rds(RdsSummary, Vec<RdsInstanceInfo>),
@@ -70,6 +72,7 @@ pub(crate) enum InventoryKind {
     LoadBalancers,
     TargetGroups,
     SecurityGroups,
+    Ecr,
     Ecs,
     Secrets,
     Rds,
@@ -91,6 +94,7 @@ impl RefreshUpdate {
             RefreshUpdate::LoadBalancers(..) => InventoryKind::LoadBalancers,
             RefreshUpdate::TargetGroups(..) => InventoryKind::TargetGroups,
             RefreshUpdate::SecurityGroups(..) => InventoryKind::SecurityGroups,
+            RefreshUpdate::Ecr(..) => InventoryKind::Ecr,
             RefreshUpdate::Ecs(_) => InventoryKind::Ecs,
             RefreshUpdate::Secrets(..) => InventoryKind::Secrets,
             RefreshUpdate::Rds(..) => InventoryKind::Rds,
@@ -128,6 +132,7 @@ impl App {
                     "RDS",
                     "Lambda",
                     "VPC",
+                    "ECR",
                 ])));
 
                 // These are all independent, so run them concurrently: refresh
@@ -143,6 +148,7 @@ impl App {
                     (rds_summary, rds_instances),
                     (functions, lambda_status),
                     (vpcs, vpc_status),
+                    (repositories, ecr_status),
                 ) = tokio::join!(
                     aws::cloudwatch::fetch_cloudwatch(&self),
                     aws::ec2::fetch_instances(&self),
@@ -154,6 +160,7 @@ impl App {
                     aws::rds::fetch_rds(&self),
                     aws::lambda::fetch_lambda_functions(&self),
                     aws::vpc::fetch_vpcs(&self),
+                    aws::ecr::fetch_ecr_repositories(&self),
                 );
 
                 let ec2_for_pricing = ec2.clone();
@@ -169,6 +176,7 @@ impl App {
                 let _ = tx.send(RefreshUpdate::Sqs(queues, sqs_status));
                 let _ = tx.send(RefreshUpdate::Rds(rds_summary, rds_instances));
                 let _ = tx.send(RefreshUpdate::Lambda(functions, lambda_status));
+                let _ = tx.send(RefreshUpdate::Ecr(repositories, ecr_status));
                 // Priced after the inventories land, since which prices are
                 // needed depends on which resources look wasteful.
                 let keys = crate::app::findings::required_price_keys(
@@ -249,6 +257,11 @@ impl App {
                 phase(&tx, "ECS");
                 let clusters = aws::ecs::fetch_ecs_clusters(&self).await;
                 let _ = tx.send(RefreshUpdate::Ecs(clusters));
+            }
+            ActiveView::Ecr => {
+                phase(&tx, "ECR");
+                let (repositories, status) = aws::ecr::fetch_ecr_repositories(&self).await;
+                let _ = tx.send(RefreshUpdate::Ecr(repositories, status));
             }
             ActiveView::Secrets => {
                 phase(&tx, "Secrets");
@@ -337,6 +350,7 @@ impl App {
                 Rds,
                 Lambda,
                 Vpc,
+                Ecr,
             ],
             ActiveView::CostSavings => &[
                 AccountOverview,
@@ -355,6 +369,7 @@ impl App {
             ActiveView::Sqs => &[AccountOverview, Sqs],
             ActiveView::Apigateway => &[AccountOverview, Apigateway],
             ActiveView::Ecs => &[AccountOverview, Ecs],
+            ActiveView::Ecr => &[AccountOverview, Ecr],
             ActiveView::Secrets => &[AccountOverview, Secrets],
             ActiveView::Rds => &[AccountOverview, Rds],
             ActiveView::LoadBalancers => &[AccountOverview, TargetGroups, LoadBalancers],
@@ -425,6 +440,10 @@ impl App {
             RefreshUpdate::SecurityGroups(groups, status) => {
                 self.security_groups = groups;
                 self.security_groups_status = status;
+            }
+            RefreshUpdate::Ecr(repositories, status) => {
+                self.ecr_repositories = repositories;
+                self.ecr_status = status;
             }
             RefreshUpdate::Ecs(clusters) => self.ecs_clusters = clusters,
             RefreshUpdate::Secrets(summary, secrets) => {

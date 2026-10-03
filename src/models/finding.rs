@@ -63,6 +63,7 @@ pub enum FindingRoute {
     LoadBalancers,
     SecurityGroups,
     Vpc,
+    Ecr,
 }
 
 use crate::models::cost_estimate::CostEstimate;

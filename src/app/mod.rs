@@ -11,6 +11,7 @@ use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
 use crate::models::describable::DescribableResource;
 use crate::models::ec2::Ec2InstanceInfo;
+use crate::models::ecr::EcrRepositoryInfo;
 use crate::models::elb::LoadBalancerInfo;
 use crate::models::finding::{Finding, FindingRoute};
 use crate::models::lambda::LambdaFunctionInfo;
@@ -53,6 +54,7 @@ pub enum ActiveView {
     CostOverview,
     CostSavings,
     Ecs,
+    Ecr,
     Ec2,
     Rds,
     Lambda,
@@ -174,6 +176,9 @@ pub struct App {
     // Security Groups
     pub security_groups: Vec<SecurityGroupInfo>,
     pub security_groups_status: ServiceStatus,
+
+    pub ecr_repositories: Vec<EcrRepositoryInfo>,
+    pub ecr_status: ServiceStatus,
 }
 
 impl App {
@@ -264,6 +269,8 @@ impl App {
             target_groups_status: ServiceStatus::Unavailable("Not loaded".into()),
             security_groups: vec![],
             security_groups_status: ServiceStatus::Unavailable("Not loaded".into()),
+            ecr_repositories: vec![],
+            ecr_status: ServiceStatus::Unavailable("Not loaded".into()),
         }
     }
 
@@ -665,6 +672,7 @@ impl App {
             sqs_queues_data: &self.sqs_queues_data,
             rds_instances: &self.rds_instances,
             security_groups: &self.security_groups,
+            ecr_repositories: &self.ecr_repositories,
             vpcs: &self.vpcs,
             lambda_functions: &self.lambda_functions,
             prices: &self.prices,
@@ -990,6 +998,7 @@ impl App {
         self.load_balancers.clear();
         self.target_groups.clear();
         self.security_groups.clear();
+        self.ecr_repositories.clear();
         self.ecs_clusters.clear();
         self.secrets.clear();
         self.rds_instances.clear();
@@ -1005,6 +1014,7 @@ impl App {
         self.load_balancers_status = not_loaded.clone();
         self.target_groups_status = not_loaded.clone();
         self.security_groups_status = not_loaded.clone();
+        self.ecr_status = not_loaded.clone();
         self.rds_summary.status = not_loaded.clone();
         self.secrets_summary.status = not_loaded.clone();
         self.cloudwatch_summary.status = not_loaded;
@@ -1221,6 +1231,7 @@ impl App {
             FindingRoute::TargetGroups => ActiveView::TargetGroups,
             FindingRoute::LoadBalancers => ActiveView::LoadBalancers,
             FindingRoute::SecurityGroups => ActiveView::SecurityGroups,
+            FindingRoute::Ecr => ActiveView::Ecr,
             FindingRoute::Vpc => ActiveView::Vpc,
         };
 

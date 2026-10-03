@@ -65,6 +65,7 @@ Representative files:
 - [`src/aws/profiles.rs`](src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
 - [`src/aws/cost.rs`](src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
 - [`src/aws/ec2.rs`](src/aws/ec2.rs): EC2 inventory and global aggregation
+- [`src/aws/ecr.rs`](src/aws/ecr.rs): ECR repositories, each rolled up from a full `DescribeImages` listing (image and untagged counts, total size, latest push and recorded pull) plus its lifecycle policy and tags. A failed image listing or policy lookup is recorded as unknown (`None`) rather than as zero images or a missing policy, so it cannot raise a finding
 
 ### `src/models/`
 
@@ -187,7 +188,7 @@ The codebase uses a mix of strategies:
 
 - list fetchers return `(Vec<_>, ServiceStatus)`; the app stores the status in a companion `*_status` field and the view guards on it via `ui::views::status::render_unavailable` before drawing the table, so an access denial or throttle reads as such rather than as an empty list
 - list fetchers page through the full result set (`.into_paginator().items().send()`, or a manual next-token loop where the SDK has no generated paginator, such as `apigatewayv2::get_apis`), so large accounts are not silently truncated to the first page
-- where a fetcher needs a follow-up describe per resource (target-group health, SQS queue attributes), those calls run concurrently but bounded by `aws::DESCRIBE_CONCURRENCY` rather than one round trip at a time, so large accounts stay fast without amplifying throttling. A failed per-resource describe drops that row, as before
+- where a fetcher needs a follow-up describe per resource (target-group health, SQS queue attributes, ECR images and lifecycle policies), those calls run concurrently but bounded by `aws::DESCRIBE_CONCURRENCY` rather than one round trip at a time, so large accounts stay fast without amplifying throttling. A failed per-resource describe drops that row, as before
 - cost fetchers return `(data, ServiceStatus)` too; `refresh_cost_data` composes a single `cost_status`, the cost overview and cost savings views guard on it, and only a successful fetch is written to the on-disk cost cache so a denied fetch is not persisted as a misleading $0 overview
 - account overview fans out with concurrent calls and composes summary status
 - SDK errors are classified centrally by `ServiceStatus::from_sdk_error`, which inspects the error code via `ProvideErrorMetadata` (recognizing `AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, and related authz codes) rather than substring-matching the display string
