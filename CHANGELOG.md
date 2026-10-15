@@ -1,5 +1,17 @@
 # seamless-glance
 
+## 1.3.0
+
+### Minor Changes
+
+- 23744d4: Add an ECR view (`ecr`, or `registry`/`images`/`repositories` in the command palette) listing each repository's image count, untagged images, stored size, latest push and recorded pull, and lifecycle policy. Three new findings come with it: repositories holding 20 or more untagged images (waste), repositories with no push in 180 days and no pull in 90 days (waste), and repositories with images but no lifecycle policy (hygiene). ECR repositories also join the missing `Owner` tag finding. Describe, console, and CLI pivots land on the selected repository. The view is region-scoped and needs `ecr:DescribeRepositories`, `ecr:DescribeImages`, `ecr:GetLifecyclePolicy`, and `ecr:ListTagsForResource`.
+- ca261f8: Scroll with the mouse wheel. The wheel behaves exactly like the up and down arrow keys: it moves the selection in list views and scrolls the help screen, describe and command overlays, and the profile picker when they are open. Mouse capture is released while a CLI command runs. Because the app now captures the mouse, selecting text in the terminal needs a modifier held while dragging (Shift in most Linux terminals, Option in iTerm2, Fn in macOS Terminal).
+- eed3f8c: Relicense from GPL-3.0-only to the Apache License, Version 2.0, matching the rest of the Seamless ecosystem. The `LICENSE` file, the `license` field in `Cargo.toml` and `package.json`, the README, and the license the release script writes into the Homebrew formula now say Apache-2.0. Releases up to and including v1.2.0 remain available under GPL-3.0-only.
+
+### Patch Changes
+
+- 76bc7a2: Make startup and view switching faster. Switching views no longer refetches the whole account overview (about ten service fetches) when it is still fresh, and when the overview is needed it now loads alongside the view's data instead of ahead of it. The header keeps showing the account during a refresh instead of blanking. Startup reads cost data from the local cache only, so the first frame no longer waits on Cost Explorer, and the overview's Lambda count no longer makes one tag lookup per function. Refreshing Findings no longer fetches every service twice: the account overview is now built from the inventories Findings already loads, with only the caller identity and ECS fetched on top.
+
 ## 1.2.0
 
 ### Minor Changes
