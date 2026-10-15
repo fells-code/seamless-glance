@@ -25,8 +25,8 @@ Owns:
 
 - CLI entrypoint
 - help and version output
-- crossterm alternate-screen lifecycle
-- keyboard event handling
+- crossterm alternate-screen and mouse-capture lifecycle (mouse capture is released while a CLI command runs and restored after, in `ui::terminal`)
+- keyboard and mouse event handling. The mouse wheel routes through the same `App::scroll_line_up` / `scroll_line_down` as the arrow keys, so it scrolls whatever has focus (help, an overlay, or the active view); other mouse events are ignored
 
 ### `src/app/mod.rs`
 

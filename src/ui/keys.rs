@@ -201,7 +201,7 @@ pub const CONTEXTUAL_KEYS: &[(&str, &str)] = &[
         "Close an overlay, help, or the command palette, or clear a row filter",
     ),
     ("Tab / Shift+Tab", "Cycle through major views"),
-    ("↑ / ↓", "Move the selection or scroll an overlay"),
+    ("↑ / ↓ / wheel", "Move the selection or scroll an overlay"),
     (
         "PgUp / PgDn",
         "Jump-scroll lists, overlays, help, or wrapped detail",

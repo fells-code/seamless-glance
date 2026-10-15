@@ -114,7 +114,7 @@ Every other view is reached through the command palette (`/`), for example `/ec2
 General controls:
 
 - `←` / `→` change region
-- `↑` / `↓` move selection or scroll overlays
+- `↑` / `↓` or the mouse wheel move selection or scroll overlays
 - `PgUp` / `PgDn` jump-scroll lists, overlays, help, or wrapped detail
 - `Home` / `End` jump to the top or bottom of long views
 - `?` open help
@@ -127,6 +127,8 @@ General controls:
 - `p` switch AWS profile
 - `s` prepare an SSH command for the selected EC2 instance
 - `q` quit
+
+Seamless Glance captures the mouse so the wheel can scroll. To select text in the terminal while it is running, most terminals let you hold a modifier while dragging (Shift in most Linux terminals, Option in iTerm2, Fn in macOS Terminal).
 
 ### Switching AWS Profiles
 

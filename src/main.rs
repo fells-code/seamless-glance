@@ -10,7 +10,7 @@ use app::App;
 use aws_config::Region;
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -202,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
     let mut stdout = stdout();
 
     // Enter TUI-safe environment
-    execute!(stdout, EnterAlternateScreen, Hide)?;
+    execute!(stdout, EnterAlternateScreen, Hide, EnableMouseCapture)?;
 
     // Clear any previous terminal contents
     execute!(
@@ -295,11 +295,17 @@ async fn main() -> anyhow::Result<()> {
             continue;
         }
 
-        let key_event = event::read()?;
-        let key = if let Event::Key(k) = key_event {
-            k
-        } else {
-            continue;
+        let key = match event::read()? {
+            Event::Key(key) => key,
+            Event::Mouse(mouse) => {
+                match mouse.kind {
+                    MouseEventKind::ScrollDown => app.scroll_line_down(),
+                    MouseEventKind::ScrollUp => app.scroll_line_up(),
+                    _ => {}
+                }
+                continue;
+            }
+            _ => continue,
         };
 
         match key.code {
@@ -406,25 +412,8 @@ async fn main() -> anyhow::Result<()> {
                     app.next_region().await;
                 }
             }
-            KeyCode::Down => {
-                if app.show_help {
-                    app.scroll_offset = app.scroll_offset.saturating_add(1);
-                } else if let Some(overlay) = &mut app.overlay {
-                    overlay.scroll_down();
-                } else {
-                    app.scroll_active_view_down(1);
-                }
-            }
-
-            KeyCode::Up => {
-                if app.show_help {
-                    app.scroll_offset = app.scroll_offset.saturating_sub(1);
-                } else if let Some(overlay) = &mut app.overlay {
-                    overlay.scroll_up();
-                } else {
-                    app.scroll_active_view_up(1);
-                }
-            }
+            KeyCode::Down => app.scroll_line_down(),
+            KeyCode::Up => app.scroll_line_up(),
             KeyCode::PageDown => {
                 if app.show_help {
                     app.scroll_offset = app.scroll_offset.saturating_add(PAGE_SCROLL_LINES as u16);
@@ -514,7 +503,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        Show
+    )?;
     terminal.show_cursor()?;
     Ok(())
 }
