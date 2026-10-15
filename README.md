@@ -257,7 +257,8 @@ If a feature ships without its docs, the change is incomplete.
 ## License
 
 Seamless Glance is free and open-source software, licensed under the
-[GNU General Public License v3.0](LICENSE). You are free to use, study, share,
-and modify it under the terms of that license.
+[Apache License, Version 2.0](LICENSE). You are free to use, study, share,
+modify, and build on it, including in commercial and closed-source work, under
+the terms of that license.
 
 Copyright (C) 2026 Fells Code, LLC.
