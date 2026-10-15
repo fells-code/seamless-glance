@@ -475,7 +475,7 @@ impl App {
         // re-hit AWS on every view switch. A manual refresh (`r`) and profile or
         // region switches call `trigger_refresh` directly and always refetch.
         if !self.active_view_is_fresh() {
-            self.trigger_refresh();
+            self.start_refresh(false);
         }
     }
 
@@ -905,7 +905,16 @@ impl App {
         self.cost_savings_opportunities = opportunities;
     }
 
+    /// Refetch everything the active view shows, including the account overview.
+    /// Used for a manual refresh and for profile or region switches.
     pub fn trigger_refresh(&mut self) {
+        self.start_refresh(true);
+    }
+
+    /// `force_overview` refetches the account overview even when it is still
+    /// fresh. Navigation passes `false`: the overview is ten service fetches, and
+    /// redoing it on every view switch is most of what made switching slow.
+    fn start_refresh(&mut self, force_overview: bool) {
         let want = (
             self.current_profile.clone(),
             self.current_region_label(),
@@ -926,9 +935,15 @@ impl App {
             self.data_context = Some(data_context);
         }
 
+        let fetch_overview =
+            force_overview || !self.inventory_is_fresh(refresh::InventoryKind::AccountOverview);
+
         self.is_refreshing = true;
-        self.account_overview = None;
-        self.refresh_phase = RefreshPhase::Overview;
+        self.refresh_phase = if fetch_overview {
+            RefreshPhase::Overview
+        } else {
+            RefreshPhase::Services(Vec::new())
+        };
         self.in_flight_refresh = Some(want);
 
         // Run the fetches on a throwaway clone of the account context so the
@@ -937,13 +952,18 @@ impl App {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         self.refresh_rx = Some(rx);
 
+        tokio::spawn(self.refresh_worker().stream_refresh(tx, fetch_overview));
+    }
+
+    /// A throwaway copy of the account context (clients, regions, profile, and
+    /// view) for a refresh task to own.
+    pub(crate) fn refresh_worker(&self) -> App {
         let mut worker = App::new(self.aws.clone());
         worker.regions = self.regions.clone();
         worker.current_region_index = self.current_region_index;
         worker.current_profile = self.current_profile.clone();
         worker.active_view = self.active_view;
-
-        tokio::spawn(worker.stream_refresh(tx));
+        worker
     }
 
     pub async fn next_region(&mut self) {
@@ -990,6 +1010,7 @@ impl App {
     /// with the new region. The refresh worker refetches the fresh data.
     fn clear_service_data(&mut self) {
         self.inventory_fetched_at.clear();
+        self.account_overview = None;
         self.ec2_instances.clear();
         self.lambda_functions.clear();
         self.apigateway_apis.clear();
@@ -1020,32 +1041,39 @@ impl App {
         self.cloudwatch_summary.status = not_loaded;
     }
 
-    pub async fn load_cost_data(&mut self) {
-        self.refresh_cost_data(false).await;
-    }
-
-    pub async fn refresh_cost_data(&mut self, force_refresh: bool) {
+    /// Load cost data from the on-disk cache only. The cost views force a live
+    /// fetch when entered, so startup has no reason to wait on Cost Explorer
+    /// before the first frame is drawn.
+    pub fn load_cached_cost_data(&mut self) {
         let profile = self.current_profile.clone();
         let region = self.current_region_label().to_string();
 
-        if !force_refresh {
-            if let Some(cache) = load_if_fresh(profile.as_deref(), &region) {
-                let cache_has_usage_insight =
-                    !cache.service_cost_insights.is_empty() || cache.service_costs.is_empty();
+        let Some(cache) = load_if_fresh(profile.as_deref(), &region) else {
+            return;
+        };
 
-                if cache_has_usage_insight {
-                    self.budget = cache.budget;
-                    self.monthly_costs = cache.monthly_costs;
-                    self.service_costs = cache.service_costs;
-                    self.service_cost_insights = cache.service_cost_insights;
-                    // Only successful fetches are cached, so a cache hit is Ok data.
-                    self.cost_status = ServiceStatus::Ok;
-                    self.cost_loaded = true;
-                    self.rebuild_cost_savings();
-                    return;
-                }
-            }
+        // A cache written before usage insights existed would render an empty
+        // breakdown; leave it for the cost views' live fetch to replace.
+        let cache_has_usage_insight =
+            !cache.service_cost_insights.is_empty() || cache.service_costs.is_empty();
+        if !cache_has_usage_insight {
+            return;
         }
+
+        self.budget = cache.budget;
+        self.monthly_costs = cache.monthly_costs;
+        self.service_costs = cache.service_costs;
+        self.service_cost_insights = cache.service_cost_insights;
+        // Only successful fetches are cached, so a cache hit is Ok data.
+        self.cost_status = ServiceStatus::Ok;
+        self.cost_loaded = true;
+        self.rebuild_cost_savings();
+    }
+
+    /// Fetch cost data live from Cost Explorer and cache it on success.
+    pub async fn refresh_cost_data(&mut self) {
+        let profile = self.current_profile.clone();
+        let region = self.current_region_label().to_string();
 
         let (budget, budget_status) = aws::cost::fetch_budget(self).await;
         let (monthly_costs, monthly_status) = aws::cost::fetch_last_6_month_costs(self).await;

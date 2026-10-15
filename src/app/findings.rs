@@ -1241,14 +1241,14 @@ pub fn build_findings(ctx: &FindingContext) -> Vec<Finding> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::models::cloudwatch::CloudWatchSummary;
     use crate::models::rds::RdsSummary;
     use crate::models::secrets::SecretsSummary;
     use crate::models::service_status::ServiceStatus;
 
-    fn overview() -> AccountOverview {
+    pub(crate) fn overview() -> AccountOverview {
         AccountOverview {
             account_id: "123456789012".into(),
             identity_kind: "user".into(),

@@ -192,16 +192,5 @@ pub async fn fetch_instances(app: &App) -> (Vec<Ec2InstanceInfo>, ServiceStatus)
 pub async fn fetch_ec2_counts(app: &App) -> Ec2Counts {
     let (instances, _status) = fetch_instances_with_metrics(app, false).await;
 
-    let mut running = 0;
-    let mut stopped = 0;
-
-    for instance in instances {
-        match instance.state.as_str() {
-            "running" => running += 1,
-            "stopped" => stopped += 1,
-            _ => {}
-        }
-    }
-
-    Ec2Counts { running, stopped }
+    crate::aws::account::ec2_counts(&instances)
 }
