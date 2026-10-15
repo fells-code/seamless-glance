@@ -594,6 +594,28 @@ impl App {
         self.reset_row_selection();
     }
 
+    /// One line up, as the Up arrow and the mouse wheel both do: whatever has
+    /// focus scrolls, from the help screen to an overlay to the active view.
+    pub fn scroll_line_up(&mut self) {
+        if self.show_help {
+            self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        } else if let Some(overlay) = &mut self.overlay {
+            overlay.scroll_up();
+        } else {
+            self.scroll_active_view_up(1);
+        }
+    }
+
+    pub fn scroll_line_down(&mut self) {
+        if self.show_help {
+            self.scroll_offset = self.scroll_offset.saturating_add(1);
+        } else if let Some(overlay) = &mut self.overlay {
+            overlay.scroll_down();
+        } else {
+            self.scroll_active_view_down(1);
+        }
+    }
+
     pub fn scroll_active_view_up(&mut self, lines: usize) {
         if self.view_uses_free_scroll() {
             self.scroll_offset = self.scroll_offset.saturating_sub(lines as u16);
@@ -1327,6 +1349,73 @@ mod tests {
         app.regions = names.iter().map(|n| Region::new(n.to_string())).collect();
         app.current_region_index = 0;
         app
+    }
+
+    fn app_with_queues(count: usize) -> App {
+        let mut app = app_with_regions(&["us-east-1"]);
+        app.active_view = ActiveView::Sqs;
+        app.sqs_queues_data = (0..count)
+            .map(|i| SqsQueueInfo {
+                name: format!("queue-{i}"),
+                queue_url: format!("https://sqs.us-east-1.amazonaws.com/123456789012/queue-{i}"),
+                is_fifo: false,
+                messages_available: 0,
+                messages_in_flight: 0,
+                has_dlq: false,
+                dead_letter_target_arn: None,
+                tags: crate::models::tags::Tags::empty(),
+            })
+            .collect();
+        app
+    }
+
+    /// The mouse wheel and the arrow keys share these methods, so a line of
+    /// scroll moves the selection in a list view and stops at either end.
+    #[test]
+    fn a_line_of_scroll_moves_the_list_selection_within_bounds() {
+        let mut app = app_with_queues(2);
+
+        app.scroll_line_up();
+        assert_eq!(app.selected_row, 0);
+
+        app.scroll_line_down();
+        app.scroll_line_down();
+        app.scroll_line_down();
+        assert_eq!(app.selected_row, 1);
+
+        app.scroll_line_up();
+        assert_eq!(app.selected_row, 0);
+    }
+
+    #[test]
+    fn a_line_of_scroll_goes_to_the_help_screen_when_it_is_open() {
+        let mut app = app_with_queues(2);
+        app.show_help = true;
+
+        app.scroll_line_down();
+
+        assert_eq!(app.scroll_offset, 1);
+        assert_eq!(app.selected_row, 0, "the list behind help must not move");
+    }
+
+    #[test]
+    fn a_line_of_scroll_goes_to_an_open_overlay() {
+        let mut app = app_with_queues(2);
+        app.overlay = Some(OverlayState::SelectProfile(SelectProfileState {
+            profiles: vec!["default".into(), "my-profile".into()],
+            selected: 0,
+        }));
+
+        app.scroll_line_down();
+
+        let Some(OverlayState::SelectProfile(picker)) = &app.overlay else {
+            panic!("the profile picker should still be open");
+        };
+        assert_eq!(picker.selected, 1);
+        assert_eq!(
+            app.selected_row, 0,
+            "the list behind the overlay must not move"
+        );
     }
 
     /// Global is a synthetic slot one past the real regions, not a region in
