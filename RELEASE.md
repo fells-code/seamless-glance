@@ -56,6 +56,53 @@ dynamically, so they need no per-release edits.
 
 ---
 
+## Verify a release
+
+The release is not done until every channel serves the new version. After the
+version PR merges, check each one (replace `1.2.3` with the version):
+
+```bash
+# 1. The tag exists and the Release workflow passed
+git fetch --tags && git tag -l v1.2.3
+gh run list --workflow release.yml --limit 1
+
+# 2. The GitHub Release has all six binaries plus SHA256SUMS.txt
+gh release view v1.2.3 --json assets --jq '.assets[].name'
+
+# 3. The Homebrew tap serves it
+brew update && brew info fells-code/seamless/seamless-glance
+
+# 4. crates.io serves it
+cargo search seamless-glance --limit 1
+```
+
+Then install from at least one channel and confirm `glance --version` prints
+the new version.
+
+---
+
+## If a release fails
+
+- **A build or the GitHub Release job failed:** rerun only the failed jobs with
+  `gh run rerun <run-id> --failed`. If the run is gone or the fix needed a code
+  change on `main`, start the workflow again for the same tag with
+  `gh workflow run release.yml -f version=v1.2.3`. The release job updates an
+  existing GitHub Release rather than failing on it.
+- **Only the crates.io job failed:** the binaries, GitHub Release and Homebrew
+  formula still shipped, because that job is `continue-on-error`. Check
+  `CARGO_REGISTRY_TOKEN`, then rerun that job.
+- **The tag was never created:** the version PR merged but `tag-release.sh` did
+  not run. Rerun the latest `version.yml` run on `main`, or use the manual
+  fallback below.
+- **The tag exists but no Release run started:** rerunning `version.yml` will
+  not help, because `tag-release.sh` exits early when the tag already exists.
+  Dispatch the build directly with `gh workflow run release.yml -f version=v1.2.3`.
+
+Never delete and recreate a tag that has a published GitHub Release, and never
+reuse a version number. Fix forward with a new patch release.
+
+---
+
 ## One-time setup
 
 - The **`seamless-glance` repo must be public** (release binaries must be
