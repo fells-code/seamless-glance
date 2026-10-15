@@ -158,7 +158,7 @@ RUBY
 class SeamlessGlance < Formula
   desc "Fast, read-only AWS TUI for cloud infrastructure visibility"
   homepage "https://github.com/$RELEASE_REPO"
-  license "GPL-3.0-only"
+  license "Apache-2.0"
   version "$VERSION"
 
   on_macos do

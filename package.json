@@ -11,7 +11,7 @@
     "type": "git",
     "url": "git+https://github.com/fells-code/seamless-glance.git"
   },
-  "license": "GPL-3.0-only",
+  "license": "Apache-2.0",
   "author": "Fells Code, LLC",
   "engines": {
     "node": ">=24 <25"
