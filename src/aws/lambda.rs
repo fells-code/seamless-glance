@@ -15,6 +15,7 @@ const UNAVAILABLE_EVERYWHERE: &str = "Lambda unavailable in all regions";
 
 async fn fetch_lambda_for_region(
     region: Region,
+    include_tags: bool,
     profile: Option<String>,
 ) -> Result<Vec<LambdaFunctionInfo>, ServiceStatus> {
     let aws = clients_for_region(&region, profile.as_deref()).await;
@@ -46,6 +47,10 @@ async fn fetch_lambda_for_region(
         });
     }
 
+    if !include_tags {
+        return Ok(functions);
+    }
+
     // ListFunctions does not return tags, so they need one ListTags per function.
     let looked_up = tags::lookup_each(arns, |arn| {
         let aws = &aws;
@@ -64,15 +69,21 @@ async fn fetch_lambda_for_region(
 }
 
 pub async fn fetch_lambda_functions(app: &App) -> (Vec<LambdaFunctionInfo>, ServiceStatus) {
+    fetch_lambda(app, true).await
+}
+
+/// `include_tags` costs one `ListTags` call per function, so callers that only
+/// need a count skip it.
+async fn fetch_lambda(app: &App, include_tags: bool) -> (Vec<LambdaFunctionInfo>, ServiceStatus) {
     let profile = app.current_profile.clone();
 
     let (mut functions, status) = if app.is_global_region_selected() {
         fetch_all_regions(&app.regions, UNAVAILABLE_EVERYWHERE, move |region| {
-            fetch_lambda_for_region(region, profile.clone())
+            fetch_lambda_for_region(region, include_tags, profile.clone())
         })
         .await
     } else {
-        match fetch_lambda_for_region(app.current_region().clone(), profile).await {
+        match fetch_lambda_for_region(app.current_region().clone(), include_tags, profile).await {
             Ok(functions) => (functions, ServiceStatus::Ok),
             Err(status) => (vec![], status),
         }
@@ -84,10 +95,7 @@ pub async fn fetch_lambda_functions(app: &App) -> (Vec<LambdaFunctionInfo>, Serv
 }
 
 pub async fn fetch_lambda_summary(app: &App) -> LambdaSummary {
-    let (functions, status) = fetch_lambda_functions(app).await;
+    let (functions, status) = fetch_lambda(app, false).await;
 
-    LambdaSummary {
-        function_count: functions.len() as u32,
-        status,
-    }
+    crate::aws::account::lambda_summary(&functions, status)
 }

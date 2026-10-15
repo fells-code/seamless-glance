@@ -264,7 +264,7 @@ async fn main() -> anyhow::Result<()> {
         app.theme = crate::ui::theme::Theme::from_name(theme_name);
     }
 
-    app.load_cost_data().await;
+    app.load_cached_cost_data();
     app.trigger_refresh();
 
     // Raise warnings last so their display window starts at the first draw

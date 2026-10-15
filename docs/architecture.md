@@ -60,7 +60,7 @@ This layer should remain primarily factual. As the product shifts toward triage,
 
 Representative files:
 
-- [`src/aws/account.rs`](src/aws/account.rs): account overview fan-out
+- [`src/aws/account.rs`](src/aws/account.rs): account overview fan-out, plus `assemble_overview` and the summary builders that derive the overview from already-fetched inventories
 - [`src/aws/clients.rs`](src/aws/clients.rs): shared SDK client bundle, `build_sdk_config` (the single region/profile-aware config builder), and `clients_for_region`, the one definition global fan-outs use to build a per-region bundle. Every SDK config in the app is built here, so it is also where the retry and timeout policy lives: adaptive retry (client-side rate limiting that backs off when AWS throttles) plus connect, per-attempt, and overall operation timeouts, which matter because the app fans out across every enabled region and issues a describe per resource
 - [`src/aws/profiles.rs`](src/aws/profiles.rs): discovers AWS profile names from the shared config and credentials files for the in-app picker
 - [`src/aws/cost.rs`](src/aws/cost.rs): cost explorer queries for budget, forecast, trailing spend, and usage-aware service cost insight
@@ -119,7 +119,7 @@ At startup, `main`:
 - fetches enabled AWS regions using the resolved profile; if `ec2:DescribeRegions` fails or returns nothing, it falls back to the documented `regions::FALLBACK_REGIONS` list and raises a visible warning so the operator knows global views may be incomplete
 - creates `AwsClients` for the selected region and profile
 - constructs `App`
-- preloads cost data and usage-aware service cost insight
+- loads cost data and usage-aware service cost insight from the on-disk cache only; it never calls Cost Explorer before the first frame, since the cost views force a live fetch when entered
 - triggers the first refresh
 
 ### Refresh Flow
@@ -130,7 +130,7 @@ The AWS fetches run off the draw thread so the UI stays responsive and the per-s
 2. spawns a worker task on a throwaway clone of the account context (`AwsClients` is cheap to clone; the SDK clients are `Arc`-backed)
 3. stores the receiving end of an `mpsc` channel on the app
 
-The worker fetches account overview first, then the active view's service data, sending a `RefreshUpdate` per service, then `Done`. For the multi-service views (Findings and Cost Savings) the independent fetches run concurrently via `tokio::join!`, so refresh latency is the slowest single fetch rather than the sum of ~11. Target groups and load balancers are fetched as one unit (health folding needs both) that joins the concurrent set. Each frame, `App::drain_refresh_updates` applies whatever has arrived (so `refresh_phase` advances and views populate) without ever blocking the loop. On `Done` it rebuilds findings and cost savings, updates `last_refresh`, and clears the refreshing flag.
+The worker fetches the active view's service data, sending a `RefreshUpdate` per service, then `Done`. When the account overview is needed it runs on its own task alongside the view's fetches rather than ahead of them, and `Done` waits for it because findings gate on the overview. Findings is the exception: it already fetches nearly every service the overview summarizes, so it fetches only the caller identity and ECS on top and assembles the overview from its own inventories (`aws::account::assemble_overview` plus the per-service summary builders there), rather than fetching each service twice. Navigation (`on_view_enter`) reuses a fresh overview instead of refetching it, since the overview alone is about ten service fetches; a manual refresh or a profile or region switch always refetches it. A same-context refresh keeps the previous overview on screen until the new one lands; only a profile or region change clears it. For the multi-service views (Findings and Cost Savings) the independent fetches run concurrently via `tokio::join!`, so refresh latency is the slowest single fetch rather than the sum of ~11. Target groups and load balancers are fetched as one unit (health folding needs both) that joins the concurrent set. Each frame, `App::drain_refresh_updates` applies whatever has arrived (so `refresh_phase` advances and views populate) without ever blocking the loop. On `Done` it rebuilds findings and cost savings, updates `last_refresh`, and clears the refreshing flag.
 
 Step 1 matters because a single-service refresh only fetches its own service but `rebuild_findings` reads several service inventories. Tracking the context the data was fetched under (`data_context`) and clearing on change ensures findings are never built from a prior region or profile's data and mislabeled with the current region.
 
@@ -190,7 +190,7 @@ The codebase uses a mix of strategies:
 - list fetchers page through the full result set (`.into_paginator().items().send()`, or a manual next-token loop where the SDK has no generated paginator, such as `apigatewayv2::get_apis`), so large accounts are not silently truncated to the first page
 - where a fetcher needs a follow-up describe per resource (target-group health, SQS queue attributes, ECR images and lifecycle policies), those calls run concurrently but bounded by `aws::DESCRIBE_CONCURRENCY` rather than one round trip at a time, so large accounts stay fast without amplifying throttling. A failed per-resource describe drops that row, as before
 - cost fetchers return `(data, ServiceStatus)` too; `refresh_cost_data` composes a single `cost_status`, the cost overview and cost savings views guard on it, and only a successful fetch is written to the on-disk cost cache so a denied fetch is not persisted as a misleading $0 overview
-- account overview fans out with concurrent calls and composes summary status
+- account overview fans out with concurrent calls and composes summary status. It needs counts, not detail, so it skips per-resource follow-ups it does not use (Lambda counts skip the per-function `ListTags`)
 - SDK errors are classified centrally by `ServiceStatus::from_sdk_error`, which inspects the error code via `ProvideErrorMetadata` (recognizing `AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, and related authz codes) rather than substring-matching the display string
 
 Contributors adding a new list view should follow the same shape: carry a `ServiceStatus` out of the fetcher, store it alongside the data, and call `render_unavailable` at the top of the view so AWS failures never render as misleading empty-state success UIs.

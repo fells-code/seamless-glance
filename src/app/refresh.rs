@@ -7,7 +7,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app::{ActiveView, App, RefreshPhase};
+use aws_sdk_sts::operation::get_caller_identity::GetCallerIdentityOutput;
+
 use crate::aws;
+use crate::aws::account::OverviewParts;
 use crate::aws::pricing::PriceBook;
 use crate::models::apigateway::ApiGatewayInfo;
 use crate::models::cloudwatch::{CloudWatchAlarm, CloudWatchSummary};
@@ -113,10 +116,27 @@ impl App {
     /// result over `tx`. Consumes the worker (it is a throwaway clone of the
     /// account context spawned onto its own task). Errors from a closed channel
     /// are ignored: they only happen when a newer refresh has superseded this one.
-    pub(crate) async fn stream_refresh(mut self, tx: UnboundedSender<RefreshUpdate>) {
-        let _ = tx.send(RefreshUpdate::Phase(RefreshPhase::Overview));
-        let overview = aws::account::fetch_account_overview(&self).await;
-        let _ = tx.send(RefreshUpdate::AccountOverview(Box::new(overview)));
+    ///
+    /// The account overview, when requested, runs on its own task alongside the
+    /// view's fetches rather than ahead of them, so the view's data is not held
+    /// back by a dozen unrelated service calls. Findings is the exception: it
+    /// already fetches nearly every service the overview summarizes, so it
+    /// assembles the overview from its own inventories instead of fetching them
+    /// a second time.
+    pub(crate) async fn stream_refresh(
+        mut self,
+        tx: UnboundedSender<RefreshUpdate>,
+        fetch_overview: bool,
+    ) {
+        let derives_overview = self.active_view == ActiveView::Findings;
+        let overview = (fetch_overview && !derives_overview).then(|| {
+            let worker = self.refresh_worker();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let overview = aws::account::fetch_account_overview(&worker).await;
+                let _ = tx.send(RefreshUpdate::AccountOverview(Box::new(overview)));
+            })
+        });
 
         match self.active_view {
             ActiveView::Findings => {
@@ -149,6 +169,7 @@ impl App {
                     (functions, lambda_status),
                     (vpcs, vpc_status),
                     (repositories, ecr_status),
+                    overview_extras,
                 ) = tokio::join!(
                     aws::cloudwatch::fetch_cloudwatch(&self),
                     aws::ec2::fetch_instances(&self),
@@ -161,7 +182,29 @@ impl App {
                     aws::lambda::fetch_lambda_functions(&self),
                     aws::vpc::fetch_vpcs(&self),
                     aws::ecr::fetch_ecr_repositories(&self),
+                    self.fetch_overview_extras(fetch_overview),
                 );
+
+                if let Some((ident, ecs_clusters)) = overview_extras {
+                    let overview = aws::account::assemble_overview(
+                        &self,
+                        ident,
+                        OverviewParts {
+                            ecs_clusters: ecs_clusters.clone(),
+                            ec2: aws::account::ec2_counts(&ec2),
+                            rds: rds_summary.clone(),
+                            lambda: aws::account::lambda_summary(&functions, lambda_status.clone()),
+                            apigw: aws::account::apigateway_summary(&apis, apigw_status.clone()),
+                            sqs: aws::account::sqs_summary(&queues, sqs_status.clone()),
+                            vpc: aws::account::vpc_summary(&vpcs, vpc_status.clone()),
+                            alarms: cw_summary.clone(),
+                            secrets: secrets_summary.clone(),
+                            target_groups: target_groups.clone(),
+                        },
+                    );
+                    let _ = tx.send(RefreshUpdate::AccountOverview(Box::new(overview)));
+                    let _ = tx.send(RefreshUpdate::Ecs(ecs_clusters));
+                }
 
                 let ec2_for_pricing = ec2.clone();
                 let lbs_for_pricing = load_balancers.clone();
@@ -300,7 +343,30 @@ impl App {
             }
         }
 
+        // `Done` rebuilds findings, which gate on the overview, so it must not
+        // be sent until the overview has landed.
+        if let Some(overview) = overview {
+            let _ = tx.send(RefreshUpdate::Phase(RefreshPhase::Overview));
+            let _ = overview.await;
+        }
+
         let _ = tx.send(RefreshUpdate::Done);
+    }
+
+    /// What the account overview needs beyond the Findings inventories: the
+    /// caller identity and ECS. `None` when the overview is not being refreshed.
+    async fn fetch_overview_extras(
+        &self,
+        wanted: bool,
+    ) -> Option<(Option<GetCallerIdentityOutput>, Vec<EcsClusterInfo>)> {
+        if !wanted {
+            return None;
+        }
+
+        Some(tokio::join!(
+            aws::account::fetch_identity(self),
+            aws::ecs::fetch_ecs_clusters(self)
+        ))
     }
 
     /// Target groups must be fetched before load balancers so target-group
@@ -321,7 +387,7 @@ impl App {
     }
 
     async fn send_cost(&mut self, tx: &UnboundedSender<RefreshUpdate>) {
-        self.refresh_cost_data(true).await;
+        self.refresh_cost_data().await;
         let _ = tx.send(RefreshUpdate::Cost {
             budget: self.budget.clone(),
             monthly_costs: self.monthly_costs.clone(),
@@ -384,14 +450,15 @@ impl App {
     /// instead of refetching. Freshness is cleared on a profile or region
     /// change, so this can never serve a prior context's data.
     pub(crate) fn active_view_is_fresh(&self) -> bool {
-        let now = Instant::now();
         Self::required_inventories(self.active_view)
             .iter()
-            .all(|kind| {
-                self.inventory_fetched_at
-                    .get(kind)
-                    .is_some_and(|fetched| now.duration_since(*fetched) < INVENTORY_TTL)
-            })
+            .all(|kind| self.inventory_is_fresh(*kind))
+    }
+
+    pub(crate) fn inventory_is_fresh(&self, kind: InventoryKind) -> bool {
+        self.inventory_fetched_at
+            .get(&kind)
+            .is_some_and(|fetched| fetched.elapsed() < INVENTORY_TTL)
     }
 
     /// Apply one streamed update to the live app state. Returns `true` when the
@@ -537,7 +604,9 @@ mod tests {
             .region(aws_config::Region::new("us-east-1"))
             .behavior_version(aws_config::BehaviorVersion::latest())
             .build();
-        App::new(AwsClients::new(&config))
+        let mut app = App::new(AwsClients::new(&config));
+        app.regions = vec![aws_config::Region::new("us-east-1")];
+        app
     }
 
     #[test]
@@ -598,6 +667,65 @@ mod tests {
         // A different view whose inventory was never fetched still refetches.
         app.active_view = ActiveView::Lambda;
         assert!(!app.active_view_is_fresh());
+    }
+
+    /// Navigation used to refetch the whole account overview (ten services)
+    /// ahead of the view's own data on every view switch.
+    #[tokio::test]
+    async fn navigation_reuses_a_fresh_account_overview() {
+        let mut app = test_app();
+        app.data_context = Some((app.current_profile.clone(), app.current_region_label()));
+        mark_fresh(&mut app, InventoryKind::AccountOverview);
+        app.active_view = ActiveView::Ec2;
+
+        app.on_view_enter().await;
+
+        assert!(app.is_refreshing, "EC2 itself was never fetched");
+        assert!(matches!(app.refresh_phase, RefreshPhase::Services(_)));
+    }
+
+    #[tokio::test]
+    async fn navigation_refetches_a_stale_account_overview() {
+        let mut app = test_app();
+        app.active_view = ActiveView::Ec2;
+
+        app.on_view_enter().await;
+
+        assert!(matches!(app.refresh_phase, RefreshPhase::Overview));
+    }
+
+    #[tokio::test]
+    async fn a_manual_refresh_always_refetches_the_account_overview() {
+        let mut app = test_app();
+        app.data_context = Some((app.current_profile.clone(), app.current_region_label()));
+        mark_fresh(&mut app, InventoryKind::AccountOverview);
+
+        app.trigger_refresh();
+
+        assert!(matches!(app.refresh_phase, RefreshPhase::Overview));
+    }
+
+    /// The header keeps showing the account while a same-context refresh runs,
+    /// instead of blanking until the new overview lands.
+    #[tokio::test]
+    async fn a_same_context_refresh_keeps_the_account_overview() {
+        let mut app = test_app();
+        app.data_context = Some((app.current_profile.clone(), app.current_region_label()));
+        app.account_overview = Some(crate::app::findings::tests::overview());
+
+        app.trigger_refresh();
+
+        assert!(app.account_overview.is_some());
+    }
+
+    #[test]
+    fn clearing_service_data_drops_the_account_overview() {
+        let mut app = test_app();
+        app.account_overview = Some(crate::app::findings::tests::overview());
+
+        app.clear_service_data();
+
+        assert!(app.account_overview.is_none());
     }
 
     #[test]
