@@ -62,7 +62,9 @@ Auto-detects your platform (Intel/ARM, glibc/musl) and installs the latest relea
 curl -fsSL https://raw.githubusercontent.com/fells-code/seamless-glance/main/install.sh | bash
 ```
 
-Pin a version with `SEAMLESS_GLANCE_VERSION=1.2.3`.
+Pin a version with `SEAMLESS_GLANCE_VERSION=1.2.3`. The installer checks the
+binary against the release's `SHA256SUMS.txt` and refuses to install it if the
+checksum is missing or does not match. The Windows installer below does the same.
 
 ### Windows (PowerShell)
 
