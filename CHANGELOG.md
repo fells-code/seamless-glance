@@ -1,5 +1,11 @@
 # seamless-glance
 
+## 1.3.1
+
+### Patch Changes
+
+- 300a3b5: The `install.sh` and `install.ps1` installers now refuse to install a binary unless it matches its entry in the release's `SHA256SUMS.txt`. Before, `install.sh` installed without checking when the checksum file could not be downloaded, and `install.ps1` only warned, even on a checksum mismatch.
+
 ## 1.3.0
 
 ### Minor Changes
