@@ -52,7 +52,9 @@ step runs `scripts/tag-release.sh`, which tags `v<version>` and dispatches
 4. Publishes to crates.io (`cargo install` / `cargo binstall`).
 
 The public installers (`install.sh`, `install.ps1`) resolve the latest release
-dynamically, so they need no per-release edits.
+dynamically, so they need no per-release edits. They refuse to install a binary
+that has no matching entry in the release's `SHA256SUMS.txt`, so a release
+published without that file breaks both installers.
 
 ---
 

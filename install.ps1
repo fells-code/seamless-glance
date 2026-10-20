@@ -41,19 +41,21 @@ try {
   Write-Host "Downloading Seamless Glance $Version ($Target)..."
   Invoke-WebRequest -Uri $Url -OutFile $binPath -UseBasicParsing
 
-  try {
-    $sumsPath = Join-Path $Work "SHA256SUMS.txt"
-    Invoke-WebRequest -Uri $ChecksumUrl -OutFile $sumsPath -UseBasicParsing
-    $expected = (Select-String -Path $sumsPath -Pattern ([regex]::Escape($File)) |
-      Select-Object -First 1).Line -split '\s+' | Select-Object -First 1
-    $actual = (Get-FileHash -Path $binPath -Algorithm SHA256).Hash.ToLower()
-    if ($expected -and ($expected.ToLower() -ne $actual)) {
-      throw "Checksum mismatch: expected $expected, got $actual"
-    }
-    Write-Host "Checksum verified."
-  } catch {
-    Write-Warning "Checksum verification skipped: $($_.Exception.Message)"
+  # Fail closed: never install a binary that was not checked against the
+  # release's SHA256SUMS.txt. Any failure here stops the install.
+  $sumsPath = Join-Path $Work "SHA256SUMS.txt"
+  Invoke-WebRequest -Uri $ChecksumUrl -OutFile $sumsPath -UseBasicParsing
+  $entry = Select-String -Path $sumsPath -Pattern ("\s" + [regex]::Escape($File) + "$") |
+    Select-Object -First 1
+  if (-not $entry) {
+    throw "SHA256SUMS.txt has no entry for $File, refusing to install."
   }
+  $expected = ($entry.Line -split '\s+')[0].ToLower()
+  $actual = (Get-FileHash -Path $binPath -Algorithm SHA256).Hash.ToLower()
+  if ($expected -ne $actual) {
+    throw "Checksum mismatch for ${File}: expected $expected, got $actual"
+  }
+  Write-Host "Checksum verified."
 
   New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
   $dest = Join-Path $InstallDir "$BinName.exe"

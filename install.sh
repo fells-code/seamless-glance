@@ -80,15 +80,21 @@ cd "$WORKDIR"
 echo "⬇️  Downloading Seamless Glance $VERSION ($TARGET)..."
 curl -fsSL "$URL" -o "$FILE"
 
-if curl -fsSL "$CHECKSUM_URL" -o SHA256SUMS.txt 2>/dev/null; then
-  echo "🔐 Verifying checksum..."
-  if command -v sha256sum >/dev/null 2>&1; then
-    grep " $FILE\$" SHA256SUMS.txt | sha256sum -c -
-  else
-    grep " $FILE\$" SHA256SUMS.txt | shasum -a 256 -c -
-  fi
+# Fail closed: never install a binary that was not checked against the
+# release's SHA256SUMS.txt.
+if ! curl -fsSL "$CHECKSUM_URL" -o SHA256SUMS.txt; then
+  echo "❌ Could not download SHA256SUMS.txt for v$VERSION, refusing to install an unverified binary." >&2
+  exit 1
+fi
+if ! grep " $FILE\$" SHA256SUMS.txt > "$FILE.sha256"; then
+  echo "❌ SHA256SUMS.txt has no entry for $FILE, refusing to install." >&2
+  exit 1
+fi
+echo "🔐 Verifying checksum..."
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum -c "$FILE.sha256"
 else
-  echo "⚠️  Checksum file not found, skipping verification"
+  shasum -a 256 -c "$FILE.sha256"
 fi
 
 chmod +x "$FILE"
