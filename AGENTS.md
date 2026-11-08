@@ -176,6 +176,9 @@ When in doubt, choose work that makes the app better at answering:
 
 ## Extending The App
 
+Step-by-step versions of the lists below, with a reference pull request for
+each, live in `docs/recipes/`.
+
 When adding a new AWS service or view:
 
 1. Add or extend the model types in `src/models/`.
