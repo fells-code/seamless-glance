@@ -15,6 +15,11 @@ Current product direction should shape implementation choices:
 - prioritize wasted-resource detection over broader but shallower coverage
 - prioritize exact CLI/console pivots over generic debug output
 
+## Recipes
+
+For step-by-step guides to adding a finding rule or a service view, see
+[`docs/recipes/`](recipes/README.md).
+
 ## Local Commands
 
 Core development commands:
