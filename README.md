@@ -46,14 +46,24 @@ glance
 
 <table>
   <tr>
-    <td><img src="docs/images/03-cost.png" alt="Cost overview" /></td>
-    <td><img src="docs/images/04-cost-savings.png" alt="Cost savings" /></td>
+    <td width="50%"><img src="docs/images/04-cli-pivot.png" alt="Press c: the exact AWS CLI command for the selected resource" /><br /><sub>Press c: the exact AWS CLI command for the selected resource</sub></td>
+    <td width="50%"><img src="docs/images/03-cost.png" alt="Cost overview: spend, forecast, and the usage behind it" /><br /><sub>Cost overview: spend, forecast, and the usage behind it</sub></td>
   </tr>
   <tr>
-    <td align="center">Cost overview</td>
-    <td align="center">Cost savings</td>
+    <td width="50%"><img src="docs/images/05-ecr.png" alt="ECR: untagged images and missing lifecycle policies" /><br /><sub>ECR: untagged images and missing lifecycle policies</sub></td>
+    <td width="50%"><img src="docs/images/10-describe.png" alt="Press d: describe any resource in place" /><br /><sub>Press d: describe any resource in place</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/06-cloudwatch.png" alt="CloudWatch alarms by state" /><br /><sub>CloudWatch alarms by state</sub></td>
+    <td width="50%"><img src="docs/images/07-target-groups.png" alt="Target group health" /><br /><sub>Target group health</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/08-security-groups.png" alt="Security groups open to the world" /><br /><sub>Security groups open to the world</sub></td>
+    <td width="50%"><img src="docs/images/02-overview.png" alt="Account inventory snapshot" /><br /><sub>Account inventory snapshot</sub></td>
   </tr>
 </table>
+
+<sub>Captured from v1.3.0 against a real account. Account IDs, resource IDs, and internal names are replaced with placeholders.</sub>
 
 ## Install
 
