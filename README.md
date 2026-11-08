@@ -1,52 +1,61 @@
 # Seamless Glance
 
-Terminal-native AWS visibility for operators who want fast account and service context without living in the AWS console.
+**The AWS terminal UI you hand your team instead of a page of AWS CLI commands.**
 
-The product is currently evolving from a general service inventory viewer toward a triage accelerator that highlights wasted resources and gives fast pivots into the AWS CLI and AWS console.
+[![CI](https://github.com/fells-code/seamless-glance/actions/workflows/ci.yml/badge.svg)](https://github.com/fells-code/seamless-glance/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/fells-code/seamless-glance)](https://github.com/fells-code/seamless-glance/releases/latest)
+[![crates.io](https://img.shields.io/crates/v/seamless-glance)](https://crates.io/crates/seamless-glance)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-## What It Does
+Seamless Glance is a fast, read-only TUI for DevOps and cloud engineers. Point it
+at an AWS profile and it opens on a ranked list of findings (incidents, waste,
+and hygiene), with cost, account inventory, and service health one keystroke
+away. When you need to go deeper, it hands you the exact AWS CLI command or
+console link for the selected resource.
 
-Seamless Glance is a Rust TUI that connects to AWS using the standard SDK credential chain and presents:
+![Seamless Glance Findings view](docs/images/01-findings.png)
 
-- account overview data
-- monthly cost and service cost breakdowns
-- region-scoped and selected global service inventories
-- drill-down views for common AWS services
-- console deep links, resource describe overlays, and EC2 SSH helpers
+Website: [seamlessglance.com](https://seamlessglance.com)
 
-The long-term emphasis is:
+## Why
 
-- surface what needs attention first
-- catalog waste and low-value resources
-- make next-step operator actions fast
+Every team that runs on AWS has the same wiki page: a list of `aws ec2
+describe-instances --query ...`, `aws cloudwatch describe-alarms --state-value
+ALARM`, and `aws elbv2 describe-target-health ...` snippets that someone pastes
+into a terminal when something looks wrong. It works, but only for the person who
+already knows which command to run and how to read the JSON.
 
-The navigation model is also expected to evolve over time:
+Seamless Glance replaces that page with one command:
 
-- Findings is the operator-centric home
-- the command palette is the scalable way to reach services
-- fixed numeric view-switching has been removed in favor of the palette; `f` (Findings) and `Tab`/`Shift+Tab` remain as direct keys
+```bash
+glance
+```
 
-Current first-class views:
+- **Findings first.** Alarms in `ALARM`, target groups with no healthy targets,
+  security groups open to the world, idle EC2, stale Lambdas, untagged ECR
+  images, and more, ranked by severity with a suggested next step.
+- **Cost in context.** Month-to-date spend, forecast, a six-month trend, and a
+  savings view that ties spend to the resources behind it.
+- **Pivot, do not paste.** `c` shows (and can run) the AWS CLI command for the
+  selected resource. `o` opens it in the AWS console. `d` describes it in place.
+- **Safe to hand out.** It only makes read calls (`Describe`, `List`, `Get`), uses
+  the standard AWS credential chain, and has no telemetry. A teammate can run it
+  with a read-only role without being able to change anything.
+- **Built for the terminal.** A single Rust binary, keyboard-driven, with region
+  and profile switching in-app.
 
-- Findings
-- Account Overview
-- Cost Overview
-- Cost Savings
-- VPC
-- EC2
-- CloudWatch
-- Lambda
-- Secrets Manager
-- ECS
-- ECR
-- API Gateway
-- RDS
-- SQS
-- Load Balancers
-- Target Groups
-- Security Groups
+<table>
+  <tr>
+    <td><img src="docs/images/03-cost.png" alt="Cost overview" /></td>
+    <td><img src="docs/images/04-cost-savings.png" alt="Cost savings" /></td>
+  </tr>
+  <tr>
+    <td align="center">Cost overview</td>
+    <td align="center">Cost savings</td>
+  </tr>
+</table>
 
-## Installation
+## Install
 
 ### Homebrew (macOS, Linux)
 
@@ -56,7 +65,7 @@ brew install fells-code/seamless/seamless-glance
 
 ### curl (macOS, Linux)
 
-Auto-detects your platform (Intel/ARM, glibc/musl) and installs the latest release:
+Detects your platform (Intel/ARM, glibc/musl) and installs the latest release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fells-code/seamless-glance/main/install.sh | bash
@@ -80,183 +89,190 @@ cargo binstall seamless-glance         # fetch the prebuilt release binary
 ```
 
 Prebuilt binaries are published for macOS (arm64/x86_64), Linux
-(x86_64/aarch64, glibc + static musl), and Windows (x86_64). Both
-`seamless-glance` and the `glance` alias are installed.
+(x86_64/aarch64, glibc and static musl), and Windows (x86_64). Both
+`seamless-glance` and the shorter `glance` alias are installed.
 
-## Requirements
-
-- Rust toolchain for local development
-- valid AWS credentials available to the AWS SDK
-
-## Run Locally
+## Quick Start
 
 ```bash
-cargo run
+glance                       # uses your default AWS profile
+glance --profile my-profile  # start on a specific profile
 ```
 
-Useful CLI options:
+Glance resolves credentials exactly like the AWS CLI: environment variables,
+`~/.aws/config` and `~/.aws/credentials`, AWS SSO, and assumed roles. If
+`aws sts get-caller-identity` works in your shell, Glance will too.
 
-```bash
-cargo run -- --help
-cargo run -- --version
-```
+Press `?` at any time for help, `/` to jump to any view, and `q` to quit.
+
+## Security And Permissions
+
+- Read-only. Glance only calls `Describe`, `List`, and `Get` style APIs. It never
+  reads secret values (`secretsmanager:GetSecretValue` is not used).
+- Local. It runs on your machine, talks directly to AWS API endpoints, and sends
+  no telemetry or analytics anywhere.
+- Fails closed. If a permission is missing, the affected view shows the access
+  error and the rest of the app keeps working.
+
+[`docs/iam-policy.json`](docs/iam-policy.json) is a least-privilege policy that
+covers every call Glance makes. Attach it to a dedicated role for teammates who
+only need visibility. The `ce:` and `pricing:` actions are only needed for the
+cost views.
+
+To report a vulnerability, follow the
+[security policy](https://github.com/fells-code/.github/blob/main/SECURITY.md)
+rather than opening a public issue.
+
+## Views
+
+| View | What it answers |
+| --- | --- |
+| Findings | What needs attention right now? |
+| Account Overview | What is running in this account and region? |
+| Cost Overview | What are we spending, and on what? |
+| Cost Savings | Where is money going for little value? |
+| EC2, Lambda, ECS, ECR, RDS | Compute and data inventory with health and waste signals |
+| API Gateway, SQS, Load Balancers, Target Groups | Traffic paths, queue depth, and target health |
+| VPC, Security Groups | Network layout and public exposure |
+| CloudWatch | Which alarms are firing, healthy, or missing data |
+| Secrets Manager | Which secrets are not rotating |
+
+EC2, Lambda, and RDS also support a `global` region slot that aggregates across
+every enabled region. Other views are region-scoped.
+
+### Current Findings
+
+Incident risk:
+
+- CloudWatch alarms in `ALARM`
+- target groups with zero healthy or some unhealthy targets
+- load balancers with no active target path or zero healthy targets
+- SQS queues with high visible or in-flight message counts
+- RDS instances that are not available
+
+Waste:
+
+- running EC2 instances averaging below 5 percent CPU over 7 days
+- stopped EC2 instances
+- Lambda functions with high memory or no deploy in 180+ days
+- ECR repositories with 20+ untagged images, or no push in 180 days and no pull in 90
+- target groups with no load balancer and no registered targets
+- API Gateway APIs with generic names or older than one year
+
+Hygiene:
+
+- security groups open to the world, or exposing sensitive ports publicly
+- stopped EC2 instances with public IPs or production-like names
+- EC2 instances missing `Name`, `Owner`, or `Environment` tags, and other resources
+  missing an `Owner` tag
+- production-like single-AZ RDS instances
+- secrets without rotation, or with stale rotation
+- SQS queues without a DLQ
+- default VPCs still present
+- deployed services with no matching CloudWatch alarms
+- ECR repositories with images but no lifecycle policy
+
+`Enter` on a finding opens the related service view. The
+[findings roadmap](docs/findings-roadmap.md) tracks what is coming next, and
+[adding a finding](docs/recipes/add-a-finding.md) is a good first contribution.
 
 ## Controls
 
-Primary navigation:
+Navigation:
 
-- `f` Findings
-- `Tab` / `Shift+Tab` cycle through major views
-- `/` open the command palette to jump to any view by name or alias
-- `t` cycle through the Seamless theme set
-- `w` toggle wrapped detail mode on supported text-heavy views
+| Key | Action |
+| --- | --- |
+| `f` | Findings |
+| `Tab` / `Shift+Tab` | Cycle through major views |
+| `/` | Command palette: jump to any view by name or alias |
+| `←` / `→` | Change region |
+| `g` | Jump to the `global` region slot |
+| `p` | Switch AWS profile |
+| `↑` / `↓`, mouse wheel | Move selection or scroll |
+| `PgUp` / `PgDn`, `Home` / `End` | Jump through long lists and overlays |
+| `?` | Help |
+| `q` | Quit |
 
-Every other view is reached through the command palette (`/`), for example `/ec2`, `/lambda`, or `/sm`. Numeric view-switching keys were removed; the palette is the way to jump directly to a service.
+Resource actions:
 
-General controls:
+| Key | Action |
+| --- | --- |
+| `Enter` | Open the related view for a finding |
+| `d` | Describe the selected resource |
+| `v` | Toggle Describe between structured and JSON |
+| `c` | Show (and optionally run) the AWS CLI command |
+| `o` | Open the selected resource in the AWS console |
+| `s` | Prepare an SSH command for the selected EC2 instance |
+| `r` | Refresh the active view |
+| `w` | Toggle wrapped detail on text-heavy views |
+| `t` | Cycle themes |
 
-- `←` / `→` change region
-- `↑` / `↓` or the mouse wheel move selection or scroll overlays
-- `PgUp` / `PgDn` jump-scroll lists, overlays, help, or wrapped detail
-- `Home` / `End` jump to the top or bottom of long views
-- `?` open help
-- `r` refresh active view
-- `d` describe selected resource
-- `v` toggle Describe between structured and JSON views
-- `c` show the AWS CLI command for the selected resource
-- `o` open selected resource in the AWS console
-- `g` jump to the global region slot
-- `p` switch AWS profile
-- `s` prepare an SSH command for the selected EC2 instance
-- `q` quit
+Actions always target the selected resource's own region, including in the
+`global` slot.
 
-Seamless Glance captures the mouse so the wheel can scroll. To select text in the terminal while it is running, most terminals let you hold a modifier while dragging (Shift in most Linux terminals, Option in iTerm2, Fn in macOS Terminal).
+Glance captures the mouse so the wheel can scroll. To select text while it is
+running, hold a modifier while dragging (Shift in most Linux terminals, Option in
+iTerm2, Fn in macOS Terminal).
+
+### Command Palette
+
+Press `/` and type a view name or alias:
+
+- views: `findings`, `account`, `cost`, `savings`, `ec2`, `ecs`, `ecr`, `rds`,
+  `lambda`, `apigw`, `sqs`, `vpc`, `cw`, `sm`, `lb`, `tg`, `sg`
+- aliases such as `overview`, `billing`, `api`, `queues`, `registry`, `secrets`,
+  and `alarms`
+- `region <name>` (or `rg <name>`) to change region
+- `profile <name>` (or `pf <name>`) to switch profile, or `profile` to open the picker
+- `theme <name>` with `autumn`, `winter`, `summer`, `spring`, or `developer`
 
 ### Switching AWS Profiles
 
-Press `p` (or run `profile` in the command palette) to open a picker listing the
-profiles found in `~/.aws/config` and `~/.aws/credentials`. Selecting one rebuilds
-the AWS clients for that profile, keeps the current region, refreshes the active
-view, and persists the choice for the next launch. You can also start on a profile
-directly with `seamless-glance --profile <name>`, or jump straight to one with
-`profile <name>` in the command palette.
+Press `p` (or run `profile` in the palette) to pick from the profiles in
+`~/.aws/config` and `~/.aws/credentials`. Selecting one rebuilds the AWS clients,
+keeps the current region, refreshes the active view, and remembers the choice for
+the next launch. What a profile can see is governed entirely by its IAM
+permissions, not by the app.
 
-The profile you select determines which credentials and identity the app uses.
-How much a profile can see is governed entirely by that profile's IAM permissions
-and account, not by the app.
+## Contributing
 
-View transitions now show a loading overlay while the next screen refreshes, instead of blocking silently during fetches.
-The app now opens on Findings by default so triage is the first thing you see.
-Account Overview now serves as an inventory snapshot for the current AWS profile, with account context, footprint summaries, and a service inventory table rather than findings-style callouts.
-Cost Overview now includes budget, forecast, and usage-aware service cost context from the local billing cache.
-Cost Savings is a dedicated recommendation screen that combines spend, usage types, and waste-oriented findings into savings opportunities.
-Findings, Cost Overview, and Cost Savings now support a wrapped detail mode so long summaries, usage strings, and recommendations are readable without relying on wide terminals.
+Issues and pull requests are welcome. Good places to start:
 
-Resource actions are expected to target the selected resource directly. In global-capable views, actions should use the resource's own region rather than the UI's fallback region.
+- [Add a finding](docs/recipes/add-a-finding.md)
+- [Add an AWS service view](docs/recipes/add-a-service.md)
+- issues labeled
+  [`good first issue`](https://github.com/fells-code/seamless-glance/labels/good%20first%20issue)
 
-Current resource-action model:
-
-- `d` describe the selected resource in-app
-- `v` toggle a describe overlay between a structured readable view and a JSON-oriented view
-- `c` show and optionally run the AWS CLI command for the selected resource
-- `o` open the selected resource in the AWS console
-
-Findings view behavior:
-
-- `Enter` opens the related service view for the selected finding
-- the initial finding set includes named CloudWatch alarms in `ALARM`, CloudWatch coverage gaps for deployed services without matching alarm namespaces, running EC2 instances averaging below 5 percent CPU over the last 7 days, stopped EC2 instances, stopped EC2 instances with public IPs or production-like names, EC2 instances missing `Name`, `Owner`, or `Environment` tags, API Gateway APIs with generic names or age over one year, SQS queues with high visible or in-flight message counts, RDS instances that are not available, production-like single-AZ RDS instances, production-like secrets without rotation, secrets with stale rotation despite rotation being enabled, Lambda functions with high memory or stale deploy dates, default VPCs still present, secrets without rotation, target groups with zero healthy targets, target groups with unhealthy targets, target groups with no load balancer attachment and no registered targets, load balancers with no active target path, load balancers with zero healthy targets, SQS queues without DLQs, security groups open to the world, security groups exposing sensitive ports publicly, ECR repositories holding 20 or more untagged images, ECR repositories with no push in 180 days and no pull in 90 days, and ECR repositories with images but no lifecycle policy
-
-Command palette shortcuts currently include:
-
-- `findings`
-- `account`
-- `savings`
-- `ecs`
-- `ecr`
-- `ec2`
-- `rds`
-- `cost`
-- `lambda`
-- `apigw`
-- `sqs`
-- `vpc`
-- `cw`
-- `sm`
-- `lb`
-- `tg`
-- `sg`
-- aliases such as `overview`, `billing`, `api`, `queues`, `registry`, `secrets`, and `alarms`
-- `theme <name>` with `autumn`, `winter`, `summer`, `spring`, or `developer`
-- `region <name>`
-- `rg <name>`
-- `profile <name>` to switch profiles, or `profile` to open the picker
-- `pf <name>` short alias for profile
-
-## Global View Notes
-
-The special `global` region slot is currently implemented for:
-
-- EC2
-- Lambda
-- RDS
-
-Other views remain region-scoped today.
-
-## Project Structure
-
-- [`src/main.rs`](src/main.rs) owns process startup, terminal setup, and key handling.
-- [`src/app/mod.rs`](src/app/mod.rs) owns application state, refresh orchestration, view transitions, overlays, and resource actions.
-- [`src/aws/`](src/aws) contains AWS service fetchers and SDK client wiring.
-- [`src/models/`](src/models) defines data models rendered by the UI.
-- [`src/ui/`](src/ui) contains rendering, overlays, command palette, and terminal helpers.
-- [`src/cache/`](src/cache) currently caches cost data.
-
-Longer-form references:
-
-- [Architecture](docs/architecture.md)
-- [Development Guide](docs/development.md)
-- [Findings Roadmap](docs/findings-roadmap.md)
-- [AWS Service Roadmap](docs/aws-service-roadmap.md)
-- [Navigation Strategy](docs/navigation-strategy.md)
-- [Release Process](RELEASE.md)
-- [Agent Guidance](AGENTS.md)
-
-## Build And Quality Commands
+Build and check locally:
 
 ```bash
+cargo run
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings
 cargo test --all
-make build
-make release-local
 ```
 
-There is currently no meaningful committed test suite under `tests/`, so `cargo test` is mostly a safety net for future additions.
-
-## Contributing And Releases
-
-User-facing changes should ship with a **changeset**:
+User-facing changes ship with a [changeset](https://github.com/changesets/changesets):
 
 ```bash
 npm install          # one-time, installs @changesets/cli
 npm run changeset    # pick patch/minor/major and describe the change
 ```
 
-Commit the generated `.changeset/*.md` file with your PR. On merge to `main`, a
-"version packages" PR is opened automatically; merging that PR builds binaries
-for every platform, publishes the GitHub Release, updates the Homebrew tap, and
-publishes to crates.io. See [Release Process](RELEASE.md) for the full flow.
+On merge to `main`, a "version packages" PR is opened automatically. Merging it
+builds binaries for every platform, publishes the GitHub Release, updates the
+Homebrew tap, and publishes to crates.io. See the [release process](RELEASE.md).
 
-## Documentation Policy
+More reading:
 
-This repository treats documentation as part of the product:
-
-- update `README.md` when user-facing behavior changes
-- update `docs/architecture.md` when modules, flows, or ownership change
-- update `docs/development.md` when the workflow or expectations change
-- update `AGENTS.md` whenever feature scope, team goals, or maintenance rules change
-
-If a feature ships without its docs, the change is incomplete.
+- [Architecture](docs/architecture.md)
+- [Development guide](docs/development.md)
+- [Findings roadmap](docs/findings-roadmap.md)
+- [AWS service roadmap](docs/aws-service-roadmap.md)
+- [Navigation strategy](docs/navigation-strategy.md)
+- [Contributing guidelines](https://github.com/fells-code/.github/blob/main/CONTRIBUTING.md)
+  and [code of conduct](https://github.com/fells-code/.github/blob/main/CODE_OF_CONDUCT.md)
+- [Agent guidance](AGENTS.md)
 
 ## License
 

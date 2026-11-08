@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in Glance is wrong, crashes, or shows bad data.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please redact account IDs, ARNs, IPs, and resource names before pasting output or screenshots.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Glance version
+      description: Output of `glance --version`.
+      placeholder: "1.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options: [Homebrew, curl installer, PowerShell installer, cargo install, cargo binstall, Built from source]
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and terminal
+      placeholder: "macOS 15, iTerm2"
+  - type: input
+    id: view
+    attributes:
+      label: View and region
+      placeholder: "Findings, us-east-1"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error text or screenshot
+      description: Any access errors or messages shown in the affected view.

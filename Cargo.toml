@@ -5,10 +5,11 @@ edition = "2021"
 description = "Fast, read-only AWS TUI for cloud infrastructure visibility and triage"
 license = "Apache-2.0"
 repository = "https://github.com/fells-code/seamless-glance"
-homepage = "https://github.com/fells-code/seamless-glance"
+homepage = "https://seamlessglance.com"
 readme = "README.md"
 keywords = ["aws", "tui", "devops", "cloud", "sre"]
 categories = ["command-line-utilities"]
+exclude = ["docs/images/*"]
 
 # Lets `cargo binstall seamless-glance` fetch the prebuilt release binary
 # instead of compiling from source. Binaries are published as raw files named

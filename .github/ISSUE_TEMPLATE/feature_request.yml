@@ -1,0 +1,34 @@
+name: Finding or service request
+description: Suggest a new finding, AWS service view, or workflow.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of request
+      options: [New finding, New AWS service view, Workflow or navigation, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What question should Glance answer?
+      description: For example, "which NAT gateways are idle?" or "which ECS services are failing to deploy?"
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you answer it today?
+      description: The AWS CLI commands or console pages you use now, if any.
+  - type: textarea
+    id: action
+    attributes:
+      label: What would you do next?
+      description: The CLI command or console page you would want Glance to hand you.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to open a pull request for this (see docs/recipes/).

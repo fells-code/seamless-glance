@@ -1,0 +1,47 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SeamlessGlanceReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity",
+        "ec2:DescribeRegions",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListTagsForResource",
+        "lambda:ListFunctions",
+        "lambda:GetFunction",
+        "lambda:ListTags",
+        "rds:DescribeDBInstances",
+        "ecs:ListClusters",
+        "ecs:DescribeClusters",
+        "ecs:ListContainerInstances",
+        "ecs:DescribeContainerInstances",
+        "ecr:DescribeRepositories",
+        "ecr:DescribeImages",
+        "ecr:GetLifecyclePolicy",
+        "ecr:ListTagsForResource",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:DescribeTags",
+        "apigateway:GET",
+        "sqs:ListQueues",
+        "sqs:GetQueueAttributes",
+        "sqs:ListQueueTags",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:DescribeSecret",
+        "ce:GetCostAndUsage",
+        "ce:GetCostForecast",
+        "pricing:GetProducts"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
