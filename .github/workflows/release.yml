@@ -53,8 +53,8 @@ jobs:
           # runner (macos-13) is being retired, and a build there cancelled the
           # last release; the cross-build is verified to produce an x86_64
           # binary, aws-lc-sys and ring included.
-          - { target: aarch64-apple-darwin,       os: macos-14,        profile: release }
-          - { target: x86_64-apple-darwin,        os: macos-14,        profile: release }
+          - { target: aarch64-apple-darwin,       os: macos-15,        profile: release }
+          - { target: x86_64-apple-darwin,        os: macos-15,        profile: release }
           - { target: x86_64-unknown-linux-gnu,   os: ubuntu-latest,   profile: release-linux }
           - { target: aarch64-unknown-linux-gnu,  os: ubuntu-24.04-arm, profile: release-linux }
           - { target: x86_64-unknown-linux-musl,  os: ubuntu-latest,   profile: release-linux, musl: true }
