@@ -140,3 +140,12 @@ Recommended roadmap docs for product planning:
 - some existing docs can drift if they are not updated alongside code
 
 Contributors should leave the repository a little clearer than they found it, even for small changes.
+## First-time setup
+
+- Installed rust following https://rust-lang.org/tools/install/
+- npm install worked
+- cargo build, be aware the aws files are huge, 25GB VM was not enough.
+- cargo clippy --all-targets -- -D warnings passed
+- cargo run -- --profile glance works fine to open the dashboard
+- "click through" Findings was confusing because I didn't have any findings so it was just a line called Findings I think
+- command palette for me was / and not :. I typed / and then Findings and Profile to bring me to those views.
