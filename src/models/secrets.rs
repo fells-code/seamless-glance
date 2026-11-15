@@ -139,11 +139,18 @@ mod tests{
     fn rotation_disabled_check(){
 
         
-        assert!(secret("name".into(), false, Some(("stuff").into()), Tags::Unavailable).rotation_disabled());
+        assert!(secret("name".into(), false, Some(("stuff").into()), Tags::empty()).rotation_disabled());
 
 
-        assert!((!secret("name".into(), true, Some(("stuff").into()), Tags::Unavailable).rotation_disabled()))
+        assert!((!secret("name".into(), true, Some(("stuff").into()), Tags::empty()).rotation_disabled()));
     }
     
+    #[test]
+    fn has_production_like_name_test(){
+        assert!(!secret("bad_name", false, Some(("stuff").into()), Tags::empty()).has_production_like_name());
+
+        assert!(secret("prod_secret", false, Some(("stuff").into()), Tags::empty()).has_production_like_name());
+    }
+
 
 }
