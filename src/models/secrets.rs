@@ -120,3 +120,30 @@ impl DescribableResource for SecretInfo {
         ))
     }
 }
+
+#[cfg(test)]
+
+mod tests{
+    use super::*;
+
+    fn secret(name: &str, rotation: bool, rotated : Option<String>, tags: Tags)->SecretInfo {
+
+    
+
+        SecretInfo { name: name.into(), rotation_enabled: rotation, last_rotated: rotated, tags }
+
+    }
+
+    #[test]
+
+    fn rotation_disabled_check(){
+
+        
+        assert!(secret("name".into(), false, Some(("stuff").into()), Tags::Unavailable).rotation_disabled());
+
+
+        assert!((!secret("name".into(), true, Some(("stuff").into()), Tags::Unavailable).rotation_disabled()))
+    }
+    
+
+}
