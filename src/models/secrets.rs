@@ -152,5 +152,14 @@ mod tests{
         assert!(secret("prod_secret", false, Some(("stuff").into()), Tags::empty()).has_production_like_name());
     }
 
+    #[test]
+    fn needs_rotation_review_tests(){
+        // returns true
+        assert!(secret("prod_secret", false, Some(("stuff").into()), Tags::empty()).needs_rotation_review());
 
+        // returns false
+        assert!(!secret("bad_name", false, Some(("stuff").into()), Tags::empty()).needs_rotation_review());
+        // also false
+        assert!(!secret("prod_secret", true, Some(("stuff").into()), Tags::empty()).needs_rotation_review());
+    }
 }
