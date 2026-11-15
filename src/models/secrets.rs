@@ -126,40 +126,61 @@ impl DescribableResource for SecretInfo {
 mod tests{
     use super::*;
 
-    fn secret(name: &str, rotation: bool, rotated : Option<String>, tags: Tags)->SecretInfo {
+    fn secret(name: &str, rotation_enabled: bool, last_rotated : Option<String>, tags: Tags)->SecretInfo {
 
-    
-
-        SecretInfo { name: name.into(), rotation_enabled: rotation, last_rotated: rotated, tags }
+        SecretInfo { name: name.into(), rotation_enabled: rotation_enabled, last_rotated: last_rotated, tags }
 
     }
 
     #[test]
 
     fn rotation_disabled_check(){
-
+        let now : DateTime<Utc> = Utc::now();
+        let s : String = now.to_rfc3339();
         
-        assert!(secret("name".into(), false, Some(("stuff").into()), Tags::empty()).rotation_disabled());
+        assert!(secret("prod_secret".into(), false, Some(s.clone()), Tags::empty()).rotation_disabled());
 
 
-        assert!((!secret("name".into(), true, Some(("stuff").into()), Tags::empty()).rotation_disabled()));
+        assert!((!secret("prod_secret".into(), true, Some(s.clone()), Tags::empty()).rotation_disabled()));
     }
     
     #[test]
     fn has_production_like_name_test(){
-        assert!(!secret("bad_name", false, Some(("stuff").into()), Tags::empty()).has_production_like_name());
+        let now : DateTime<Utc> = Utc::now();
+        let s : String = now.to_rfc3339();
+        
+        assert!(!secret("bad_name", false, Some(s.clone()), Tags::empty()).has_production_like_name());
 
-        assert!(secret("prod_secret", false, Some(("stuff").into()), Tags::empty()).has_production_like_name());
+        assert!(secret("prod_secret", false, Some(s.clone()), Tags::empty()).has_production_like_name());
     }
 
     #[test]
     fn needs_rotation_review_tests(){
+        let now : DateTime<Utc> = Utc::now();
+        let s : String = now.to_rfc3339();
+        
         // returns true
-        assert!(secret("prod_secret", false, Some(("stuff").into()), Tags::empty()).needs_rotation_review());
+        assert!(secret("prod_secret", false, Some(s.clone()), Tags::empty()).needs_rotation_review());
 
         // returns false
-        assert!(!secret("bad_name", false, Some(("stuff").into()), Tags::empty()).needs_rotation_review());
+        assert!(!secret("bad_name", false, Some(s.clone()), Tags::empty()).needs_rotation_review());
         // also false
-        assert!(!secret("prod_secret", true, Some(("stuff").into()), Tags::empty()).needs_rotation_review());
+        assert!(!secret("prod_secret", true, Some(s.clone()), Tags::empty()).needs_rotation_review());
+    }
+    #[test]
+    fn has_stale_rotation_tests(){
+        let now : DateTime<Utc> = Utc::now();
+        let s : String = now.to_rfc3339();
+
+
+        // returns false because rotation_enabled is false
+        assert!(!secret("prod_secret", false, Some(s), Tags::empty()).has_stale_rotation());
+
+
+        // should return true for the rest
+        let minus_200 = now - Duration::days(200);
+        let s2 : String = minus_200.to_rfc3339();
+        assert!(secret("prod_secret", true, Some((s2).into()), Tags::empty()).has_stale_rotation());
+
     }
 }
